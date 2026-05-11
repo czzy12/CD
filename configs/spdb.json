@@ -1,0 +1,19 @@
+{
+  "name": "浦发银行",
+  "description": "上海浦东发展银行对账单",
+  "detection_keywords": ["浦发银行", "浦东发展银行", "SPDB"],
+  "date_format_group": "all",
+  "amount_mode": "sign",
+  "amount_rules": {
+    "positive_is": "收入",
+    "negative_is": "支出",
+    "direction_mapping": {
+      "进": "收入",
+      "出": "支出",
+      "借": "支出",
+      "贷": "收入"
+    }
+  },
+  "skip_keywords": ["交易日期", "Date", "合计", "小计"],
+  "header_markers": ["交易日期", "Transaction"]
+}

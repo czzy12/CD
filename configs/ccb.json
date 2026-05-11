@@ -1,0 +1,17 @@
+{
+  "name": "中国建设银行",
+  "description": "建设银行个人活期账户全部明细",
+  "detection_keywords": ["中国建设银行", "建设银行", "CCB"],
+  "date_format_group": "compact",
+  "amount_mode": "sign",
+  "amount_rules": {
+    "positive_is": "收入",
+    "negative_is": "支出",
+    "direction_mapping": {
+      "进": "收入", "出": "支出",
+      "借": "支出", "贷": "收入"
+    }
+  },
+  "skip_keywords": ["合计", "小计", "序号", "摘要"],
+  "header_markers": ["交易日期"]
+}

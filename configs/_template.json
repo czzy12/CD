@@ -1,0 +1,23 @@
+{
+  "name": "模板 - 复制此文件创建新银行配置",
+  "detection_keywords": ["银行名称关键词1", "关键词2"],
+  "date_format": "%Y%m%d 或 %Y-%m-%d",
+  "column_mapping": {
+    "date": 0,
+    "time": 1,
+    "account": 2,
+    "type": 3,
+    "amount": 4,
+    "balance": 5,
+    "counterparty": 6,
+    "counterparty_account": 7,
+    "summary": 8
+  },
+  "income_method": "sign 或 separate_column",
+  "income_rules": {
+    "positive_is": "收入",
+    "negative_is": "支出"
+  },
+  "skip_keywords": ["表头关键词"],
+  "header_markers": ["表头标识关键词"]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "中国农业银行",
+  "description": "农业银行账户活期交易明细清单",
+  "detection_keywords": ["中国农业银行", "农业银行", "ABC"],
+  "date_format_group": "compact",
+  "amount_mode": "sign",
+  "amount_rules": {
+    "positive_is": "收入",
+    "negative_is": "支出",
+    "direction_mapping": {
+      "进": "收入", "出": "支出",
+      "借": "支出", "贷": "收入"
+    }
+  },
+  "skip_keywords": ["合计", "小计", "交易日期", "交易时间", "币种", "钞汇"],
+  "header_markers": ["交易日期", "交易时间"],
+  "text_line_regex": "(?P<date>\\d{8})\\s+(?P<time>\\d{6})\\s+(?P<type>\\S+)\\s+(?P<amount>[+-]?[\\d,]+\\.\\d{2})\\s+[\\d,]+\\.\\d{2}\\s*(?P<counterparty>.*)"
+}

@@ -1,0 +1,21 @@
+{
+  "name": "民生银行(对公)",
+  "description": "民生银行单位账户对账单",
+  "detection_keywords": ["单位账户对账单", "借方发生额", "贷方发生额", "中国民生银行"],
+  "date_format_group": "slash",
+  "amount_mode": "separate_columns",
+  "amount_rules": {
+    "positive_is": "收入",
+    "negative_is": "支出",
+    "debit_is": "收入",
+    "credit_is": "支出",
+    "direction_mapping": {
+      "进": "收入", "出": "支出",
+      "借": "收入", "贷": "支出"
+    }
+  },
+  "skip_keywords": ["合计", "小计", "交易时间", "摘要", "凭证种类"],
+  "header_markers": ["交易时间", "借方发生额", "贷方发生额"],
+  "text_line_regex": "(?P<date>\\d{4}/\\d{2}/\\d{2})\\s+(?P<type>.+?)\\s+(?P<amount_debit>[\\d,]+\\.\\d{2})\\s+(?P<amount_credit>[\\d,]+\\.\\d{2})\\s+[\\d,]+\\.\\d{2}\\s+\\S+\\s+(?P<counterparty>.+)",
+  "text_line_pair": true
+}

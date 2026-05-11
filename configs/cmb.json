@@ -1,0 +1,18 @@
+{
+  "name": "招商银行",
+  "description": "招商银行交易流水",
+  "detection_keywords": ["招商银行", "China Merchants Bank", "CMB"],
+  "date_format_group": "iso",
+  "amount_mode": "sign",
+  "amount_rules": {
+    "positive_is": "收入",
+    "negative_is": "支出",
+    "direction_mapping": {
+      "进": "收入", "出": "支出",
+      "借": "支出", "贷": "收入"
+    }
+  },
+  "skip_keywords": ["合计", "小计", "交易日期", "Transaction", "币种"],
+  "header_markers": ["交易日期", "Transaction Date"],
+  "text_line_regex": "(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+CNY\\s+(?P<amount>[-\\d][\\d,]*\\.\\d{2})\\s+[\\d,]+\\.\\d{2}\\s+(?P<type>\\S+)\\s*(?P<counterparty>.*)"
+}

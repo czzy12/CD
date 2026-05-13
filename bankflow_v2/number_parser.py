@@ -97,7 +97,7 @@ def balance_candidates(raw: str | None) -> list[Decimal]:
         for start in range(len(int_part)):
             candidate_text = f"{int_part[start:]}.{frac}"
             value = money_to_decimal(candidate_text)
-            if value is not None and value >= Decimal("0.01") and value not in seen:
+            if value is not None and value >= Decimal("0.00") and value not in seen:
                 values.append(value)
                 seen.add(value)
 

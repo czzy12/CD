@@ -109,6 +109,7 @@ def load_gold(excel_path: str, sheet_name: str = "Sheet1") -> list[dict]:
         (headers.index(name) for name in ("交易日期", "交易时间", "记账日期") if name in headers),
         0,
     )
+    time_idx = headers.index("交易时间") if "交易时间" in headers else None
     amount_idx = next(
         (headers.index(name) for name in ("收入/支出金额", "交易金额") if name in headers),
         None,
@@ -116,7 +117,7 @@ def load_gold(excel_path: str, sheet_name: str = "Sheet1") -> list[dict]:
     debit_idx = headers.index("借") if "借" in headers else None
     credit_idx = headers.index("贷") if "贷" in headers else None
     balance_idx = next(
-        (headers.index(name) for name in ("余额", "交易余额", "联机余额") if name in headers),
+        (headers.index(name) for name in ("余额", "交易余额", "联机余额", "本次余额") if name in headers),
         None,
     )
 
@@ -126,6 +127,38 @@ def load_gold(excel_path: str, sheet_name: str = "Sheet1") -> list[dict]:
 
         if not hasattr(row[date_idx], "date"):
             raw_text = str(row[date_idx])
+            if re.fullmatch(r"\d{8}", raw_text) and amount_idx is not None:
+                raw_time = (
+                    str(row[time_idx]).zfill(6)
+                    if time_idx is not None and len(row) > time_idx and row[time_idx] not in (None, "")
+                    else "000000"
+                )
+                if not re.fullmatch(r"\d{6}", raw_time):
+                    raw_time = "000000"
+                amount_value = row[amount_idx] if len(row) > amount_idx else None
+                balance_value = row[balance_idx] if balance_idx is not None and len(row) > balance_idx else None
+                if amount_value not in (None, ""):
+                    tx_time = datetime(
+                        int(raw_text[:4]),
+                        int(raw_text[4:6]),
+                        int(raw_text[6:8]),
+                        int(raw_time[:2]),
+                        int(raw_time[2:4]),
+                        int(raw_time[4:6]),
+                    )
+                    amount = money(amount_value)
+                    balance = money(balance_value) if balance_value not in (None, "") else None
+                    rows.append(
+                        {
+                            "transaction_time": tx_time,
+                            "amount": amount,
+                            "income": amount if amount > 0 else Decimal("0.00"),
+                            "expense": -amount if amount < 0 else Decimal("0.00"),
+                            "balance": balance,
+                        }
+                    )
+                    continue
+
             dates = DATE_RE.findall(raw_text)
             amount_values = MONEY_RE.findall(str(row[amount_idx - 1] if amount_idx and len(row) > amount_idx - 1 else ""))
             balance_values = MONEY_RE.findall(str(row[balance_idx] if balance_idx is not None and len(row) > balance_idx else ""))
@@ -224,7 +257,11 @@ def filter_range(transactions, start: datetime, end: datetime):
 
 
 def summarize(rows: list[dict]) -> dict:
-    income_count = sum(1 for row in rows if row["income"] > 0)
+    income_count = sum(
+        1
+        for row in rows
+        if row.get("amount") is not None and row["amount"] >= 0
+    )
     expense_count = sum(1 for row in rows if row["expense"] > 0)
     income_sum = sum((row["income"] for row in rows), Decimal("0.00"))
     expense_sum = sum((row["expense"] for row in rows), Decimal("0.00"))

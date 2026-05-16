@@ -6,6 +6,7 @@ from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
 from .icbc import extract_icbc
+from .icbc_corp import extract_icbc_corp
 from .models import Transaction
 from .psbc import extract_psbc
 
@@ -13,6 +14,8 @@ from .psbc import extract_psbc
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
     if bank == "icbc":
         return extract_icbc(pdf_path)
+    if bank == "icbc_corp":
+        return extract_icbc_corp(pdf_path)
     if bank == "ccb":
         return extract_ccb(pdf_path)
     if bank == "ccb_corp":

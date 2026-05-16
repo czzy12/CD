@@ -1,4 +1,4 @@
 @echo off
-cd /d "D:\claude data\bank_流水"
-python gui_app.py
+cd /d "%~dp0"
+python gui_v2.py
 pause

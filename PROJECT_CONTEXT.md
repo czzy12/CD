@@ -233,6 +233,11 @@ python tools\gold_check.py
 - 注意：第一版 GUI 目前只做重复流水去重，还没有做“按每份 PDF 的有效月份范围裁剪”。例如建设对公“需合并”样本此前黄金对账按人工确认表限定月份范围，若要 GUI 完全自动对齐该类人工合并表，后续需要增加月份范围设置或从文件名识别范围。
 - `启动GUI.bat` 已改为启动 `gui_v2.py`。
 - 计划后续用 PyInstaller 打包为可在其他 PC 运行的 exe。
+- 第一版 exe 已用 PyInstaller 构建为文件夹版：
+  - exe：`D:\Codex data\CD\dist\BankFlowGUI\BankFlowGUI.exe`
+  - 注意：复制到其他电脑时需要带上整个 `BankFlowGUI` 文件夹，不能只复制单个 exe，因为依赖在 `_internal` 目录。
+  - spec：`BankFlowGUI.spec`
+  - 构建命令：`python -m PyInstaller --noconfirm --clean --windowed --name BankFlowGUI gui_v2.py`
 
 新增工商银行对公 v2 解析器：
 

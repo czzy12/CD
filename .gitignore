@@ -1,6 +1,12 @@
 __pycache__/
 output/
+build/
+dist/
+BankFlowGUI/
 *.xlsx
+*.zip
+*.pdf
+*.docx
 .bankflow_ocr_cache/
 gansu_page*.png
 ocr_*.png

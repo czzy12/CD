@@ -1,3 +1,8 @@
 __pycache__/
 output/
 *.xlsx
+.bankflow_ocr_cache/
+gansu_page*.png
+ocr_*.png
+vendor/
+vendor_ort120/

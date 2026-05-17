@@ -9,6 +9,7 @@ from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
 from .models import Transaction
 from .psbc import extract_psbc
+from .wechat import extract_wechat
 
 
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
@@ -32,4 +33,6 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_cmbc_corp(pdf_path)
     if bank == "cmb":
         return extract_cmb(pdf_path)
+    if bank == "wechat":
+        return extract_wechat(pdf_path)
     raise ValueError(f"v2 暂未适配该银行: {bank}")

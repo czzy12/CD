@@ -1,14 +1,17 @@
 import sys
 from dataclasses import dataclass
+from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from PyQt6.QtCore import QThread, Qt, pyqtSignal
+from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QDateEdit,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -24,8 +27,12 @@ from PyQt6.QtWidgets import (
 )
 
 from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
+from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import Issue, money, monthly_summaries, summarize
+
+
+SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
 
 
 @dataclass
@@ -45,11 +52,16 @@ class DropTable(QTableWidget):
     def __init__(self):
         super().__init__()
         self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
         self.setAlternatingRowColors(True)
         self.setSortingEnabled(True)
         self.verticalHeader().setVisible(False)
 
     def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
 
@@ -79,13 +91,48 @@ class DropTable(QTableWidget):
         QApplication.clipboard().setText("\n".join(lines))
 
 
+class DropWidget(QWidget):
+    filesDropped = pyqtSignal(list)
+
+    def __init__(self):
+        super().__init__()
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        paths = [Path(url.toLocalFile()) for url in event.mimeData().urls()]
+        self.filesDropped.emit(paths)
+
+
 class Worker(QThread):
     finished = pyqtSignal(list, list)
     progress = pyqtSignal(str)
 
-    def __init__(self, paths: list[Path]):
+    def __init__(self, paths: list[Path], start_date: datetime | None = None, end_date: datetime | None = None):
         super().__init__()
         self.paths = paths
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def _filter_transactions(self, transactions: list) -> list:
+        if self.start_date is None and self.end_date is None:
+            return transactions
+
+        filtered = []
+        for tx in transactions:
+            if self.start_date is not None and tx.transaction_time < self.start_date:
+                continue
+            if self.end_date is not None and tx.transaction_time > self.end_date:
+                continue
+            filtered.append(tx)
+        return filtered
 
     def run(self):
         results: list[FileResult] = []
@@ -93,7 +140,14 @@ class Worker(QThread):
 
         for path in self.paths:
             self.progress.emit(f"处理中: {path.name}")
-            detection = detect_bank_type(str(path))
+            if path.suffix.lower() in (".xlsx", ".xlsm"):
+                detection = type("Detection", (), {
+                    "bank_id": "excel",
+                    "label": "Excel导入",
+                    "reason": "Excel文件导入",
+                })()
+            else:
+                detection = detect_bank_type(str(path))
             if not detection.bank_id:
                 issue = Issue("需复核", path.name, "", detection.reason)
                 all_issues.append(issue)
@@ -101,7 +155,12 @@ class Worker(QThread):
                 continue
 
             try:
-                transactions = extract_transactions(str(path), detection.bank_id)
+                if detection.bank_id == "excel":
+                    transactions = extract_excel_transactions(str(path))
+                else:
+                    transactions = extract_transactions(str(path), detection.bank_id)
+                original_count = len(transactions)
+                transactions = self._filter_transactions(transactions)
                 for tx in transactions:
                     tx.source_file = path.name
                     tx.bank_label = detection.label
@@ -109,6 +168,8 @@ class Worker(QThread):
                 all_issues.extend(file_summary.issues)
                 status = "正常" if transactions and not file_summary.issues else "需复核"
                 message = "" if transactions else "未解析到流水"
+                if original_count and not transactions:
+                    message = "日期范围内没有流水"
                 if message:
                     all_issues.append(Issue("需复核", path.name, "", message))
                 results.append(
@@ -133,12 +194,13 @@ class Worker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("银行流水 PDF 解析")
+        self.setWindowTitle("银行流水 PDF/Excel 解析")
         self.resize(1280, 760)
         self.paths: list[Path] = []
         self.results: list[FileResult] = []
         self.issues: list[Issue] = []
         self.worker: Worker | None = None
+        self.setAcceptDrops(True)
 
         self.summary_label = QLabel("选择 PDF 文件或文件夹后开始处理")
         self.summary_label.setObjectName("summaryLabel")
@@ -159,6 +221,26 @@ class MainWindow(QMainWindow):
             toolbar.addWidget(button)
         toolbar.addStretch(1)
 
+        self.date_filter = QCheckBox("筛选日期")
+        self.date_filter.setChecked(True)
+        self.start_date = QDateEdit()
+        self.start_date.setCalendarPopup(True)
+        self.start_date.setDisplayFormat("yyyy-MM-dd")
+        self.end_date = QDateEdit()
+        self.end_date.setCalendarPopup(True)
+        self.end_date.setDisplayFormat("yyyy-MM-dd")
+        start_date, end_date = default_recent_month_range()
+        self.start_date.setDate(start_date)
+        self.end_date.setDate(end_date)
+
+        datebar = QHBoxLayout()
+        datebar.addWidget(self.date_filter)
+        datebar.addWidget(QLabel("从"))
+        datebar.addWidget(self.start_date)
+        datebar.addWidget(QLabel("到"))
+        datebar.addWidget(self.end_date)
+        datebar.addStretch(1)
+
         self.overview = DropTable()
         self.monthly = DropTable()
         self.details = DropTable()
@@ -167,14 +249,16 @@ class MainWindow(QMainWindow):
             table.filesDropped.connect(self.add_paths)
 
         tabs = QTabWidget()
-        tabs.addTab(self.overview, "文件汇总")
         tabs.addTab(self.monthly, "月度统计")
+        tabs.addTab(self.overview, "文件汇总")
         tabs.addTab(self.details, "流水明细")
         tabs.addTab(self.issue_table, "异常提示")
 
-        central = QWidget()
+        central = DropWidget()
+        central.filesDropped.connect(self.add_paths)
         layout = QVBoxLayout(central)
         layout.addLayout(toolbar)
+        layout.addLayout(datebar)
         layout.addWidget(self.summary_label)
         layout.addWidget(tabs)
         self.setCentralWidget(central)
@@ -188,6 +272,18 @@ class MainWindow(QMainWindow):
         export_action = QAction("导出 Excel", self)
         export_action.triggered.connect(self.export_excel)
         self.menuBar().addMenu("文件").addAction(export_action)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        paths = [Path(url.toLocalFile()) for url in event.mimeData().urls()]
+        self.add_paths(paths)
 
     def _apply_style(self):
         self.setStyleSheet(
@@ -223,7 +319,7 @@ class MainWindow(QMainWindow):
         )
 
     def add_files(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "选择银行流水 PDF", "", "PDF 文件 (*.pdf)")
+        files, _ = QFileDialog.getOpenFileNames(self, "选择银行流水文件", "", "支持的文件 (*.pdf *.xlsx *.xlsm);;PDF 文件 (*.pdf);;Excel 文件 (*.xlsx *.xlsm)")
         self.add_paths([Path(file) for file in files])
 
     def add_folder(self):
@@ -232,17 +328,21 @@ class MainWindow(QMainWindow):
             self.add_paths([Path(folder)])
 
     def add_paths(self, paths: list[Path]):
-        pdfs: list[Path] = []
+        inputs: list[Path] = []
         for path in paths:
             if path.is_dir():
-                pdfs.extend(sorted(path.rglob("*.pdf")))
-            elif path.suffix.lower() == ".pdf":
-                pdfs.append(path)
-        known = {p.resolve() for p in self.paths}
-        for pdf in pdfs:
-            resolved = pdf.resolve()
+                for suffix in SUPPORTED_INPUTS:
+                    inputs.extend(sorted(path.rglob(f"*{suffix}")))
+            elif path.suffix.lower() in SUPPORTED_INPUTS:
+                inputs.append(path)
+        self.paths = []
+        self.results = []
+        self.issues = []
+        known = set()
+        for input_path in inputs:
+            resolved = input_path.resolve()
             if resolved not in known:
-                self.paths.append(pdf)
+                self.paths.append(input_path)
                 known.add(resolved)
         self.render_selected()
 
@@ -254,12 +354,23 @@ class MainWindow(QMainWindow):
 
     def run(self):
         if not self.paths:
-            QMessageBox.information(self, "提示", "请先选择 PDF 文件或文件夹。")
+            QMessageBox.information(self, "提示", "请先选择 PDF/Excel 文件或文件夹。")
             return
-        self.worker = Worker(self.paths)
+        start_date, end_date = self.selected_date_range()
+        if start_date is not None and end_date is not None and start_date > end_date:
+            QMessageBox.warning(self, "日期范围错误", "开始日期不能晚于结束日期。")
+            return
+        self.worker = Worker(self.paths, start_date, end_date)
         self.worker.progress.connect(self.statusBar().showMessage)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
+
+    def selected_date_range(self) -> tuple[datetime | None, datetime | None]:
+        if not self.date_filter.isChecked():
+            return None, None
+        start = self.start_date.date().toPyDate()
+        end = self.end_date.date().toPyDate()
+        return datetime.combine(start, time.min), datetime.combine(end, time.max)
 
     def on_finished(self, results: list[FileResult], issues: list[Issue]):
         self.results = results
@@ -268,16 +379,16 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("处理完成")
 
     def render_empty(self):
-        self.summary_label.setText("选择 PDF 文件或文件夹后开始处理；可直接拖入文件/文件夹。")
+        self.summary_label.setText("选择 PDF/Excel 文件或文件夹后开始处理；默认输出近半年，可手动修改日期范围。")
         self._set_table(self.overview, ["文件", "状态"], [])
-        self._set_table(self.monthly, ["月份", "收入", "支出"], [])
+        self._set_table(self.monthly, ["月份", "收入(万元)", "支出(万元)"], [])
         self._set_table(self.details, ["时间", "收入", "支出", "余额"], [])
         self._set_table(self.issue_table, ["级别", "来源", "时间", "提示"], [])
 
     def render_selected(self):
         rows = [[str(path), "待处理"] for path in self.paths]
         self._set_table(self.overview, ["文件", "状态"], rows)
-        self.summary_label.setText(f"已选择 {len(self.paths)} 个 PDF，点击开始处理。")
+        self.summary_label.setText(f"已选择 {len(self.paths)} 个文件，点击开始处理。")
 
     def render_results(self):
         all_transactions, duplicate_issues = dedupe_transactions([tx for result in self.results for tx in result.transactions])
@@ -288,6 +399,9 @@ class MainWindow(QMainWindow):
             f"支出 {total.expense_count} 笔/{money(total.expense_sum)}，净额 {money(total.net)}，"
             f"异常提示 {len(shown_issues)} 条。"
         )
+
+        monthly_rows = build_monthly_rows(all_transactions)
+        self._set_table(self.monthly, ["月份", "流水笔数", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)"], monthly_rows)
 
         overview_rows = []
         for result in self.results:
@@ -313,9 +427,6 @@ class MainWindow(QMainWindow):
             ["文件", "银行", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额", "状态", "说明"],
             overview_rows,
         )
-
-        monthly_rows = build_monthly_rows(all_transactions)
-        self._set_table(self.monthly, ["月份", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额"], monthly_rows)
 
         detail_rows = []
         for tx in sorted(all_transactions, key=lambda item: item.transaction_time):
@@ -385,8 +496,9 @@ def write_sheet(ws, headers: list[str], rows: list[list]):
 
 def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     wb = Workbook()
-    overview = wb.active
-    overview.title = "汇总"
+    monthly = wb.active
+    monthly.title = "月度统计"
+    overview = wb.create_sheet("汇总")
     overview_rows = []
     all_transactions = []
     for result in results:
@@ -412,10 +524,8 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
 
     all_transactions, duplicate_issues = dedupe_transactions(all_transactions)
     shown_issues = issues + duplicate_issues
-
-    monthly = wb.create_sheet("月度统计")
     monthly_rows = build_monthly_rows(all_transactions, for_excel=True)
-    write_sheet(monthly, ["月份", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额"], monthly_rows)
+    write_sheet(monthly, ["月份", "流水笔数", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)"], monthly_rows)
 
     details = wb.create_sheet("明细")
     detail_rows = []
@@ -492,30 +602,107 @@ def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list
     return rows
 
 
+def build_combined_summary_rows(results: list[FileResult], transactions: list, for_excel: bool = False) -> list[list]:
+    rows = []
+    for result in results:
+        rows.append(_combined_summary_row(
+            "文件",
+            result.path.name,
+            result.bank_label or BANK_LABELS.get(result.bank_id, ""),
+            result.summary,
+            result.status,
+            result.message,
+            for_excel,
+        ))
+
+    for month, summary in monthly_summaries(transactions):
+        rows.append(_combined_summary_row("月份", month, "全部文件", summary, "", "", for_excel))
+
+    if transactions:
+        rows.append(_combined_summary_row("总计", "总计", "全部文件", summarize(transactions, "总计"), "", "", for_excel))
+    return rows
+
+
+def _combined_summary_row(
+    row_type: str,
+    name: str,
+    scope: str,
+    s,
+    status: str,
+    message: str,
+    for_excel: bool,
+) -> list:
+    values = [
+        s.income_sum,
+        s.expense_sum,
+        s.net,
+        s.opening_balance,
+        s.closing_balance,
+    ]
+    if for_excel:
+        money_values = [float(to_wan(value)) if value is not None else None for value in values]
+    else:
+        money_values = [money_wan(value) for value in values]
+    return [
+        row_type,
+        name,
+        scope,
+        s.count,
+        s.income_count,
+        money_values[0],
+        s.expense_count,
+        money_values[1],
+        money_values[2],
+        money_values[3],
+        money_values[4],
+        status,
+        message,
+    ]
+
+
 def _summary_row(label: str, s, for_excel: bool) -> list:
     if for_excel:
         return [
             label,
             s.count,
             s.income_count,
-            float(s.income_sum),
+            float(to_wan(s.income_sum)),
             s.expense_count,
-            float(s.expense_sum),
-            float(s.net),
-            float(s.opening_balance) if s.opening_balance is not None else None,
-            float(s.closing_balance) if s.closing_balance is not None else None,
+            float(to_wan(s.expense_sum)),
+            float(to_wan(s.net)),
+            float(to_wan(s.opening_balance)) if s.opening_balance is not None else None,
+            float(to_wan(s.closing_balance)) if s.closing_balance is not None else None,
         ]
     return [
         label,
         s.count,
         s.income_count,
-        money(s.income_sum),
+        money_wan(s.income_sum),
         s.expense_count,
-        money(s.expense_sum),
-        money(s.net),
-        money(s.opening_balance),
-        money(s.closing_balance),
+        money_wan(s.expense_sum),
+        money_wan(s.net),
+        money_wan(s.opening_balance),
+        money_wan(s.closing_balance),
     ]
+
+
+def to_wan(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return (value / Decimal("10000")).quantize(Decimal("0.01"))
+
+
+def money_wan(value: Decimal | None) -> str:
+    converted = to_wan(value)
+    return "" if converted is None else f"{converted:,.2f}"
+
+
+def default_recent_month_range() -> tuple[QDate, QDate]:
+    today = QDate.currentDate()
+    month_start = QDate(today.year(), today.month(), 1)
+    start = month_start.addMonths(-5)
+    end = QDate(today.year(), today.month(), today.daysInMonth())
+    return start, end
 
 
 def main():

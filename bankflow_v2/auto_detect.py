@@ -22,6 +22,7 @@ BANK_LABELS = {
     "icbc": "工商银行个人",
     "icbc_corp": "工商银行对公",
     "psbc": "邮储银行",
+    "wechat": "微信流水",
 }
 
 
@@ -37,6 +38,25 @@ def _sample_text(pdf_path: str, max_pages: int = 2) -> str:
     return "\n".join(parts)
 
 
+def _image_only_reason(pdf_path: str) -> str | None:
+    with pdfplumber.open(pdf_path) as pdf:
+        pages = pdf.pages[:2]
+        if not pages:
+            return None
+
+        has_text = False
+        has_images = False
+        for page in pages:
+            if page.chars or (page.extract_text() or "").strip():
+                has_text = True
+            if page.images:
+                has_images = True
+
+    if has_images and not has_text:
+        return "PDF为扫描图片，没有可抽取文字层，需要OCR识别后解析"
+    return None
+
+
 def detect_bank_type(pdf_path: str) -> Detection:
     try:
         text = _sample_text(pdf_path)
@@ -44,10 +64,17 @@ def detect_bank_type(pdf_path: str) -> Detection:
         return Detection("", "未识别", 0, f"PDF读取失败: {exc}")
 
     compact = text.replace(" ", "").replace("\n", "")
+    image_only_reason = _image_only_reason(pdf_path)
+
+    if not compact and image_only_reason:
+        return Detection("", "图片型PDF", 0, image_only_reason)
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),
         ("icbc_corp", "凭证号对方账号交易时间借贷标志", 98),
+        ("wechat", "微信支付交易明细证明", 98),
+        ("wechat", "微信支付账单", 95),
+        ("wechat", "交易时间交易类型交易对方商品收/支金额", 95),
         ("abc_corp", "交易时间收入金额支出金额账户余额", 98),
         ("abc", "交易日期交易时间交易摘要交易金额本次余额", 98),
         ("bocom", "交通银行个人客户交易清单", 95),
@@ -69,4 +96,4 @@ def detect_bank_type(pdf_path: str) -> Detection:
     if "交易时间" in compact and "余额" in compact and "中国工商银行" in compact:
         return Detection("icbc_corp", BANK_LABELS["icbc_corp"], 75, "工商银行表格特征")
 
-    return Detection("", "未识别", 0, "未命中已适配银行格式")
+    return Detection("", "未识别", 0, "未适配：未命中已适配银行格式")

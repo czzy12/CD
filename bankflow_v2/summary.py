@@ -48,6 +48,8 @@ def summarize(transactions: list[Transaction], source: str = "") -> Summary:
     summary = Summary(count=len(ordered))
 
     for tx in ordered:
+        if getattr(tx, "neutral", False):
+            continue
         if tx.amount >= ZERO:
             summary.income_count += 1
             summary.income_sum += tx.income
@@ -88,7 +90,7 @@ def collect_issues(transactions: list[Transaction], source: str = "") -> list[Is
             for message in tx.issues or ["解析状态需复核"]:
                 issues.append(Issue("需复核", where, time_text, message, tx.raw_amount, tx.raw_balance))
 
-        if tx.balance is None:
+        if tx.balance is None and not getattr(tx, "balance_optional", False):
             issues.append(Issue("需复核", where, time_text, "余额缺失", tx.raw_amount, tx.raw_balance))
 
         if previous is not None and previous.balance is not None and tx.balance is not None:

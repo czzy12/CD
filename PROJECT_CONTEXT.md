@@ -315,3 +315,17 @@ python -m py_compile bankflow_v2\icbc_corp.py bankflow_v2\auto_detect.py bankflo
   - `月度统计` 中的收入、支出、净额、期初余额、期末余额统一显示/导出为 `万元`，列名标注 `(万元)`，保留两位小数。
   - `文件汇总` 和 `流水明细` 仍保留元单位，方便核对原始明细。
   - 拖拽导入保留，并增加主窗口级 DropWidget 接收拖拽；每次点击选择文件/文件夹或拖入文件/文件夹，都会替换当前待处理列表和上次结果，不再累加。
+
+## 本地/网盘资料同步规则（2026-05-17）
+
+- 源码仓库固定使用：`D:\Codex data\CD`。
+- 本地/网盘资料统一入口固定使用：`D:\Codex data\CD_assets`。
+- `CD_assets` 用于保存不适合进入 GitHub 的资料，包括：
+  - `PDF流水`：原始 PDF 流水样本。
+  - `Excel流水`：图片 PDF 转出的 Excel、人工整理表、第三方软件转换结果。
+  - `打包成品`：exe、zip、发布包。
+  - `项目备份`：重要版本源码 zip、交接备份。
+  - `测试输出`：临时导出的 Excel、截图、对账结果。
+- GitHub 只同步源码、配置和说明文档；不要再把 PDF、Excel、docx、exe、zip、build/dist 产物提交到源码仓库。
+- 每次把源码或清理提交推送到 GitHub 后，需要主动提醒用户同步或备份 `D:\Codex data\CD_assets`，这样更换 PC 时可以继续项目。
+- 如果用户以后把 `CD_assets` 放到 OneDrive，优先保持 `D:\Codex data\CD_assets` 作为入口路径不变，避免多台电脑路径混乱。

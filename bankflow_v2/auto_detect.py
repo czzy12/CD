@@ -59,6 +59,18 @@ def _image_only_reason(pdf_path: str) -> str | None:
     return None
 
 
+def _has_ordered_chars(text: str, phrase: str, max_gap: int = 80) -> bool:
+    position = -1
+    for char in phrase:
+        next_position = text.find(char, position + 1)
+        if next_position == -1:
+            return False
+        if position != -1 and next_position - position > max_gap:
+            return False
+        position = next_position
+    return True
+
+
 def detect_bank_type(pdf_path: str) -> Detection:
     try:
         text = _sample_text(pdf_path)
@@ -70,6 +82,11 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     if not compact and image_only_reason:
         return Detection("", "图片型PDF", 0, image_only_reason)
+
+    header_text = "\n".join(text.splitlines()[:80])
+    header_compact = header_text.replace(" ", "").replace("\n", "")
+    if _has_ordered_chars(header_compact, "兴业银行交易流水"):
+        return Detection("cib", BANK_LABELS["cib"], 95, "页眉命中银行名称: 兴业银行交易流水")
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),

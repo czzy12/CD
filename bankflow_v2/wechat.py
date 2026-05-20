@@ -47,9 +47,7 @@ def _parse_amount(value: Any) -> Decimal | None:
 def _direction(value: Any) -> str | None:
     text = _norm(value)
     if "其他" in text:
-        if any(word in text for word in ("转出零钱通", "零钱通转出", "退款", "收入", "收益")):
-            return "income"
-        return "expense"
+        return "neutral"
     if any(word in text for word in ("收入", "收款", "转入", "退款", "+")):
         return "income"
     if any(word in text for word in ("支出", "付款", "转出", "提现", "-")):
@@ -109,6 +107,9 @@ def _parse_table(table: list[list[Any]], page_no: int) -> list[Transaction]:
         elif direction == "expense":
             income = Decimal("0.00")
             expense = amount
+        elif direction == "neutral":
+            income = Decimal("0.00")
+            expense = Decimal("0.00")
         else:
             income = Decimal("0.00")
             expense = Decimal("0.00")
@@ -125,10 +126,13 @@ def _parse_table(table: list[list[Any]], page_no: int) -> list[Transaction]:
             raw_time=_clean(row[cols["time"]]),
             raw_amount=raw_amount,
             raw_balance="",
+            raw_text=row_text,
+            raw_fields=[_clean(cell) for cell in row],
             status="ok" if not issues else "review",
             issues=issues,
         )
         tx.balance_optional = True
+        tx.neutral = direction == "neutral"
         transactions.append(tx)
 
     return transactions
@@ -147,9 +151,12 @@ def _parse_text_line(line: str, page_no: int, row_no: int) -> Transaction | None
     if direction == "income":
         income = amount
         expense = Decimal("0.00")
-    else:
+    elif direction == "expense":
         income = Decimal("0.00")
         expense = amount
+    else:
+        income = Decimal("0.00")
+        expense = Decimal("0.00")
 
     tx = Transaction(
         transaction_time=tx_time,
@@ -162,8 +169,10 @@ def _parse_text_line(line: str, page_no: int, row_no: int) -> Transaction | None
         raw_time=tx_time.strftime("%Y-%m-%d %H:%M:%S"),
         raw_amount=_clean(line),
         raw_balance="",
+        raw_text=_clean(line),
     )
     tx.balance_optional = True
+    tx.neutral = direction == "neutral"
     return tx
 
 

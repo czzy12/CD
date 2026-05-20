@@ -1,10 +1,13 @@
 import sys
+import re
 from dataclasses import dataclass
 from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
 
+import pdfplumber
 from openpyxl import Workbook
+from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill
 from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
@@ -34,6 +37,14 @@ from bankflow_v2.summary import Issue, money, monthly_summaries, summarize
 
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
+SALARY_KEYWORDS = ("工资", "代发", "薪资", "薪酬", "奖金")
+ACCOUNT_NAME_PATTERNS = (
+    r"户名\s*(?:Account Name)?\s*[:：]\s*([^\s，,]+)",
+    r"客户姓名\s*[:：]\s*([^\s，,]+)",
+    r"账户名称\s*[:：]\s*([^\s，,]+)",
+    r"户主\s*[:：]\s*([^\s，,]+)",
+    r"Account Name\s*[:：]\s*([^\s，,]+)",
+)
 
 
 @dataclass
@@ -45,6 +56,7 @@ class FileResult:
     transactions: list
     status: str
     message: str
+    account_name: str = ""
 
 
 class DropTable(QTableWidget):
@@ -187,6 +199,7 @@ class Worker(QThread):
 
             try:
                 transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
+                account_name = extract_account_name(path)
                 original_count = len(transactions)
                 transactions = self._filter_transactions(transactions)
                 for tx in transactions:
@@ -212,12 +225,13 @@ class Worker(QThread):
                         transactions,
                         status,
                         message,
+                        account_name,
                     )
                 )
             except Exception as exc:
                 issue = Issue("需复核", path.name, "", f"解析失败: {exc}")
                 all_issues.append(issue)
-                results.append(FileResult(path, detection.bank_id, detection.label, summarize([]), [], "需复核", str(exc)))
+                results.append(FileResult(path, detection.bank_id, detection.label, summarize([]), [], "需复核", str(exc), extract_account_name(path)))
 
         self.finished.emit(results, all_issues)
 
@@ -503,7 +517,7 @@ class MainWindow(QMainWindow):
         if not self.results:
             QMessageBox.information(self, "提示", "请先处理流水后再导出。")
             return
-        file_name, _ = QFileDialog.getSaveFileName(self, "导出 Excel", "银行流水解析结果.xlsx", "Excel 文件 (*.xlsx)")
+        file_name, _ = QFileDialog.getSaveFileName(self, "导出 Excel", default_export_path(self.results), "Excel 文件 (*.xlsx)")
         if not file_name:
             return
         path = Path(file_name)
@@ -523,6 +537,70 @@ def write_sheet(ws, headers: list[str], rows: list[list]):
     for column in ws.columns:
         width = max(len(str(cell.value or "")) for cell in column) + 2
         ws.column_dimensions[column[0].column_letter].width = min(max(width, 10), 42)
+
+
+def default_export_filename(results: list[FileResult]) -> str:
+    names: list[str] = []
+    for result in results:
+        name = safe_filename_part(result.account_name)
+        if name and name not in names:
+            names.append(name)
+    if not names:
+        return "银行流水解析结果.xlsx"
+    return f"银行流水解析结果_{'_'.join(names[:3])}.xlsx"
+
+
+def default_export_path(results: list[FileResult]) -> str:
+    filename = default_export_filename(results)
+    desktop = Path.home() / "Desktop"
+    if desktop.exists():
+        return str(desktop / filename)
+    return filename
+
+
+def safe_filename_part(value: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]', "", value or "").strip()[:30]
+
+
+def extract_account_name(path: Path) -> str:
+    if path.suffix.lower() == ".pdf":
+        return extract_pdf_account_name(path)
+    if path.suffix.lower() in (".xlsx", ".xlsm"):
+        return extract_excel_account_name(path)
+    return ""
+
+
+def extract_pdf_account_name(path: Path) -> str:
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            if not pdf.pages:
+                return ""
+            return parse_account_name(pdf.pages[0].extract_text() or "")
+    except Exception:
+        return ""
+
+
+def extract_excel_account_name(path: Path) -> str:
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            worksheet = workbook.worksheets[0]
+            chunks = []
+            for row in worksheet.iter_rows(min_row=1, max_row=30, values_only=True):
+                chunks.append(" ".join(str(cell or "") for cell in row))
+            return parse_account_name("\n".join(chunks))
+        finally:
+            workbook.close()
+    except Exception:
+        return ""
+
+
+def parse_account_name(text: str) -> str:
+    for pattern in ACCOUNT_NAME_PATTERNS:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
+    return ""
 
 
 def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
@@ -580,6 +658,11 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     issue_sheet = wb.create_sheet("异常提示")
     issue_rows = [[issue.level, issue.source, issue.time, issue.message, issue.raw_amount, issue.raw_balance] for issue in shown_issues]
     write_sheet(issue_sheet, ["级别", "来源", "时间", "提示", "原始金额", "原始余额"], issue_rows)
+
+    salary_headers, salary_rows = build_salary_sheet(all_transactions, for_excel=True)
+    if salary_rows:
+        salary_sheet = wb.create_sheet("工资核算")
+        write_sheet(salary_sheet, salary_headers, salary_rows)
     wb.save(path)
 
 
@@ -631,6 +714,77 @@ def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list
     if rows:
         rows.append(_summary_row("总计", summarize(transactions, "总计"), for_excel))
     return rows
+
+
+def build_salary_sheet(transactions: list, for_excel: bool = False) -> tuple[list[str], list[list]]:
+    salary_transactions = [tx for tx in sorted(transactions, key=lambda item: item.transaction_time) if is_salary_transaction(tx)]
+    if not salary_transactions:
+        return [], []
+
+    headers = salary_headers(salary_transactions)
+    amount_col = salary_amount_col(headers)
+    rows = []
+    for tx in salary_transactions:
+        fields = salary_fields(tx)
+        rows.append((fields + [""] * len(headers))[:len(headers)])
+
+    total = sum((tx.income for tx in salary_transactions), Decimal("0.00")).quantize(Decimal("0.01"))
+    months = {tx.transaction_time.strftime("%Y-%m") for tx in salary_transactions}
+    average = (total / Decimal(len(months))).quantize(Decimal("0.01")) if months else Decimal("0.00")
+    rows.append([""] * len(headers))
+    rows.append(salary_summary_row(headers, amount_col, "工资总额", total, for_excel))
+    rows.append(salary_summary_row(headers, amount_col, "统计月份数", Decimal(len(months)), for_excel))
+    rows.append(salary_summary_row(headers, amount_col, "月均", average, for_excel))
+    return headers, rows
+
+
+def salary_headers(transactions: list) -> list[str]:
+    headers = next((list(getattr(tx, "raw_headers", []) or []) for tx in transactions if getattr(tx, "raw_headers", None)), [])
+    max_len = max(len(salary_fields(tx)) for tx in transactions)
+    if not headers:
+        headers = [f"原始字段{index}" for index in range(1, max_len + 1)]
+    if len(headers) < max_len:
+        headers.extend(f"原始字段{index}" for index in range(len(headers) + 1, max_len + 1))
+    return headers
+
+
+def salary_fields(tx) -> list:
+    fields = list(getattr(tx, "raw_fields", []) or [])
+    if fields:
+        return fields
+    text = salary_match_text(tx)
+    return text.split(" | ") if " | " in text else [text]
+
+
+def salary_amount_col(headers: list[str]) -> int:
+    preferred = ("交易金额", "收入金额", "贷方发生额", "贷方", "金额")
+    for name in preferred:
+        for index, header in enumerate(headers):
+            if name in header:
+                return index
+    return min(3, len(headers) - 1)
+
+
+def salary_summary_row(headers: list[str], amount_col: int, label: str, value: Decimal, for_excel: bool) -> list:
+    row = [""] * len(headers)
+    row[0] = label
+    if label == "统计月份数":
+        row[amount_col] = int(value)
+    else:
+        row[amount_col] = float(value) if for_excel else money(value)
+    return row
+
+
+def is_salary_transaction(tx) -> bool:
+    if tx.income <= Decimal("0.00"):
+        return False
+    text = salary_match_text(tx)
+    return any(keyword in text for keyword in SALARY_KEYWORDS)
+
+
+def salary_match_text(tx) -> str:
+    raw_fields = " | ".join(str(field) for field in getattr(tx, "raw_fields", []) or [])
+    return f"{getattr(tx, 'raw_text', '')} | {raw_fields} | {getattr(tx, 'raw_amount', '')}".strip()
 
 
 def build_combined_summary_rows(results: list[FileResult], transactions: list, for_excel: bool = False) -> list[list]:

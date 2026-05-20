@@ -45,11 +45,12 @@ def sort_transactions(transactions: list[Transaction]) -> list[Transaction]:
 
 def summarize(transactions: list[Transaction], source: str = "") -> Summary:
     ordered = sort_transactions(transactions)
-    summary = Summary(count=len(ordered))
+    summary = Summary()
 
     for tx in ordered:
         if getattr(tx, "neutral", False):
             continue
+        summary.count += 1
         if tx.amount >= ZERO:
             summary.income_count += 1
             summary.income_sum += tx.income

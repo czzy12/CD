@@ -241,6 +241,9 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
                 raw_time=_cell_text(row[cols["date"]]),
                 raw_amount=raw_amount,
                 raw_balance=raw_balance,
+                raw_text=" | ".join(_cell_text(cell) for cell in row),
+                raw_fields=[_cell_text(cell) for cell in row],
+                raw_headers=headers,
                 status="ok" if not issues else "review",
                 issues=issues,
             )

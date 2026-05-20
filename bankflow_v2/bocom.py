@@ -14,6 +14,7 @@ TYPE_COL = 3
 DIRECTION_COL = 4
 AMOUNT_COL = 5
 BALANCE_COL = 6
+RAW_HEADERS = ["序号", "交易日期", "交易时间", "交易类型", "借贷标志", "交易金额", "账户余额", "对方账号", "对方户名", "交易渠道", "摘要"]
 
 
 def _clean_cell(value) -> str:
@@ -74,6 +75,9 @@ def extract_bocom(pdf_path: str) -> list[Transaction]:
                             raw_time=f"{_clean_cell(row[DATE_COL])} {_clean_cell(row[TIME_COL])}",
                             raw_amount=_clean_cell(row[AMOUNT_COL]),
                             raw_balance=_clean_cell(row[BALANCE_COL]),
+                            raw_text=" | ".join(_clean_cell(cell) for cell in row),
+                            raw_fields=[_clean_cell(cell) for cell in row],
+                            raw_headers=RAW_HEADERS,
                             status="ok" if not issues else "review",
                             issues=issues,
                         )

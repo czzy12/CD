@@ -59,6 +59,8 @@ def extract_generic_pdf(pdf_path: str, bank_name: str = BANK_NAME) -> list[Trans
                         raw_time=f"{match.group('date')} {match.group('time')}",
                         raw_amount=match.group("amount"),
                         raw_balance=match.group("balance"),
+                        raw_text=line,
+                        raw_fields=[line],
                     )
                 )
     return transactions

@@ -18,6 +18,9 @@ class Transaction:
     raw_time: str = ""
     raw_amount: str = ""
     raw_balance: str = ""
+    raw_text: str = ""
+    raw_fields: list[str] = field(default_factory=list)
+    raw_headers: list[str] = field(default_factory=list)
     status: str = "ok"
     issues: list[str] = field(default_factory=list)
 

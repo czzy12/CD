@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
+from bankflow_v2.generic_pdf import extract_generic_pdf
 from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import Issue, money, monthly_summaries, summarize
 
@@ -134,6 +135,41 @@ class Worker(QThread):
             filtered.append(tx)
         return filtered
 
+    def _generic_pdf_label(self, detection) -> str:
+        if detection.bank_id and detection.label not in ("未识别", ""):
+            return f"{detection.label}（通用识别）"
+        return "通用PDF识别"
+
+    def _extract_with_fallback(self, path: Path, detection) -> tuple[list, str, str, bool]:
+        if path.suffix.lower() in (".xlsx", ".xlsm"):
+            return extract_excel_transactions(str(path)), "Excel导入", "Excel文件导入", False
+
+        if not detection.bank_id:
+            transactions = extract_generic_pdf(str(path))
+            if transactions:
+                return transactions, "通用PDF识别", f"{detection.reason}，已使用通用识别", True
+            return [], "未识别", detection.reason, False
+
+        if detection.bank_id in ("cmbc", "cib", "generic_pdf"):
+            transactions = extract_transactions(str(path), detection.bank_id)
+            return transactions, self._generic_pdf_label(detection), "已使用通用识别", True
+
+        try:
+            transactions = extract_transactions(str(path), detection.bank_id)
+        except Exception as exc:
+            fallback = extract_generic_pdf(str(path))
+            if fallback:
+                return fallback, self._generic_pdf_label(detection), f"专用解析失败：{exc}；已使用通用识别", True
+            raise
+
+        if transactions:
+            return transactions, detection.label, "", False
+
+        fallback = extract_generic_pdf(str(path))
+        if fallback:
+            return fallback, self._generic_pdf_label(detection), "专用解析未得到流水，已使用通用识别", True
+        return transactions, detection.label, "未解析到流水", False
+
     def run(self):
         results: list[FileResult] = []
         all_issues: list[Issue] = []
@@ -148,26 +184,21 @@ class Worker(QThread):
                 })()
             else:
                 detection = detect_bank_type(str(path))
-            if not detection.bank_id:
-                issue = Issue("需复核", path.name, "", detection.reason)
-                all_issues.append(issue)
-                results.append(FileResult(path, "", "未识别", summarize([]), [], "需复核", detection.reason))
-                continue
 
             try:
-                if detection.bank_id == "excel":
-                    transactions = extract_excel_transactions(str(path))
-                else:
-                    transactions = extract_transactions(str(path), detection.bank_id)
+                transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
                 original_count = len(transactions)
                 transactions = self._filter_transactions(transactions)
                 for tx in transactions:
                     tx.source_file = path.name
-                    tx.bank_label = detection.label
+                    tx.bank_label = bank_label
                 file_summary = summarize(transactions, path.name)
                 all_issues.extend(file_summary.issues)
-                status = "正常" if transactions and not file_summary.issues else "需复核"
-                message = "" if transactions else "未解析到流水"
+                if transactions and not file_summary.issues:
+                    status = "通用识别" if used_generic else "正常"
+                else:
+                    status = "需复核"
+                message = fallback_message if transactions else (fallback_message or "未解析到流水")
                 if original_count and not transactions:
                     message = "日期范围内没有流水"
                 if message:
@@ -176,7 +207,7 @@ class Worker(QThread):
                     FileResult(
                         path,
                         detection.bank_id,
-                        detection.label,
+                        bank_label,
                         file_summary,
                         transactions,
                         status,

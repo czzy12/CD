@@ -18,7 +18,9 @@ BANK_LABELS = {
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
     "cmb": "招商银行",
+    "cmbc": "民生银行个人",
     "cmbc_corp": "民生银行对公",
+    "cib": "兴业银行",
     "icbc": "工商银行个人",
     "icbc_corp": "工商银行对公",
     "psbc": "邮储银行",
@@ -80,7 +82,10 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("bocom", "交通银行个人客户交易清单", 95),
         ("psbc", "中国邮政储蓄银行借记账户历史明细", 95),
         ("cmb", "TransactionStatementofChinaMerchantsBank", 95),
-        ("cmb", "招商银行", 90),
+        ("cmbc", "个人账户对账单客户姓名客户账号", 95),
+        ("cmbc", "中国民生银行股份有限公司", 95),
+        ("cib", "IndustrialBankTransactionDetails", 95),
+        ("cib", "兴业银行交易流水", 95),
         ("ccb_corp", "中国建设银行账户明细信息", 95),
         ("ccb", "中国建设银行个人活期账户全部交易明细", 95),
         ("abc", "中国农业银行银行卡交易明细清单", 95),
@@ -95,5 +100,9 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     if "交易时间" in compact and "余额" in compact and "中国工商银行" in compact:
         return Detection("icbc_corp", BANK_LABELS["icbc_corp"], 75, "工商银行表格特征")
+
+    header = "".join((text.splitlines()[:12])).replace(" ", "")
+    if "招商银行" in header:
+        return Detection("cmb", BANK_LABELS["cmb"], 80, "页眉命中银行名称: 招商银行")
 
     return Detection("", "未识别", 0, "未适配：未命中已适配银行格式")

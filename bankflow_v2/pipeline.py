@@ -5,6 +5,7 @@ from .cmb import extract_cmb
 from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
+from .generic_pdf import extract_generic_pdf
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
 from .models import Transaction
@@ -33,6 +34,12 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_cmbc_corp(pdf_path)
     if bank == "cmb":
         return extract_cmb(pdf_path)
+    if bank == "cmbc":
+        return extract_generic_pdf(pdf_path, "民生银行个人")
+    if bank == "cib":
+        return extract_generic_pdf(pdf_path, "兴业银行")
+    if bank == "generic_pdf":
+        return extract_generic_pdf(pdf_path)
     if bank == "wechat":
         return extract_wechat(pdf_path)
     raise ValueError(f"v2 暂未适配该银行: {bank}")

@@ -153,7 +153,7 @@ def _resolve_missing_directions(transactions: list[Transaction]) -> None:
         previous = tx
 
 
-def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, dict[str, int]] | None:
+def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, list[str], dict[str, int]] | None:
     for row_index, row in enumerate(rows[:30]):
         headers = [_norm(cell) for cell in row]
         time_col = _find_col(headers, ("交易时间", "交易日期时间", "日期时间"))
@@ -168,7 +168,7 @@ def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, dict[str, int]] |
         balance_col = _find_col(headers, ("账户余额", "本次余额", "交易余额", "余额", "金额"), exclude)
 
         if date_col is not None and (amount_col is not None or income_col is not None or expense_col is not None):
-            return row_index, {
+            return row_index, headers, {
                 "date": date_col,
                 "time": separate_time_col,
                 "amount": amount_col,
@@ -185,7 +185,7 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
     if mapping is None:
         return []
 
-    header_row, cols = mapping
+    header_row, headers, cols = mapping
     transactions: list[Transaction] = []
     for excel_row_index, row in enumerate(rows[header_row + 1 :], start=header_row + 2):
         tx_time = _parse_datetime(row[cols["date"]] if cols["date"] is not None and cols["date"] < len(row) else None,

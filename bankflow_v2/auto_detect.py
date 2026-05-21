@@ -96,6 +96,8 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("wechat", "交易时间交易类型交易对方商品收/支金额", 95),
         ("abc_corp", "交易时间收入金额支出金额账户余额", 98),
         ("abc", "交易日期交易时间交易摘要交易金额本次余额", 98),
+        ("icbc", "中国工商银行借记账户历史明细", 98),
+        ("icbc", "交易日期账号储种序号币种钞汇摘要地区收入/支出金额余额", 95),
         ("bocom", "交通银行个人客户交易清单", 95),
         ("psbc", "中国邮政储蓄银行借记账户历史明细", 95),
         ("cmb", "TransactionStatementofChinaMerchantsBank", 95),

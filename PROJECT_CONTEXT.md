@@ -410,3 +410,26 @@ python -m py_compile bankflow_v2\icbc_corp.py bankflow_v2\auto_detect.py bankflo
   - `bankflow_v2/number_parser.py`
   - `tools/batch_validate.py`
   - `PROJECT_CONTEXT.md`
+
+## 工行个人历史明细回归通过（2026-05-22）
+
+- 当前分支：`work/2026-05-21-batch-icbc`。
+- 在 2026-05-21 提交 `d516238 Add batch validation and ICBC parsing updates` 基础上继续收敛工行。
+- 新增工行专项回归脚本：`tools/icbc_regression.py`。
+  - 仅扫描 `D:\Codex data\CD_assets\PDF流水\打包测试` 中 `*工商银行历史明细*.pdf`。
+  - 输出每份文件的解析笔数、收入笔数/金额、支出笔数/金额、余额连续异常数。
+  - 对检测为空且读取失败的文件标记为 `IGNORED`，用于按用户口径忽略密码/加密 PDF。
+- 本轮发现剩余异常集中在工行 PDF 水印数字混入余额小数位：
+  - 例如 `20A200,429.019` 应结合连续性候选为 `200,429.09`，旧逻辑会优先取 `200,429.01`。
+  - `200127,490.761` 应候选为 `127,490.71`，旧逻辑会取 `127,490.76`。
+- 已修复 `bankflow_v2/number_parser.py`：
+  - `balance_candidates` 现在也支持三位小数噪声候选。
+  - 对 `xxx.abc` 同时生成 `xxx.ab` 与 `xxx.ac` 两类候选，再由余额连续性选择正确值。
+- 工行专项回归最新结果：
+  - 工行 PDF 总数：15。
+  - 密码/读取失败忽略：5。
+  - 可读工行样本：10。
+  - 可读样本通过：10。
+  - 需复核：0。
+  - 失败：0。
+- 结论：按当前“密码 PDF 忽略、非 OCR 图片 PDF 不处理”的口径，工行个人历史明细本轮测试已通过。后续可进入华夏银行适配。

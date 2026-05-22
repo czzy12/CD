@@ -113,6 +113,17 @@ def balance_candidates(raw: str | None) -> list[Decimal]:
     previous balance + transaction amount.
     """
     matches = _money_matches(raw)
+    text = _compact_text(raw)
+    normalized = re.sub(r"[^0-9,+.\-]", "", text)
+    for source in (text, normalized):
+        for match in re.findall(r"[+-]?\d[\d,]*\.\d{3}", source):
+            clean = match.replace(",", "")
+            if clean.startswith(("+", "-")):
+                clean = clean[1:]
+            int_part, frac = clean.split(".", 1)
+            matches.append(f"{int_part}.{frac[:2]}")
+            matches.append(f"{int_part}.{frac[0]}{frac[2]}")
+
     values: list[Decimal] = []
     seen: set[Decimal] = set()
 

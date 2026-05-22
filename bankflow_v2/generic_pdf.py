@@ -21,9 +21,9 @@ THREE_MONEY_ROW_RE = re.compile(
     r"^(?:鍗s+\S+\s+)?"
     r"(?P<date>20\d{2}[/-]\d{1,2}[/-]\d{1,2})\s+"
     r"(?P<time>\d{1,2}:\d{2}:\d{2})\s+"
-    r"(?P<income>\d[\d,]*\.\d{2})\s+"
-    r"(?P<expense>\d[\d,]*\.\d{2})\s+"
-    r"(?P<balance>\d[\d,]*\.\d{2})\b"
+    r"(?P<income>\d[\d,]*(?:\.\d{1,2})?)\s+"
+    r"(?P<expense>\d[\d,]*(?:\.\d{1,2})?)\s+"
+    r"(?P<balance>\d[\d,]*(?:\.\d{1,2})?)\b"
 )
 
 

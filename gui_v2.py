@@ -214,7 +214,7 @@ class Worker(QThread):
                 message = fallback_message if transactions else (fallback_message or "未解析到流水")
                 if original_count and not transactions:
                     message = "日期范围内没有流水"
-                if message:
+                if message and (not transactions or file_summary.issues):
                     all_issues.append(Issue("需复核", path.name, "", message))
                 results.append(
                     FileResult(

@@ -10,6 +10,7 @@ from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
 from .models import Transaction
 from .psbc import extract_psbc
+from .spdb import extract_spdb, extract_spdb_corp
 from .wechat import extract_wechat
 
 
@@ -34,6 +35,10 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_cmbc_corp(pdf_path)
     if bank == "cmb":
         return extract_cmb(pdf_path)
+    if bank == "spdb":
+        return extract_spdb(pdf_path)
+    if bank == "spdb_corp":
+        return extract_spdb_corp(pdf_path)
     if bank == "cmbc":
         return extract_generic_pdf(pdf_path, "民生银行个人")
     if bank == "cib":

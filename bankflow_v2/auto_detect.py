@@ -24,6 +24,8 @@ BANK_LABELS = {
     "icbc": "工商银行个人",
     "icbc_corp": "工商银行对公",
     "psbc": "邮储银行",
+    "spdb": "上海浦东发展银行个人",
+    "spdb_corp": "上海浦东发展银行对公",
     "wechat": "微信流水",
 }
 
@@ -98,6 +100,10 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("abc", "交易日期交易时间交易摘要交易金额本次余额", 98),
         ("icbc", "中国工商银行借记账户历史明细", 98),
         ("icbc", "交易日期账号储种序号币种钞汇摘要地区收入/支出金额余额", 95),
+        ("spdb", "上海浦东发展银行个人客户交易流水专用回单", 98),
+        ("spdb", "TransactionStatementofShanghaiPudongDevelopmentBank", 95),
+        ("spdb_corp", "上海浦东发展银行电子对账单", 98),
+        ("spdb_corp", "ShanghaiPudongDevelopmentBankElectronicStatement", 95),
         ("bocom", "交通银行个人客户交易清单", 95),
         ("psbc", "中国邮政储蓄银行借记账户历史明细", 95),
         ("cmb", "TransactionStatementofChinaMerchantsBank", 95),

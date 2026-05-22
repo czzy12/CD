@@ -659,10 +659,6 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     issue_rows = [[issue.level, issue.source, issue.time, issue.message, issue.raw_amount, issue.raw_balance] for issue in shown_issues]
     write_sheet(issue_sheet, ["级别", "来源", "时间", "提示", "原始金额", "原始余额"], issue_rows)
 
-    salary_headers, salary_rows = build_salary_sheet(all_transactions, for_excel=True)
-    if salary_rows:
-        salary_sheet = wb.create_sheet("工资核算")
-        write_sheet(salary_sheet, salary_headers, salary_rows)
     wb.save(path)
 
 
@@ -686,7 +682,7 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
                 tx.raw_balance,
             )
 
-        if signature in seen:
+        if signature in seen and (key or getattr(seen[signature], "source_file", "") != getattr(tx, "source_file", "")):
             first = seen[signature]
             issues.append(
                 Issue(
@@ -700,7 +696,8 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
             )
             continue
 
-        seen[signature] = tx
+        if signature not in seen:
+            seen[signature] = tx
         unique.append(tx)
 
     return unique, issues

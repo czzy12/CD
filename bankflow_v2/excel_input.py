@@ -195,6 +195,11 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
 
         raw_amount = _cell_text(row[cols["amount"]]) if cols["amount"] is not None and cols["amount"] < len(row) else ""
         raw_balance = _cell_text(row[cols["balance"]]) if cols["balance"] is not None and cols["balance"] < len(row) else ""
+        raw_income = _cell_text(row[cols["income"]]) if cols["income"] is not None and cols["income"] < len(row) else ""
+        raw_expense = _cell_text(row[cols["expense"]]) if cols["expense"] is not None and cols["expense"] < len(row) else ""
+        if not any((raw_amount, raw_income, raw_expense, raw_balance)):
+            continue
+
         amount = _parse_money(raw_amount)
         balance = _parse_money(raw_balance)
         issues: list[str] = []

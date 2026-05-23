@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill
 from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,7 +33,7 @@ from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.generic_pdf import extract_generic_pdf
 from bankflow_v2.pipeline import extract_transactions
-from bankflow_v2.summary import Issue, money, monthly_summaries, summarize
+from bankflow_v2.summary import Issue, money, monthly_summaries, sort_transactions, summarize
 
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
@@ -309,14 +309,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
-        self._setup_menu()
         self._apply_style()
         self.render_empty()
-
-    def _setup_menu(self):
-        export_action = QAction("导出 Excel", self)
-        export_action.triggered.connect(self.export_excel)
-        self.menuBar().addMenu("文件").addAction(export_action)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -474,7 +468,7 @@ class MainWindow(QMainWindow):
         )
 
         detail_rows = []
-        for tx in sorted(all_transactions, key=lambda item: item.transaction_time):
+        for tx in sort_transactions(all_transactions):
             detail_rows.append(
                 [
                     tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -638,7 +632,7 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
 
     details = wb.create_sheet("明细")
     detail_rows = []
-    for tx in sorted(all_transactions, key=lambda item: item.transaction_time):
+    for tx in sort_transactions(all_transactions):
         detail_rows.append(
             [
                 tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -714,7 +708,7 @@ def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list
 
 
 def build_salary_sheet(transactions: list, for_excel: bool = False) -> tuple[list[str], list[list]]:
-    salary_transactions = [tx for tx in sorted(transactions, key=lambda item: item.transaction_time) if is_salary_transaction(tx)]
+    salary_transactions = [tx for tx in sort_transactions(transactions) if is_salary_transaction(tx)]
     if not salary_transactions:
         return [], []
 

@@ -39,8 +39,28 @@ def money(value: Decimal | None) -> str:
     return f"{value.quantize(CENT):,.2f}"
 
 
+def _has_explicit_time(tx: Transaction) -> bool:
+    raw_time = getattr(tx, "raw_time", "") or ""
+    if any(char == ":" for char in raw_time):
+        return True
+    digits = "".join(char for char in raw_time if char.isdigit())
+    return len(digits) >= 14
+
+
 def sort_transactions(transactions: list[Transaction]) -> list[Transaction]:
-    return sorted(transactions, key=lambda tx: (tx.transaction_time, tx.page_no, tx.row_no))
+    date_has_partial_time: dict[object, bool] = defaultdict(bool)
+    for tx in transactions:
+        date_key = tx.transaction_time.date()
+        if not _has_explicit_time(tx):
+            date_has_partial_time[date_key] = True
+
+    def sort_key(tx: Transaction):
+        date_key = tx.transaction_time.date()
+        if date_has_partial_time[date_key]:
+            return (date_key, tx.page_no, tx.row_no)
+        return (date_key, tx.transaction_time.time(), tx.page_no, tx.row_no)
+
+    return sorted(transactions, key=sort_key)
 
 
 def summarize(transactions: list[Transaction], source: str = "") -> Summary:

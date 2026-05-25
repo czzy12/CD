@@ -260,3 +260,128 @@ def choose_amount_and_balance(
     amount = amounts[0] if amounts else None
     balance = balances[0] if balances else None
     return amount, balance, issues
+
+
+def resolve_amount_balance_sequence(
+    raw_rows: list[tuple[str | None, str | None]],
+    beam_size: int = 40,
+) -> list[tuple[Decimal | None, Decimal | None, list[str]]]:
+    """Resolve a statement's noisy amount/balance cells with lookahead.
+
+    Greedy row-by-row resolution can lock onto a locally continuous but wrong
+    small suffix when ICBC watermark digits pollute both amount and balance
+    cells. A bounded beam keeps several plausible balance paths alive and lets
+    later rows choose the globally most continuous sequence.
+    """
+    if not raw_rows:
+        return []
+
+    parsed = [(amount_candidates(amount_raw), balance_candidates(balance_raw)) for amount_raw, balance_raw in raw_rows]
+    beams: list[tuple[Decimal, Decimal | None, list[tuple[Decimal | None, Decimal | None]]]] = [
+        (Decimal("0.00"), None, [])
+    ]
+
+    for row_index, ((amount_raw, balance_raw), (amounts, balances)) in enumerate(zip(raw_rows, parsed)):
+        next_beams: list[tuple[Decimal, Decimal | None, list[tuple[Decimal | None, Decimal | None]]]] = []
+        for cost, previous_balance, path in beams:
+            for option_cost, amount, balance in _sequence_options(
+                amount_raw,
+                balance_raw,
+                amounts,
+                balances,
+                previous_balance,
+                row_index == 0,
+            ):
+                next_beams.append((cost + option_cost, balance, path + [(amount, balance)]))
+
+        beams = sorted(next_beams, key=lambda item: item[0])[:beam_size]
+
+    best_path = min(beams, key=lambda item: item[0])[2] if beams else []
+    results: list[tuple[Decimal | None, Decimal | None, list[str]]] = []
+    previous_balance: Decimal | None = None
+    for amount, balance in best_path:
+        issues: list[str] = []
+        if amount is None:
+            issues.append("金额无法解析")
+        if balance is None:
+            issues.append("余额无法解析")
+        if previous_balance is not None and amount is not None and balance is not None:
+            expected = (previous_balance + amount).quantize(CENT)
+            if expected != balance.quantize(CENT):
+                issues.append(f"余额不连续: 期望 {expected}, 解析 {balance}")
+        results.append((amount, balance, issues))
+        if balance is not None:
+            previous_balance = balance
+    return results
+
+
+def _sequence_options(
+    amount_raw: str | None,
+    balance_raw: str | None,
+    amounts: list[Decimal],
+    balances: list[Decimal],
+    previous_balance: Decimal | None,
+    is_first_row: bool,
+) -> list[tuple[Decimal, Decimal | None, Decimal | None]]:
+    if not amounts or not balances:
+        return [(Decimal("5000.00"), amounts[0] if amounts else None, balances[0] if balances else None)]
+
+    options: list[tuple[Decimal, Decimal, Decimal]] = []
+    seen: set[tuple[Decimal, Decimal]] = set()
+
+    def add(cost: Decimal, amount: Decimal, balance: Decimal) -> None:
+        key = (amount, balance)
+        if key not in seen:
+            options.append((cost, amount, balance))
+            seen.add(key)
+
+    amount_rank = {value: index for index, value in enumerate(amounts)}
+    balance_rank = {value: index for index, value in enumerate(balances)}
+
+    if previous_balance is None or is_first_row:
+        for amount in amounts[:4]:
+            for balance in balances[:8]:
+                add(_candidate_cost(amount_rank, balance_rank, amount, balance), amount, balance)
+        return sorted(options, key=lambda item: item[0])[:20]
+
+    for amount in amounts[:40]:
+        expected = (previous_balance + amount).quantize(CENT)
+        for balance in balances:
+            if balance == expected:
+                add(_candidate_cost(amount_rank, balance_rank, amount, balance), amount, balance)
+        for balance in balances:
+            if _candidate_is_suffix(expected, balance):
+                add(_candidate_cost(amount_rank, balance_rank, amount, balance) + Decimal("0.05"), amount, expected)
+
+    for balance in balances[:40]:
+        required_amount = (balance - previous_balance).quantize(CENT)
+        if required_amount != 0 and _amount_supported_by_raw(required_amount, amount_raw):
+            add(
+                Decimal("0.10") + Decimal(balance_rank.get(balance, 99)) / Decimal("1000"),
+                required_amount,
+                balance,
+            )
+
+    if options:
+        return sorted(options, key=lambda item: item[0])[:25]
+
+    fallback: list[tuple[Decimal, Decimal, Decimal]] = []
+    for amount in amounts[:12]:
+        expected = (previous_balance + amount).quantize(CENT)
+        for balance in balances[:20]:
+            gap = abs(expected - balance)
+            fallback.append((
+                Decimal("1000.00") + min(gap, Decimal("1000.00")) + _candidate_cost(amount_rank, balance_rank, amount, balance),
+                amount,
+                balance,
+            ))
+    return sorted(fallback, key=lambda item: item[0])[:10]
+
+
+def _candidate_cost(
+    amount_rank: dict[Decimal, int],
+    balance_rank: dict[Decimal, int],
+    amount: Decimal,
+    balance: Decimal,
+) -> Decimal:
+    return Decimal(amount_rank.get(amount, 99)) / Decimal("1000") + Decimal(balance_rank.get(balance, 99)) / Decimal("10000")

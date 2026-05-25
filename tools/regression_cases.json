@@ -1,0 +1,121 @@
+[
+  {
+    "name": "工行个人-强水印",
+    "bank": "icbc",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/刘少伟密码工行/刘少伟已解密.pdf",
+    "tags": ["icbc", "personal", "watermark"],
+    "expected": {
+      "count": 918,
+      "income_count": 61,
+      "income_sum": "145123.03",
+      "expense_count": 857,
+      "expense_sum": "145381.66",
+      "net": "-258.63",
+      "opening_balance": "437.47",
+      "closing_balance": "178.84",
+      "issues": 0
+    }
+  },
+  {
+    "name": "工行个人-历史明细",
+    "bank": "icbc",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/工商银行历史明细（申请单号：26051516345654037193）.pdf",
+    "tags": ["icbc", "personal"],
+    "expected": {
+      "count": 1148,
+      "income_count": 78,
+      "income_sum": "1616841.29",
+      "expense_count": 1070,
+      "expense_sum": "1571813.04",
+      "net": "45028.25",
+      "opening_balance": "9406.79",
+      "closing_balance": "54435.04",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农行个人-无具体时间排序",
+    "bank": "abc",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/26051514250707878157.pdf",
+    "tags": ["abc", "personal", "partial-time"],
+    "expected": {
+      "count": 225,
+      "income_count": 46,
+      "income_sum": "114862.44",
+      "expense_count": 179,
+      "expense_sum": "114797.24",
+      "net": "65.20",
+      "opening_balance": "10.57",
+      "closing_balance": "75.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交通银行-6列日期版",
+    "bank": "bocom",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/交通银行交易流水(申请时间2026年05月15日09时49分56秒).pdf",
+    "tags": ["bocom", "date-only"],
+    "expected": {
+      "count": 216,
+      "income_count": 46,
+      "income_sum": "553877.79",
+      "expense_count": 170,
+      "expense_sum": "590241.05",
+      "net": "-36363.26",
+      "opening_balance": "3.52",
+      "closing_balance": "40000.26",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交通银行-11列时间版",
+    "bank": "bocom",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/交通银行交易流水(申请时间2026年05月11日17时33分53秒).pdf",
+    "tags": ["bocom", "with-time"],
+    "expected": {
+      "count": 606,
+      "income_count": 177,
+      "income_sum": "3464843.71",
+      "expense_count": 429,
+      "expense_sum": "3463251.81",
+      "net": "1591.90",
+      "opening_balance": "13945.21",
+      "closing_balance": "15537.11",
+      "issues": 0
+    }
+  },
+  {
+    "name": "邮储银行-历史明细",
+    "bank": "psbc",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/邮储银行历史明细（20250515-20260515）.pdf",
+    "tags": ["psbc", "personal"],
+    "expected": {
+      "count": 319,
+      "income_count": 184,
+      "income_sum": "1449924.56",
+      "expense_count": 135,
+      "expense_sum": "1396165.95",
+      "net": "53758.61",
+      "opening_balance": "19529.92",
+      "closing_balance": "73288.53",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行-个人交易流水",
+    "bank": "cmb",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/招商银行交易流水(申请时间2026年05月13日16时27分35秒).pdf",
+    "tags": ["cmb", "personal"],
+    "expected": {
+      "count": 79,
+      "income_count": 23,
+      "income_sum": "3503677.47",
+      "expense_count": 56,
+      "expense_sum": "3469574.00",
+      "net": "34103.47",
+      "opening_balance": "25999.55",
+      "closing_balance": "60103.02",
+      "issues": 0
+    }
+  }
+]

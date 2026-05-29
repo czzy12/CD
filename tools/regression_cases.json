@@ -34,6 +34,23 @@
     }
   },
   {
+    "name": "工行个人-活期定期混排",
+    "bank": "icbc",
+    "path": "C:/Users/lenovo/Desktop/流水测试/0526/工商银行历史明细（申请单号：26050110572953314933）.pdf",
+    "tags": ["icbc", "personal", "term-account"],
+    "expected": {
+      "count": 114,
+      "income_count": 39,
+      "income_sum": "6326210.92",
+      "expense_count": 75,
+      "expense_sum": "6336938.07",
+      "net": "-10727.15",
+      "opening_balance": "19554.61",
+      "closing_balance": "8827.46",
+      "issues": 13
+    }
+  },
+  {
     "name": "农行个人-无具体时间排序",
     "bank": "abc",
     "path": "${CD_ASSETS}/PDF流水/打包测试/26051514250707878157.pdf",
@@ -115,6 +132,40 @@
       "net": "34103.47",
       "opening_balance": "25999.55",
       "closing_balance": "60103.02",
+      "issues": 0
+    }
+  },
+  {
+    "name": "民生银行-对公单位账户对账单",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/马培忠/流水/民生对公.pdf",
+    "tags": ["cmbc_corp", "corp"],
+    "expected": {
+      "count": 197,
+      "income_count": 40,
+      "income_sum": "6539445.76",
+      "expense_count": 157,
+      "expense_sum": "5574339.93",
+      "net": "965105.83",
+      "opening_balance": "107616.79",
+      "closing_balance": "1072722.62",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中信银行-个人账户交易明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/0528流水测试/中信.pdf",
+    "tags": ["citic", "personal"],
+    "expected": {
+      "count": 222,
+      "income_count": 203,
+      "income_sum": "1143137.20",
+      "expense_count": 19,
+      "expense_sum": "1163522.77",
+      "net": "-20385.57",
+      "opening_balance": "20386.20",
+      "closing_balance": "0.63",
       "issues": 0
     }
   }

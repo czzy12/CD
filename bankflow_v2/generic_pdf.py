@@ -54,22 +54,22 @@ def extract_generic_pdf(pdf_path: str, bank_name: str = BANK_NAME) -> list[Trans
                     income = _money(three_money_match.group("income"))
                     expense = _money(three_money_match.group("expense"))
                     balance = _money(three_money_match.group("balance"))
-                    transactions.append(
-                        Transaction(
-                            transaction_time=tx_time,
-                            income=income,
-                            expense=expense,
-                            balance=balance,
-                            bank=bank_name,
-                            page_no=page_index,
-                            row_no=line_no,
-                            raw_time=f"{three_money_match.group('date')} {three_money_match.group('time')}",
-                            raw_amount=f"{three_money_match.group('income')} / {three_money_match.group('expense')}",
-                            raw_balance=three_money_match.group("balance"),
-                            raw_text=line,
-                            raw_fields=[line],
-                        )
+                    tx = Transaction(
+                        transaction_time=tx_time,
+                        income=income,
+                        expense=expense,
+                        balance=balance,
+                        bank=bank_name,
+                        page_no=page_index,
+                        row_no=line_no,
+                        raw_time=f"{three_money_match.group('date')} {three_money_match.group('time')}",
+                        raw_amount=f"{three_money_match.group('income')} / {three_money_match.group('expense')}",
+                        raw_balance=three_money_match.group("balance"),
+                        raw_text=line,
+                        raw_fields=[line],
                     )
+                    tx.balance_tolerance = Decimal("0.99")
+                    transactions.append(tx)
                     continue
 
                 match = ROW_RE.match(line)
@@ -82,20 +82,20 @@ def extract_generic_pdf(pdf_path: str, bank_name: str = BANK_NAME) -> list[Trans
 
                 amount = _money(match.group("amount"))
                 balance = _money(match.group("balance"))
-                transactions.append(
-                    Transaction(
-                        transaction_time=tx_time,
-                        income=amount if amount > 0 else Decimal("0.00"),
-                        expense=-amount if amount < 0 else Decimal("0.00"),
-                        balance=balance,
-                        bank=bank_name,
-                        page_no=page_index,
-                        row_no=line_no,
-                        raw_time=f"{match.group('date')} {match.group('time')}",
-                        raw_amount=match.group("amount"),
-                        raw_balance=match.group("balance"),
-                        raw_text=line,
-                        raw_fields=[line],
-                    )
+                tx = Transaction(
+                    transaction_time=tx_time,
+                    income=amount if amount > 0 else Decimal("0.00"),
+                    expense=-amount if amount < 0 else Decimal("0.00"),
+                    balance=balance,
+                    bank=bank_name,
+                    page_no=page_index,
+                    row_no=line_no,
+                    raw_time=f"{match.group('date')} {match.group('time')}",
+                    raw_amount=match.group("amount"),
+                    raw_balance=match.group("balance"),
+                    raw_text=line,
+                    raw_fields=[line],
                 )
+                tx.balance_tolerance = Decimal("0.99")
+                transactions.append(tx)
     return transactions

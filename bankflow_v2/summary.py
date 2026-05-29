@@ -71,12 +71,20 @@ def summarize(transactions: list[Transaction], source: str = "") -> Summary:
         if getattr(tx, "neutral", False):
             continue
         summary.count += 1
-        if tx.amount >= ZERO:
-            summary.income_count += 1
-            summary.income_sum += tx.income
-        if tx.expense > ZERO:
-            summary.expense_count += 1
-            summary.expense_sum += tx.expense
+        if getattr(tx, "preserve_signed_columns", False):
+            if tx.income != ZERO:
+                summary.income_count += 1
+                summary.income_sum += tx.income
+            if tx.expense != ZERO:
+                summary.expense_count += 1
+                summary.expense_sum += tx.expense
+        else:
+            if tx.amount >= ZERO:
+                summary.income_count += 1
+                summary.income_sum += tx.income
+            if tx.expense > ZERO:
+                summary.expense_count += 1
+                summary.expense_sum += tx.expense
 
     summary.income_sum = summary.income_sum.quantize(CENT)
     summary.expense_sum = summary.expense_sum.quantize(CENT)
@@ -116,10 +124,13 @@ def collect_issues(transactions: list[Transaction], source: str = "") -> list[Is
 
         if previous is not None and previous.balance is not None and tx.balance is not None:
             expected = (previous.balance + tx.income - tx.expense).quantize(CENT)
-            if expected != tx.balance.quantize(CENT):
+            actual = tx.balance.quantize(CENT)
+            if expected != actual:
+                tolerance = getattr(tx, "balance_tolerance", ZERO) or ZERO
+                level = "低风险" if abs(expected - actual) <= tolerance else "需复核"
                 issues.append(
                     Issue(
-                        "需复核",
+                        level,
                         where,
                         time_text,
                         f"余额不连续: 上笔余额 {money(previous.balance)} + 收入 {money(tx.income)} - 支出 {money(tx.expense)} = {money(expected)}, 当前余额 {money(tx.balance)}",

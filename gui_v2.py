@@ -207,14 +207,15 @@ class Worker(QThread):
                     tx.bank_label = bank_label
                 file_summary = summarize(transactions, path.name)
                 all_issues.extend(file_summary.issues)
-                if transactions and not file_summary.issues:
+                review_issues = [issue for issue in file_summary.issues if issue.level == "需复核"]
+                if transactions and not review_issues:
                     status = "通用识别" if used_generic else "正常"
                 else:
                     status = "需复核"
                 message = fallback_message if transactions else (fallback_message or "未解析到流水")
                 if original_count and not transactions:
                     message = "日期范围内没有流水"
-                if message and (not transactions or file_summary.issues):
+                if message and (not transactions or review_issues):
                     all_issues.append(Issue("需复核", path.name, "", message))
                 results.append(
                     FileResult(
@@ -440,7 +441,7 @@ class MainWindow(QMainWindow):
         )
 
         monthly_rows = build_monthly_rows(all_transactions)
-        self._set_table(self.monthly, ["月份", "流水笔数", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)"], monthly_rows)
+        self._set_table(self.monthly, ["月份", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)", "流水笔数"], monthly_rows)
 
         overview_rows = []
         for result in self.results:
@@ -628,7 +629,7 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     all_transactions, duplicate_issues = dedupe_transactions(all_transactions)
     shown_issues = issues + duplicate_issues
     monthly_rows = build_monthly_rows(all_transactions, for_excel=True)
-    write_sheet(monthly, ["月份", "流水笔数", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)"], monthly_rows)
+    write_sheet(monthly, ["月份", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)", "流水笔数"], monthly_rows)
 
     details = wb.create_sheet("明细")
     detail_rows = []
@@ -840,7 +841,6 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
     if for_excel:
         return [
             label,
-            s.count,
             s.income_count,
             float(to_wan(s.income_sum)),
             s.expense_count,
@@ -848,10 +848,10 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
             float(to_wan(s.net)),
             float(to_wan(s.opening_balance)) if s.opening_balance is not None else None,
             float(to_wan(s.closing_balance)) if s.closing_balance is not None else None,
+            s.count,
         ]
     return [
         label,
-        s.count,
         s.income_count,
         money_wan(s.income_sum),
         s.expense_count,
@@ -859,6 +859,7 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
         money_wan(s.net),
         money_wan(s.opening_balance),
         money_wan(s.closing_balance),
+        s.count,
     ]
 
 

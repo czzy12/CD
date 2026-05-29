@@ -162,7 +162,7 @@ def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, list[str], dict[s
         amount_col = _find_col(headers, ("交易金额", "发生额", "本次金额", "交易额", "金额"))
         income_col = _find_col(headers, ("收入金额", "收入", "贷方发生额", "贷方", "贷"))
         expense_col = _find_col(headers, ("支出金额", "支出", "借方发生额", "借方", "借"))
-        direction_col = _find_col(headers, ("收入/支出", "收入支出", "收支", "借贷标志", "借贷方向", "方向"))
+        direction_col = _find_col(headers, ("收入/支出", "收入支出", "收支", "借贷标志", "借贷状态", "借贷方向", "方向"))
 
         exclude = {col for col in (amount_col, income_col, expense_col) if col is not None}
         balance_col = _find_col(headers, ("账户余额", "本次余额", "交易余额", "余额", "金额"), exclude)
@@ -234,25 +234,26 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
         if balance is None and cols["balance"] is not None:
             issues.append("余额无法解析")
 
-        transactions.append(
-            Transaction(
-                transaction_time=tx_time,
-                income=income,
-                expense=expense,
-                balance=balance,
-                bank=BANK_NAME,
-                page_no=sheet_index,
-                row_no=excel_row_index,
-                raw_time=_cell_text(row[cols["date"]]),
-                raw_amount=raw_amount,
-                raw_balance=raw_balance,
-                raw_text=" | ".join(_cell_text(cell) for cell in row),
-                raw_fields=[_cell_text(cell) for cell in row],
-                raw_headers=headers,
-                status="ok" if not issues else "review",
-                issues=issues,
-            )
+        tx = Transaction(
+            transaction_time=tx_time,
+            income=income,
+            expense=expense,
+            balance=balance,
+            bank=BANK_NAME,
+            page_no=sheet_index,
+            row_no=excel_row_index,
+            raw_time=_cell_text(row[cols["date"]]),
+            raw_amount=raw_amount,
+            raw_balance=raw_balance,
+            raw_text=" | ".join(_cell_text(cell) for cell in row),
+            raw_fields=[_cell_text(cell) for cell in row],
+            raw_headers=headers,
+            status="ok" if not issues else "review",
+            issues=issues,
         )
+        tx.preserve_signed_columns = True
+        tx.balance_tolerance = Decimal("0.99")
+        transactions.append(tx)
 
     _resolve_missing_directions(transactions)
     return transactions

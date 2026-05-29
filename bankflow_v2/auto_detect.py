@@ -18,6 +18,7 @@ BANK_LABELS = {
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
     "cmb": "招商银行",
+    "citic": "中信银行个人",
     "cmbc": "民生银行个人",
     "cmbc_corp": "民生银行对公",
     "cib": "兴业银行",
@@ -107,6 +108,10 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("bocom", "交通银行个人客户交易清单", 95),
         ("psbc", "中国邮政储蓄银行借记账户历史明细", 95),
         ("cmb", "TransactionStatementofChinaMerchantsBank", 95),
+        ("citic", "账户交易明细Transactiondetails", 95),
+        ("citic", "交易日期收入金额支出金额账户余额交易摘要", 90),
+        ("cmbc_corp", "单位账户对账单客户名称客户账号", 98),
+        ("cmbc_corp", "单位账户对账单", 95),
         ("cmbc", "个人账户对账单客户姓名客户账号", 95),
         ("cmbc", "中国民生银行股份有限公司", 95),
         ("cib", "IndustrialBankTransactionDetails", 95),
@@ -115,7 +120,6 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("ccb", "中国建设银行个人活期账户全部交易明细", 95),
         ("abc", "中国农业银行银行卡交易明细清单", 95),
         ("abc", "中国农业银行账户活期交易明细清单", 85),
-        ("cmbc_corp", "单位账户对账单", 85),
         ("icbc", "中国工商银行账户明细清单", 85),
     ]
 

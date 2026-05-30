@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from decimal import Decimal
+import random
 
 from .models import Transaction
 from .summary import CENT, ZERO, monthly_summaries, summarize
@@ -16,6 +17,7 @@ class AdjustmentConfig:
     end_month: str = ""
     balanced: bool = False
     label: str = ""
+    randomized: bool = False
 
 
 @dataclass
@@ -46,6 +48,7 @@ class AdjustmentResult:
     parameters: list[tuple[str, str]] = field(default_factory=list)
     enabled: bool = False
     warnings: list[str] = field(default_factory=list)
+    balanced: bool = False
 
 
 def parse_amount_wan(text: str) -> Decimal:
@@ -63,9 +66,18 @@ def _month_in_range(month: str, start_month: str, end_month: str) -> bool:
     return True
 
 
-def split_amount(total: Decimal, parts: int) -> list[Decimal]:
+def split_amount(total: Decimal, parts: int, randomized: bool = False, seed_text: str = "") -> list[Decimal]:
     if parts <= 0:
         return []
+    if randomized:
+        sign = Decimal("-1") if total < ZERO else Decimal("1")
+        source = abs(total)
+        rng = random.Random(seed_text or f"{total}:{parts}")
+        weights = [Decimal(rng.randint(80, 120)) for _ in range(parts)]
+        weight_sum = sum(weights, ZERO)
+        amounts = [(source * weight / weight_sum).quantize(CENT) for weight in weights[:-1]]
+        amounts.append((source - sum(amounts, ZERO)).quantize(CENT))
+        return [(amount * sign).quantize(CENT) for amount in amounts]
     base = (total / Decimal(parts)).quantize(CENT)
     amounts = [base for _ in range(parts)]
     amounts[-1] = (total - sum(amounts[:-1], ZERO)).quantize(CENT)
@@ -76,6 +88,7 @@ def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentC
     enabled_configs = [config for config in configs if config.enabled]
     active_configs = [config for config in enabled_configs if config.amount_wan != ZERO]
     warnings = [f"{config.label}已启用，但调整金额为空或为 0" for config in enabled_configs if config.amount_wan == ZERO]
+    balanced = any(config.balanced for config in enabled_configs)
     rows: list[AdjustmentRow] = []
     month_pairs = monthly_summaries(transactions)
     months = [month for month, _ in month_pairs]
@@ -90,12 +103,15 @@ def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentC
     for config in active_configs:
         target_months = [month for month in months if _month_in_range(month, config.start_month, config.end_month)]
         total = (config.amount_wan * WAN).quantize(CENT)
-        split = split_amount(total, len(target_months))
-        monthly_amount = split[0] if split else ZERO
+        seed_text = "|".join([config.label, str(total), config.start_month, config.end_month, str(config.balanced), ",".join(target_months)])
+        split = split_amount(total, len(target_months), config.randomized, seed_text)
+        monthly_amount = (total / Decimal(len(target_months))).quantize(CENT) if target_months else ZERO
+        distribution_note = "随机分配" if config.randomized else "平均分配"
         parameters.extend(
             [
                 ("调整类型", config.label),
                 ("调整金额", f"{total:.2f}"),
+                ("分配方式", distribution_note),
                 ("调整月份", f"{config.start_month} 至 {config.end_month}"),
                 ("参与月份数", str(len(target_months))),
                 ("月均收入调整", f"{monthly_amount:.2f}" if split else "0.00"),
@@ -107,9 +123,9 @@ def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentC
             income_adjustment += amount
             if config.balanced:
                 expense_adjustment += amount
-                notes.append("收支平衡调整")
+                notes.append(f"收支平衡调整（{distribution_note}）")
             else:
-                notes.append("收入调整")
+                notes.append(f"收入调整（{distribution_note}）")
             allocations[month] = (income_adjustment.quantize(CENT), expense_adjustment.quantize(CENT), notes)
 
     previous_adjusted_closing: Decimal | None = None
@@ -186,4 +202,4 @@ def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentC
             )
         )
 
-    return AdjustmentResult(rows=rows, parameters=parameters, enabled=bool(enabled_configs), warnings=warnings)
+    return AdjustmentResult(rows=rows, parameters=parameters, enabled=bool(enabled_configs), warnings=warnings, balanced=balanced)

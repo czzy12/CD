@@ -303,9 +303,11 @@ class MainWindow(QMainWindow):
         self.adjust_end_month.setDisplayFormat("yyyy-MM")
         self.adjust_start_month.setDate(start_date)
         self.adjust_end_month.setDate(end_date)
+        self.random_adjust = QCheckBox("固定分配")
 
         self.income_adjust.stateChanged.connect(self.on_adjustment_mode_changed)
         self.balance_adjust.stateChanged.connect(self.on_adjustment_mode_changed)
+        self.random_adjust.stateChanged.connect(self.refresh_adjustment)
         self.adjust_amount.textChanged.connect(self.refresh_adjustment)
         self.adjust_start_month.dateChanged.connect(self.refresh_adjustment)
         self.adjust_end_month.dateChanged.connect(self.refresh_adjustment)
@@ -323,6 +325,8 @@ class MainWindow(QMainWindow):
         adjustment_input_bar.addWidget(self.adjust_start_month)
         adjustment_input_bar.addWidget(QLabel("至"))
         adjustment_input_bar.addWidget(self.adjust_end_month)
+        adjustment_input_bar.addSpacing(16)
+        adjustment_input_bar.addWidget(self.random_adjust)
         adjustment_input_bar.addStretch(1)
 
         self.overview = DropTable()
@@ -567,6 +571,11 @@ class MainWindow(QMainWindow):
         warn_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
         del warn_fill
         for row_index, row in enumerate(rows):
+            row = list(row)
+            if len(row) < len(headers):
+                row.extend([""] * (len(headers) - len(row)))
+            elif len(row) > len(headers):
+                row = row[:len(headers)]
             is_warning = any(str(value) == "需复核" for value in row)
             for col_index, value in enumerate(row):
                 item = QTableWidgetItem(str(value))
@@ -600,6 +609,7 @@ class MainWindow(QMainWindow):
                 end_month=self.adjust_end_month.date().toString("yyyy-MM"),
                 balanced=False,
                 label="收入调整（微信）",
+                randomized=not self.random_adjust.isChecked(),
             ),
             AdjustmentConfig(
                 enabled=self.balance_adjust.isChecked(),
@@ -608,6 +618,7 @@ class MainWindow(QMainWindow):
                 end_month=self.adjust_end_month.date().toString("yyyy-MM"),
                 balanced=True,
                 label="收支平衡调整（个/公）",
+                randomized=not self.random_adjust.isChecked(),
             ),
         ]
 
@@ -840,6 +851,9 @@ def monthly_headers(adjusted: bool = False) -> list[str]:
         headers.extend([
             "收入调整(万元)",
             "支出调整(万元)",
+            "调整后余额变动(万元)",
+            "调整后收支差额(万元)",
+            "平衡校验",
             "说明",
         ])
     return headers
@@ -864,6 +878,8 @@ def build_adjusted_rows(adjustment: AdjustmentResult, for_excel: bool = False) -
             row.adjusted_closing_balance,
             row.income_adjustment,
             row.expense_adjustment,
+            balance_delta(row.adjusted_opening_balance, row.adjusted_closing_balance),
+            row.adjusted_net,
         ]
         if for_excel:
             money_values = [float(to_wan(value)) if value is not None else None for value in values]
@@ -882,20 +898,23 @@ def build_adjusted_rows(adjustment: AdjustmentResult, for_excel: bool = False) -
                 row.original_count,
                 money_values[5],
                 money_values[6],
+                money_values[7],
+                money_values[8],
+                balance_check(row, adjustment),
                 row.note,
             ]
         )
     for warning in adjustment.warnings:
-        rows.append(["提示", "", "", "", "", "", "", "", "", "", "", warning])
+        rows.append(["提示", "", "", "", "", "", "", "", "", "", "", "", "", "", warning])
     total_row = next((row for row in adjustment.rows if row.month == "总计"), None)
     if total_row is not None:
-        rows.append(_adjusted_row(total_row, for_excel, label="总计"))
+        rows.append(_adjusted_row(total_row, for_excel, label="总计", adjustment=adjustment))
         month_count = max(len([row for row in adjustment.rows if row.month != "总计"]), 1)
         rows.append(_monthly_average_row(total_row, month_count, for_excel, adjusted=True))
     return rows
 
 
-def _adjusted_row(row, for_excel: bool, label: str | None = None) -> list:
+def _adjusted_row(row, for_excel: bool, label: str | None = None, adjustment: AdjustmentResult | None = None) -> list:
     values = [
         row.adjusted_income_sum,
         row.adjusted_expense_sum,
@@ -904,6 +923,8 @@ def _adjusted_row(row, for_excel: bool, label: str | None = None) -> list:
         row.adjusted_closing_balance,
         row.income_adjustment,
         row.expense_adjustment,
+        balance_delta(row.adjusted_opening_balance, row.adjusted_closing_balance),
+        row.adjusted_net,
     ]
     if for_excel:
         money_values = [float(to_wan(value)) if value is not None else None for value in values]
@@ -921,6 +942,9 @@ def _adjusted_row(row, for_excel: bool, label: str | None = None) -> list:
         row.original_count,
         money_values[5],
         money_values[6],
+        money_values[7],
+        money_values[8],
+        balance_check(row, adjustment or AdjustmentResult(balanced=row.expense_adjustment != Decimal("0.00"))),
         row.note,
     ]
 
@@ -938,8 +962,23 @@ def _monthly_average_row(total, month_count: int, for_excel: bool, adjusted: boo
         income_value = money_wan(income_average)
         expense_value = money_wan(expense_average)
     if adjusted:
-        return ["月均", "", income_value, "", expense_value, "", "", "", "", "", "", f"按 {month_count} 个月平均"]
+        return ["月均", "", income_value, "", expense_value, "", "", "", "", "", "", "", "", "", f"按 {month_count} 个月平均"]
     return ["月均", "", income_value, "", expense_value, "", "", "", ""]
+
+
+def balance_delta(opening: Decimal | None, closing: Decimal | None) -> Decimal | None:
+    if opening is None or closing is None:
+        return None
+    return (closing - opening).quantize(Decimal("0.01"))
+
+
+def balance_check(row, adjustment: AdjustmentResult) -> str:
+    if not adjustment.balanced:
+        return "模拟"
+    delta = balance_delta(row.adjusted_opening_balance, row.adjusted_closing_balance)
+    if delta is None:
+        return "需复核"
+    return "正常" if delta == row.adjusted_net else "需复核"
 
 def build_salary_sheet(transactions: list, for_excel: bool = False) -> tuple[list[str], list[list]]:
     salary_transactions = [tx for tx in sort_transactions(transactions) if is_salary_transaction(tx)]

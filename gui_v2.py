@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill
 from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,7 +33,7 @@ from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.generic_pdf import extract_generic_pdf
 from bankflow_v2.pipeline import extract_transactions
-from bankflow_v2.summary import Issue, money, monthly_summaries, summarize
+from bankflow_v2.summary import Issue, money, monthly_summaries, sort_transactions, summarize
 
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
@@ -207,14 +207,15 @@ class Worker(QThread):
                     tx.bank_label = bank_label
                 file_summary = summarize(transactions, path.name)
                 all_issues.extend(file_summary.issues)
-                if transactions and not file_summary.issues:
+                review_issues = [issue for issue in file_summary.issues if issue.level == "需复核"]
+                if transactions and not review_issues:
                     status = "通用识别" if used_generic else "正常"
                 else:
                     status = "需复核"
                 message = fallback_message if transactions else (fallback_message or "未解析到流水")
                 if original_count and not transactions:
                     message = "日期范围内没有流水"
-                if message:
+                if message and (not transactions or review_issues):
                     all_issues.append(Issue("需复核", path.name, "", message))
                 results.append(
                     FileResult(
@@ -309,14 +310,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
-        self._setup_menu()
         self._apply_style()
         self.render_empty()
-
-    def _setup_menu(self):
-        export_action = QAction("导出 Excel", self)
-        export_action.triggered.connect(self.export_excel)
-        self.menuBar().addMenu("文件").addAction(export_action)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -446,7 +441,7 @@ class MainWindow(QMainWindow):
         )
 
         monthly_rows = build_monthly_rows(all_transactions)
-        self._set_table(self.monthly, ["月份", "流水笔数", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)"], monthly_rows)
+        self._set_table(self.monthly, ["月份", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)", "流水笔数"], monthly_rows)
 
         overview_rows = []
         for result in self.results:
@@ -474,7 +469,7 @@ class MainWindow(QMainWindow):
         )
 
         detail_rows = []
-        for tx in sorted(all_transactions, key=lambda item: item.transaction_time):
+        for tx in sort_transactions(all_transactions):
             detail_rows.append(
                 [
                     tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -634,11 +629,11 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     all_transactions, duplicate_issues = dedupe_transactions(all_transactions)
     shown_issues = issues + duplicate_issues
     monthly_rows = build_monthly_rows(all_transactions, for_excel=True)
-    write_sheet(monthly, ["月份", "流水笔数", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)"], monthly_rows)
+    write_sheet(monthly, ["月份", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)", "流水笔数"], monthly_rows)
 
     details = wb.create_sheet("明细")
     detail_rows = []
-    for tx in sorted(all_transactions, key=lambda item: item.transaction_time):
+    for tx in sort_transactions(all_transactions):
         detail_rows.append(
             [
                 tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -659,10 +654,6 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     issue_rows = [[issue.level, issue.source, issue.time, issue.message, issue.raw_amount, issue.raw_balance] for issue in shown_issues]
     write_sheet(issue_sheet, ["级别", "来源", "时间", "提示", "原始金额", "原始余额"], issue_rows)
 
-    salary_headers, salary_rows = build_salary_sheet(all_transactions, for_excel=True)
-    if salary_rows:
-        salary_sheet = wb.create_sheet("工资核算")
-        write_sheet(salary_sheet, salary_headers, salary_rows)
     wb.save(path)
 
 
@@ -686,7 +677,7 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
                 tx.raw_balance,
             )
 
-        if signature in seen:
+        if signature in seen and (key or getattr(seen[signature], "source_file", "") != getattr(tx, "source_file", "")):
             first = seen[signature]
             issues.append(
                 Issue(
@@ -700,7 +691,8 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
             )
             continue
 
-        seen[signature] = tx
+        if signature not in seen:
+            seen[signature] = tx
         unique.append(tx)
 
     return unique, issues
@@ -717,7 +709,7 @@ def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list
 
 
 def build_salary_sheet(transactions: list, for_excel: bool = False) -> tuple[list[str], list[list]]:
-    salary_transactions = [tx for tx in sorted(transactions, key=lambda item: item.transaction_time) if is_salary_transaction(tx)]
+    salary_transactions = [tx for tx in sort_transactions(transactions) if is_salary_transaction(tx)]
     if not salary_transactions:
         return [], []
 
@@ -849,7 +841,6 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
     if for_excel:
         return [
             label,
-            s.count,
             s.income_count,
             float(to_wan(s.income_sum)),
             s.expense_count,
@@ -857,10 +848,10 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
             float(to_wan(s.net)),
             float(to_wan(s.opening_balance)) if s.opening_balance is not None else None,
             float(to_wan(s.closing_balance)) if s.closing_balance is not None else None,
+            s.count,
         ]
     return [
         label,
-        s.count,
         s.income_count,
         money_wan(s.income_sum),
         s.expense_count,
@@ -868,6 +859,7 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
         money_wan(s.net),
         money_wan(s.opening_balance),
         money_wan(s.closing_balance),
+        s.count,
     ]
 
 

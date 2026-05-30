@@ -5,7 +5,7 @@ from decimal import Decimal
 import pdfplumber
 
 from .models import Transaction
-from .number_parser import choose_amount_and_balance
+from .number_parser import resolve_amount_balance_sequence
 
 
 BANK_NAME = "中国工商银行"
@@ -54,8 +54,7 @@ def _row_is_transaction(row: list) -> bool:
 
 
 def extract_icbc(pdf_path: str) -> list[Transaction]:
-    transactions: list[Transaction] = []
-    previous_balance: Decimal | None = None
+    rows: list[tuple[int, int, list, datetime]] = []
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages, start=1):
@@ -65,36 +64,34 @@ def extract_icbc(pdf_path: str) -> list[Transaction]:
                         continue
 
                     tx_time = parse_icbc_time(row[DATE_COL])
-                    amount, balance, issues = choose_amount_and_balance(
-                        row[AMOUNT_COL],
-                        row[BALANCE_COL],
-                        previous_balance,
-                    )
+                    if tx_time is not None:
+                        rows.append((page_index, row_index, row, tx_time))
 
-                    if amount is None:
-                        amount = Decimal("0.00")
+    resolved = resolve_amount_balance_sequence([(row[AMOUNT_COL], row[BALANCE_COL]) for _, _, row, _ in rows])
+    transactions: list[Transaction] = []
 
-                    income = amount if amount > 0 else Decimal("0.00")
-                    expense = -amount if amount < 0 else Decimal("0.00")
-                    status = "ok" if not issues else "review"
+    for (page_index, row_index, row, tx_time), (amount, balance, issues) in zip(rows, resolved):
+        if amount is None:
+            amount = Decimal("0.00")
 
-                    tx = Transaction(
-                        transaction_time=tx_time,
-                        income=income,
-                        expense=expense,
-                        balance=balance,
-                        bank=BANK_NAME,
-                        page_no=page_index,
-                        row_no=row_index,
-                        raw_time=_clean_cell(row[DATE_COL]),
-                        raw_amount=_clean_cell(row[AMOUNT_COL]),
-                        raw_balance=_clean_cell(row[BALANCE_COL]),
-                        status=status,
-                        issues=issues,
-                    )
-                    transactions.append(tx)
+        income = amount if amount > 0 else Decimal("0.00")
+        expense = -amount if amount < 0 else Decimal("0.00")
+        status = "ok" if not issues else "review"
 
-                    if balance is not None:
-                        previous_balance = balance
+        tx = Transaction(
+            transaction_time=tx_time,
+            income=income,
+            expense=expense,
+            balance=balance,
+            bank=BANK_NAME,
+            page_no=page_index,
+            row_no=row_index,
+            raw_time=_clean_cell(row[DATE_COL]),
+            raw_amount=_clean_cell(row[AMOUNT_COL]),
+            raw_balance=_clean_cell(row[BALANCE_COL]),
+            status=status,
+            issues=issues,
+        )
+        transactions.append(tx)
 
     return transactions

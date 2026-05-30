@@ -39,8 +39,28 @@ def money(value: Decimal | None) -> str:
     return f"{value.quantize(CENT):,.2f}"
 
 
+def _has_explicit_time(tx: Transaction) -> bool:
+    raw_time = getattr(tx, "raw_time", "") or ""
+    if any(char == ":" for char in raw_time):
+        return True
+    digits = "".join(char for char in raw_time if char.isdigit())
+    return len(digits) >= 14
+
+
 def sort_transactions(transactions: list[Transaction]) -> list[Transaction]:
-    return sorted(transactions, key=lambda tx: (tx.transaction_time, tx.page_no, tx.row_no))
+    date_has_partial_time: dict[object, bool] = defaultdict(bool)
+    for tx in transactions:
+        date_key = tx.transaction_time.date()
+        if not _has_explicit_time(tx):
+            date_has_partial_time[date_key] = True
+
+    def sort_key(tx: Transaction):
+        date_key = tx.transaction_time.date()
+        if date_has_partial_time[date_key]:
+            return (date_key, tx.page_no, tx.row_no)
+        return (date_key, tx.transaction_time.time(), tx.page_no, tx.row_no)
+
+    return sorted(transactions, key=sort_key)
 
 
 def summarize(transactions: list[Transaction], source: str = "") -> Summary:
@@ -51,12 +71,20 @@ def summarize(transactions: list[Transaction], source: str = "") -> Summary:
         if getattr(tx, "neutral", False):
             continue
         summary.count += 1
-        if tx.amount >= ZERO:
-            summary.income_count += 1
-            summary.income_sum += tx.income
-        if tx.expense > ZERO:
-            summary.expense_count += 1
-            summary.expense_sum += tx.expense
+        if getattr(tx, "preserve_signed_columns", False):
+            if tx.income != ZERO:
+                summary.income_count += 1
+                summary.income_sum += tx.income
+            if tx.expense != ZERO:
+                summary.expense_count += 1
+                summary.expense_sum += tx.expense
+        else:
+            if tx.amount >= ZERO:
+                summary.income_count += 1
+                summary.income_sum += tx.income
+            if tx.expense > ZERO:
+                summary.expense_count += 1
+                summary.expense_sum += tx.expense
 
     summary.income_sum = summary.income_sum.quantize(CENT)
     summary.expense_sum = summary.expense_sum.quantize(CENT)
@@ -96,10 +124,13 @@ def collect_issues(transactions: list[Transaction], source: str = "") -> list[Is
 
         if previous is not None and previous.balance is not None and tx.balance is not None:
             expected = (previous.balance + tx.income - tx.expense).quantize(CENT)
-            if expected != tx.balance.quantize(CENT):
+            actual = tx.balance.quantize(CENT)
+            if expected != actual:
+                tolerance = getattr(tx, "balance_tolerance", ZERO) or ZERO
+                level = "低风险" if abs(expected - actual) <= tolerance else "需复核"
                 issues.append(
                     Issue(
-                        "需复核",
+                        level,
                         where,
                         time_text,
                         f"余额不连续: 上笔余额 {money(previous.balance)} + 收入 {money(tx.income)} - 支出 {money(tx.expense)} = {money(expected)}, 当前余额 {money(tx.balance)}",

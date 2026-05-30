@@ -94,6 +94,7 @@ def detect_bank_type(pdf_path: str) -> Detection:
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),
         ("icbc_corp", "凭证号对方账号交易时间借贷标志", 98),
+        ("icbc_corp", "中国工商银行企业存款对账单", 98),
         ("wechat", "微信支付交易明细证明", 98),
         ("wechat", "微信支付账单", 95),
         ("wechat", "交易时间交易类型交易对方商品收/支金额", 95),

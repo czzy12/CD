@@ -168,5 +168,73 @@
       "closing_balance": "0.63",
       "issues": 0
     }
+  },
+  {
+    "name": "工行对公-企业存款对账单-李翠1",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李翠/新建文件夹/1ec55131bdef4834abf32edd2838146e1780065135040.pdf",
+    "tags": ["icbc_corp", "corp", "deposit-statement"],
+    "expected": {
+      "count": 25,
+      "income_count": 4,
+      "income_sum": "501360.28",
+      "expense_count": 21,
+      "expense_sum": "614033.00",
+      "net": "-112672.72",
+      "opening_balance": "334749.69",
+      "closing_balance": "222076.97",
+      "issues": 0
+    }
+  },
+  {
+    "name": "工行对公-企业存款对账单-李翠2",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李翠/新建文件夹/7ebada7a02b44c29a6d344f7c68ad80d1780064903125.pdf",
+    "tags": ["icbc_corp", "corp", "deposit-statement"],
+    "expected": {
+      "count": 42,
+      "income_count": 2,
+      "income_sum": "460000.00",
+      "expense_count": 40,
+      "expense_sum": "353536.02",
+      "net": "106463.98",
+      "opening_balance": "22076.97",
+      "closing_balance": "128540.95",
+      "issues": 0
+    }
+  },
+  {
+    "name": "工行对公-企业存款对账单-李翠3",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李翠/新建文件夹/307ea5f827c7493fb61e701a3b7160391780064903091.pdf",
+    "tags": ["icbc_corp", "corp", "deposit-statement"],
+    "expected": {
+      "count": 101,
+      "income_count": 14,
+      "income_sum": "1839486.77",
+      "expense_count": 87,
+      "expense_sum": "1663569.89",
+      "net": "175916.88",
+      "opening_balance": "155730.81",
+      "closing_balance": "335967.69",
+      "issues": 0
+    }
+  },
+  {
+    "name": "工行对公-企业存款对账单-李翠4",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李翠/新建文件夹/db2050323eaa4a879ffbeff356e3b1441780064959530.pdf",
+    "tags": ["icbc_corp", "corp", "deposit-statement"],
+    "expected": {
+      "count": 127,
+      "income_count": 18,
+      "income_sum": "1864486.77",
+      "expense_count": 109,
+      "expense_sum": "1902798.17",
+      "net": "-38311.40",
+      "opening_balance": "354732.09",
+      "closing_balance": "320740.69",
+      "issues": 0
+    }
   }
 ]

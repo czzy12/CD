@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QLineEdit,
     QStatusBar,
     QTabWidget,
     QTableWidget,
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adjustments, parse_amount_wan
 from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.generic_pdf import extract_generic_pdf
@@ -246,6 +248,7 @@ class MainWindow(QMainWindow):
         self.results: list[FileResult] = []
         self.issues: list[Issue] = []
         self.worker: Worker | None = None
+        self.adjustment_result = AdjustmentResult()
         self.setAcceptDrops(True)
 
         self.summary_label = QLabel("选择 PDF 文件或文件夹后开始处理")
@@ -287,6 +290,41 @@ class MainWindow(QMainWindow):
         datebar.addWidget(self.end_date)
         datebar.addStretch(1)
 
+        self.income_adjust = QCheckBox("启用收入调整（微信）")
+        self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
+        self.adjust_amount = QLineEdit()
+        self.adjust_amount.setPlaceholderText("万元")
+        self.adjust_amount.setFixedWidth(110)
+        self.adjust_start_month = QDateEdit()
+        self.adjust_start_month.setCalendarPopup(True)
+        self.adjust_start_month.setDisplayFormat("yyyy-MM")
+        self.adjust_end_month = QDateEdit()
+        self.adjust_end_month.setCalendarPopup(True)
+        self.adjust_end_month.setDisplayFormat("yyyy-MM")
+        self.adjust_start_month.setDate(start_date)
+        self.adjust_end_month.setDate(end_date)
+
+        self.income_adjust.stateChanged.connect(self.on_adjustment_mode_changed)
+        self.balance_adjust.stateChanged.connect(self.on_adjustment_mode_changed)
+        self.adjust_amount.textChanged.connect(self.refresh_adjustment)
+        self.adjust_start_month.dateChanged.connect(self.refresh_adjustment)
+        self.adjust_end_month.dateChanged.connect(self.refresh_adjustment)
+
+        adjustment_mode_bar = QHBoxLayout()
+        adjustment_mode_bar.addWidget(self.income_adjust)
+        adjustment_mode_bar.addSpacing(24)
+        adjustment_mode_bar.addWidget(self.balance_adjust)
+        adjustment_mode_bar.addStretch(1)
+
+        adjustment_input_bar = QHBoxLayout()
+        adjustment_input_bar.addWidget(QLabel("调整金额"))
+        adjustment_input_bar.addWidget(self.adjust_amount)
+        adjustment_input_bar.addWidget(QLabel("万元，月份"))
+        adjustment_input_bar.addWidget(self.adjust_start_month)
+        adjustment_input_bar.addWidget(QLabel("至"))
+        adjustment_input_bar.addWidget(self.adjust_end_month)
+        adjustment_input_bar.addStretch(1)
+
         self.overview = DropTable()
         self.monthly = DropTable()
         self.details = DropTable()
@@ -294,19 +332,21 @@ class MainWindow(QMainWindow):
         for table in (self.overview, self.monthly, self.details, self.issue_table):
             table.filesDropped.connect(self.add_paths)
 
-        tabs = QTabWidget()
-        tabs.addTab(self.monthly, "月度统计")
-        tabs.addTab(self.overview, "文件汇总")
-        tabs.addTab(self.details, "流水明细")
-        tabs.addTab(self.issue_table, "异常提示")
+        self.tabs = QTabWidget()
+        self.monthly_tab_index = self.tabs.addTab(self.monthly, "月度统计")
+        self.tabs.addTab(self.overview, "文件汇总")
+        self.tabs.addTab(self.details, "流水明细")
+        self.tabs.addTab(self.issue_table, "异常提示")
 
         central = DropWidget()
         central.filesDropped.connect(self.add_paths)
         layout = QVBoxLayout(central)
         layout.addLayout(toolbar)
         layout.addLayout(datebar)
+        layout.addLayout(adjustment_mode_bar)
+        layout.addLayout(adjustment_input_bar)
         layout.addWidget(self.summary_label)
-        layout.addWidget(tabs)
+        layout.addWidget(self.tabs)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
@@ -390,6 +430,7 @@ class MainWindow(QMainWindow):
         self.paths = []
         self.results = []
         self.issues = []
+        self.adjustment_result = AdjustmentResult()
         self.render_empty()
 
     def run(self):
@@ -418,7 +459,26 @@ class MainWindow(QMainWindow):
         self.render_results()
         self.statusBar().showMessage("处理完成")
 
+    def on_adjustment_mode_changed(self, *_args):
+        sender = self.sender()
+        if sender is self.income_adjust and self.income_adjust.isChecked() and self.balance_adjust.isChecked():
+            self.balance_adjust.setChecked(False)
+        elif sender is self.balance_adjust and self.balance_adjust.isChecked() and self.income_adjust.isChecked():
+            self.income_adjust.setChecked(False)
+        self.refresh_adjustment()
+
+    def refresh_adjustment(self, *_args):
+        if self.results:
+            self.render_results()
+            if any(config.enabled for config in self.adjustment_configs()):
+                self.tabs.setCurrentWidget(self.monthly)
+                self.statusBar().showMessage("月度统计已按调整后数据刷新")
+
+    def update_monthly_tab_label(self, adjusted: bool):
+        self.tabs.setTabText(self.monthly_tab_index, "调整月度统计" if adjusted else "月度统计")
+
     def render_empty(self):
+        self.update_monthly_tab_label(False)
         self.summary_label.setText("选择 PDF/Excel 文件或文件夹后开始处理；默认输出近半年，可手动修改日期范围。")
         self._set_table(self.overview, ["文件", "状态"], [])
         self._set_table(self.monthly, ["月份", "收入(万元)", "支出(万元)"], [])
@@ -426,6 +486,7 @@ class MainWindow(QMainWindow):
         self._set_table(self.issue_table, ["级别", "来源", "时间", "提示"], [])
 
     def render_selected(self):
+        self.update_monthly_tab_label(False)
         rows = [[str(path), "待处理"] for path in self.paths]
         self._set_table(self.overview, ["文件", "状态"], rows)
         self.summary_label.setText(f"已选择 {len(self.paths)} 个文件，点击开始处理。")
@@ -440,8 +501,17 @@ class MainWindow(QMainWindow):
             f"异常提示 {len(shown_issues)} 条。"
         )
 
-        monthly_rows = build_monthly_rows(all_transactions)
-        self._set_table(self.monthly, ["月份", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)", "流水笔数"], monthly_rows)
+        self.adjustment_result = apply_adjustments(all_transactions, self.adjustment_configs())
+        self.update_monthly_tab_label(self.adjustment_result.enabled)
+        self._set_table(
+            self.monthly,
+            monthly_headers(self.adjustment_result.enabled),
+            build_monthly_display_rows(all_transactions, self.adjustment_result),
+        )
+        if self.adjustment_result.enabled:
+            self.summary_label.setText(self.summary_label.text() + " 已启用调整，月度统计显示调整后数据。")
+            if self.adjustment_result.warnings:
+                self.statusBar().showMessage("；".join(self.adjustment_result.warnings))
 
         overview_rows = []
         for result in self.results:
@@ -518,8 +588,34 @@ class MainWindow(QMainWindow):
         path = Path(file_name)
         if path.suffix.lower() != ".xlsx":
             path = path.with_suffix(".xlsx")
-        write_workbook(path, self.results, self.issues)
+        write_workbook(path, self.results, self.issues, self.adjustment_configs())
         QMessageBox.information(self, "完成", f"已导出: {path}")
+
+    def adjustment_configs(self) -> list[AdjustmentConfig]:
+        return [
+            AdjustmentConfig(
+                enabled=self.income_adjust.isChecked(),
+                amount_wan=self.safe_amount_wan(self.adjust_amount.text()),
+                start_month=self.adjust_start_month.date().toString("yyyy-MM"),
+                end_month=self.adjust_end_month.date().toString("yyyy-MM"),
+                balanced=False,
+                label="收入调整（微信）",
+            ),
+            AdjustmentConfig(
+                enabled=self.balance_adjust.isChecked(),
+                amount_wan=self.safe_amount_wan(self.adjust_amount.text()),
+                start_month=self.adjust_start_month.date().toString("yyyy-MM"),
+                end_month=self.adjust_end_month.date().toString("yyyy-MM"),
+                balanced=True,
+                label="收支平衡调整（个/公）",
+            ),
+        ]
+
+    def safe_amount_wan(self, text: str) -> Decimal:
+        try:
+            return parse_amount_wan(text)
+        except Exception:
+            return Decimal("0.00")
 
 
 def write_sheet(ws, headers: list[str], rows: list[list]):
@@ -598,10 +694,10 @@ def parse_account_name(text: str) -> str:
     return ""
 
 
-def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
+def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], adjustment_configs: list[AdjustmentConfig] | None = None):
     wb = Workbook()
     monthly = wb.active
-    monthly.title = "月度统计"
+    monthly.title = "原始月度统计"
     overview = wb.create_sheet("汇总")
     overview_rows = []
     all_transactions = []
@@ -629,9 +725,27 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue]):
     all_transactions, duplicate_issues = dedupe_transactions(all_transactions)
     shown_issues = issues + duplicate_issues
     monthly_rows = build_monthly_rows(all_transactions, for_excel=True)
-    write_sheet(monthly, ["月份", "收入笔数", "收入(万元)", "支出笔数", "支出(万元)", "净额(万元)", "期初余额(万元)", "期末余额(万元)", "流水笔数"], monthly_rows)
+    write_sheet(monthly, monthly_headers(False), monthly_rows)
 
-    details = wb.create_sheet("明细")
+    adjustment_result = apply_adjustments(all_transactions, adjustment_configs or [])
+    adjusted = wb.create_sheet("调整后月度统计")
+    write_sheet(adjusted, monthly_headers(True), build_adjusted_rows(adjustment_result, for_excel=True))
+
+    parameters = wb.create_sheet("调整参数")
+    write_sheet(parameters, ["参数", "值"], adjustment_result.parameters)
+
+    instruction_rows = [
+        ["说明", "调整功能属于识别后的测算层，不修改原始明细。"],
+        ["收入调整（微信）", "只增加收入，适合微信或需要测算收入补充的流水。"],
+        ["收支平衡调整（个/公）", "收入和支出同步增加，期末余额保持原值。"],
+        ["月份范围", "只调整已有流水的月份，不生成没有流水的月份。"],
+        ["余额判断", "调整后余额 >= 0 为正常，否则需复核。"],
+        ["微信其他", "微信“其他”在原始统计中默认排除。"],
+    ]
+    instructions = wb.create_sheet("调整说明")
+    write_sheet(instructions, ["项目", "说明"], instruction_rows)
+
+    details = wb.create_sheet("原始明细")
     detail_rows = []
     for tx in sort_transactions(all_transactions):
         detail_rows.append(
@@ -704,9 +818,128 @@ def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list
         rows.append(_summary_row(month, s, for_excel))
 
     if rows:
-        rows.append(_summary_row("总计", summarize(transactions, "总计"), for_excel))
+        total = summarize(transactions, "总计")
+        rows.append(_summary_row("总计", total, for_excel))
+        rows.append(_monthly_average_row(total, len(rows) - 1, for_excel, adjusted=False))
     return rows
 
+
+def monthly_headers(adjusted: bool = False) -> list[str]:
+    headers = [
+        "月份",
+        "收入笔数",
+        "收入(万元)",
+        "支出笔数",
+        "支出(万元)",
+        "净额(万元)",
+        "期初余额(万元)",
+        "期末余额(万元)",
+        "流水笔数",
+    ]
+    if adjusted:
+        headers.extend([
+            "收入调整(万元)",
+            "支出调整(万元)",
+            "说明",
+        ])
+    return headers
+
+
+def build_monthly_display_rows(transactions: list, adjustment: AdjustmentResult, for_excel: bool = False) -> list[list]:
+    if not adjustment.enabled:
+        return build_monthly_rows(transactions, for_excel)
+    return build_adjusted_rows(adjustment, for_excel)
+
+
+def build_adjusted_rows(adjustment: AdjustmentResult, for_excel: bool = False) -> list[list]:
+    rows = []
+    for row in adjustment.rows:
+        if row.month == "总计":
+            continue
+        values = [
+            row.adjusted_income_sum,
+            row.adjusted_expense_sum,
+            row.adjusted_net,
+            row.adjusted_opening_balance,
+            row.adjusted_closing_balance,
+            row.income_adjustment,
+            row.expense_adjustment,
+        ]
+        if for_excel:
+            money_values = [float(to_wan(value)) if value is not None else None for value in values]
+        else:
+            money_values = [money_wan(value) for value in values]
+        rows.append(
+            [
+                row.month,
+                row.original_income_count,
+                money_values[0],
+                row.original_expense_count,
+                money_values[1],
+                money_values[2],
+                money_values[3],
+                money_values[4],
+                row.original_count,
+                money_values[5],
+                money_values[6],
+                row.note,
+            ]
+        )
+    for warning in adjustment.warnings:
+        rows.append(["提示", "", "", "", "", "", "", "", "", "", "", warning])
+    total_row = next((row for row in adjustment.rows if row.month == "总计"), None)
+    if total_row is not None:
+        rows.append(_adjusted_row(total_row, for_excel, label="总计"))
+        month_count = max(len([row for row in adjustment.rows if row.month != "总计"]), 1)
+        rows.append(_monthly_average_row(total_row, month_count, for_excel, adjusted=True))
+    return rows
+
+
+def _adjusted_row(row, for_excel: bool, label: str | None = None) -> list:
+    values = [
+        row.adjusted_income_sum,
+        row.adjusted_expense_sum,
+        row.adjusted_net,
+        row.adjusted_opening_balance,
+        row.adjusted_closing_balance,
+        row.income_adjustment,
+        row.expense_adjustment,
+    ]
+    if for_excel:
+        money_values = [float(to_wan(value)) if value is not None else None for value in values]
+    else:
+        money_values = [money_wan(value) for value in values]
+    return [
+        label or row.month,
+        row.original_income_count,
+        money_values[0],
+        row.original_expense_count,
+        money_values[1],
+        money_values[2],
+        money_values[3],
+        money_values[4],
+        row.original_count,
+        money_values[5],
+        money_values[6],
+        row.note,
+    ]
+
+
+def _monthly_average_row(total, month_count: int, for_excel: bool, adjusted: bool) -> list:
+    divisor = Decimal(max(month_count, 1))
+    income_average = (total.adjusted_income_sum if adjusted else total.income_sum) / divisor
+    expense_average = (total.adjusted_expense_sum if adjusted else total.expense_sum) / divisor
+    income_average = income_average.quantize(Decimal("0.01"))
+    expense_average = expense_average.quantize(Decimal("0.01"))
+    if for_excel:
+        income_value = float(to_wan(income_average))
+        expense_value = float(to_wan(expense_average))
+    else:
+        income_value = money_wan(income_average)
+        expense_value = money_wan(expense_average)
+    if adjusted:
+        return ["月均", "", income_value, "", expense_value, "", "", "", "", "", "", f"按 {month_count} 个月平均"]
+    return ["月均", "", income_value, "", expense_value, "", "", "", ""]
 
 def build_salary_sheet(transactions: list, for_excel: bool = False) -> tuple[list[str], list[list]]:
     salary_transactions = [tx for tx in sort_transactions(transactions) if is_salary_transaction(tx)]

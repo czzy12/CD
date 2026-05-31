@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDateEdit,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -253,54 +254,85 @@ class MainWindow(QMainWindow):
 
         self.summary_label = QLabel("选择 PDF 文件或文件夹后开始处理")
         self.summary_label.setObjectName("summaryLabel")
+        self.summary_metrics = {
+            "files": self.create_metric("文件", "0", "neutral"),
+            "flows": self.create_metric("流水", "0", "neutral"),
+            "income": self.create_metric("收入", "0 / 0.00", "income"),
+            "expense": self.create_metric("支出", "0 / 0.00", "expense"),
+            "issues": self.create_metric("异常", "0", "warning"),
+        }
+        self.adjust_preview_label = QLabel("启用调整后显示预览")
+        self.adjust_preview_label.setObjectName("adjustPreviewLabel")
+        self.adjust_net_value = QLabel("0.00")
+        self.adjust_net_value.setObjectName("adjustResultValue")
+        self.adjust_check_value = QLabel("未启用")
+        self.adjust_check_value.setObjectName("adjustResultValue")
+        self.drop_hint_label = QLabel("拖入 PDF/Excel 文件，或点击选择文件\n支持多文件同时导入")
+        self.drop_hint_label.setObjectName("dropHint")
+        self.drop_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         add_files = QPushButton("选择文件")
         add_folder = QPushButton("选择文件夹")
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
         export = QPushButton("导出 Excel")
+        run.setObjectName("primaryButton")
+        export.setObjectName("exportButton")
         add_files.clicked.connect(self.add_files)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
         export.clicked.connect(self.export_excel)
 
-        toolbar = QHBoxLayout()
-        for button in (add_files, add_folder, clear, run, export):
-            toolbar.addWidget(button)
-        toolbar.addStretch(1)
-
         self.date_filter = QCheckBox("筛选日期")
         self.date_filter.setChecked(True)
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDisplayFormat("yyyy-MM-dd")
+        self.start_date.setFixedWidth(142)
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDisplayFormat("yyyy-MM-dd")
+        self.end_date.setFixedWidth(142)
         start_date, end_date = default_recent_month_range()
         self.start_date.setDate(start_date)
         self.end_date.setDate(end_date)
 
-        datebar = QHBoxLayout()
-        datebar.addWidget(self.date_filter)
-        datebar.addWidget(QLabel("从"))
-        datebar.addWidget(self.start_date)
-        datebar.addWidget(QLabel("到"))
-        datebar.addWidget(self.end_date)
-        datebar.addStretch(1)
+        date_filter_panel = QFrame()
+        date_filter_panel.setObjectName("inlineFilterPanel")
+        date_filter_layout = QHBoxLayout(date_filter_panel)
+        date_filter_layout.setContentsMargins(14, 7, 14, 7)
+        date_filter_layout.setSpacing(8)
+        date_filter_layout.addWidget(self.date_filter)
+        date_filter_layout.addWidget(QLabel("从"))
+        date_filter_layout.addWidget(self.start_date)
+        date_filter_layout.addWidget(QLabel("到"))
+        date_filter_layout.addWidget(self.end_date)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+        toolbar.addWidget(run)
+        toolbar.addWidget(add_files)
+        toolbar.addWidget(add_folder)
+        toolbar.addWidget(clear)
+        toolbar.addSpacing(14)
+        toolbar.addWidget(date_filter_panel)
+        toolbar.addStretch(1)
+        toolbar.addWidget(export)
 
         self.income_adjust = QCheckBox("启用收入调整（微信）")
         self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
         self.adjust_amount = QLineEdit()
         self.adjust_amount.setPlaceholderText("万元")
-        self.adjust_amount.setFixedWidth(110)
+        self.adjust_amount.setMinimumWidth(160)
         self.adjust_start_month = QDateEdit()
         self.adjust_start_month.setCalendarPopup(True)
         self.adjust_start_month.setDisplayFormat("yyyy-MM")
+        self.adjust_start_month.setFixedWidth(120)
         self.adjust_end_month = QDateEdit()
         self.adjust_end_month.setCalendarPopup(True)
         self.adjust_end_month.setDisplayFormat("yyyy-MM")
+        self.adjust_end_month.setFixedWidth(120)
         self.adjust_start_month.setDate(start_date)
         self.adjust_end_month.setDate(end_date)
         self.random_adjust = QCheckBox("固定分配")
@@ -311,23 +343,6 @@ class MainWindow(QMainWindow):
         self.adjust_amount.textChanged.connect(self.refresh_adjustment)
         self.adjust_start_month.dateChanged.connect(self.refresh_adjustment)
         self.adjust_end_month.dateChanged.connect(self.refresh_adjustment)
-
-        adjustment_mode_bar = QHBoxLayout()
-        adjustment_mode_bar.addWidget(self.income_adjust)
-        adjustment_mode_bar.addSpacing(24)
-        adjustment_mode_bar.addWidget(self.balance_adjust)
-        adjustment_mode_bar.addStretch(1)
-
-        adjustment_input_bar = QHBoxLayout()
-        adjustment_input_bar.addWidget(QLabel("调整金额"))
-        adjustment_input_bar.addWidget(self.adjust_amount)
-        adjustment_input_bar.addWidget(QLabel("万元，月份"))
-        adjustment_input_bar.addWidget(self.adjust_start_month)
-        adjustment_input_bar.addWidget(QLabel("至"))
-        adjustment_input_bar.addWidget(self.adjust_end_month)
-        adjustment_input_bar.addSpacing(16)
-        adjustment_input_bar.addWidget(self.random_adjust)
-        adjustment_input_bar.addStretch(1)
 
         self.overview = DropTable()
         self.monthly = DropTable()
@@ -345,12 +360,97 @@ class MainWindow(QMainWindow):
         central = DropWidget()
         central.filesDropped.connect(self.add_paths)
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(14, 12, 14, 10)
+        layout.setSpacing(12)
         layout.addLayout(toolbar)
-        layout.addLayout(datebar)
-        layout.addLayout(adjustment_mode_bar)
-        layout.addLayout(adjustment_input_bar)
-        layout.addWidget(self.summary_label)
-        layout.addWidget(self.tabs)
+
+        file_card = QFrame()
+        file_card.setObjectName("card")
+        file_layout = QVBoxLayout(file_card)
+        file_layout.setSpacing(10)
+        file_title = QLabel("文件导入")
+        file_title.setObjectName("cardTitle")
+        file_layout.addWidget(file_title)
+        file_layout.addWidget(self.drop_hint_label)
+
+        main_panel = QFrame()
+        main_panel.setObjectName("card")
+        main_layout = QVBoxLayout(main_panel)
+        main_layout.setSpacing(10)
+        metrics_bar = QFrame()
+        metrics_bar.setObjectName("metricsBar")
+        metrics_layout = QHBoxLayout(metrics_bar)
+        metrics_layout.setContentsMargins(16, 10, 16, 10)
+        metrics_layout.setSpacing(0)
+        for index, metric in enumerate(self.summary_metrics.values()):
+            metrics_layout.addWidget(metric)
+            if index < len(self.summary_metrics) - 1:
+                divider = QFrame()
+                divider.setObjectName("metricDivider")
+                divider.setFrameShape(QFrame.Shape.VLine)
+                metrics_layout.addWidget(divider)
+        main_layout.addWidget(metrics_bar)
+        main_layout.addWidget(self.summary_label)
+        main_layout.addWidget(self.tabs)
+
+        left_area = QVBoxLayout()
+        left_area.setSpacing(12)
+        left_area.addWidget(file_card)
+        left_area.addWidget(main_panel, 1)
+
+        adjustment_panel = QFrame()
+        adjustment_panel.setObjectName("sidePanel")
+        adjustment_panel.setFixedWidth(330)
+        adjustment_layout = QVBoxLayout(adjustment_panel)
+        adjustment_layout.setSpacing(12)
+        adjustment_title = QLabel("流水调整")
+        adjustment_title.setObjectName("cardTitle")
+        adjustment_layout.addWidget(adjustment_title)
+        adjustment_layout.addWidget(self.income_adjust)
+        adjustment_layout.addWidget(self.balance_adjust)
+        amount_label = QLabel("调整金额（万元）")
+        amount_label.setObjectName("fieldLabel")
+        adjustment_layout.addWidget(amount_label)
+        adjustment_layout.addWidget(self.adjust_amount)
+        month_row = QHBoxLayout()
+        month_row.addWidget(self.adjust_start_month)
+        month_row.addWidget(QLabel("至"))
+        month_row.addWidget(self.adjust_end_month)
+        adjustment_layout.addLayout(month_row)
+        adjustment_layout.addWidget(self.random_adjust)
+        preview_card = QFrame()
+        preview_card.setObjectName("adjustResultCard")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_title = QLabel("调整预览（所选期间）")
+        preview_title.setObjectName("fieldLabel")
+        result_row = QHBoxLayout()
+        net_box = QVBoxLayout()
+        net_label = QLabel("调整后净额(万元)")
+        net_label.setObjectName("fieldLabel")
+        net_box.addWidget(net_label)
+        net_box.addWidget(self.adjust_net_value)
+        check_box = QVBoxLayout()
+        check_label = QLabel("平衡校验")
+        check_label.setObjectName("fieldLabel")
+        check_box.addWidget(check_label)
+        check_box.addWidget(self.adjust_check_value)
+        result_row.addLayout(net_box)
+        divider = QFrame()
+        divider.setObjectName("metricDivider")
+        divider.setFrameShape(QFrame.Shape.VLine)
+        result_row.addWidget(divider)
+        result_row.addLayout(check_box)
+        preview_layout.addWidget(preview_title)
+        preview_layout.addLayout(result_row)
+        adjustment_layout.addWidget(preview_card)
+        adjustment_layout.addWidget(self.adjust_preview_label)
+        adjustment_layout.addStretch(1)
+
+        content = QHBoxLayout()
+        content.setSpacing(14)
+        content.addLayout(left_area, 1)
+        content.addWidget(adjustment_panel)
+        layout.addLayout(content, 1)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
@@ -372,32 +472,170 @@ class MainWindow(QMainWindow):
     def _apply_style(self):
         self.setStyleSheet(
             """
-            QMainWindow { background: #f7f8fa; }
+            QMainWindow { background: #f5f7fb; }
             QPushButton {
-                padding: 7px 12px;
-                border: 1px solid #c9ced6;
-                border-radius: 6px;
+                min-height: 34px;
+                padding: 0 14px;
+                border: 1px solid #d5dbe5;
+                border-radius: 7px;
                 background: #ffffff;
+                color: #263243;
             }
             QPushButton:hover { background: #eef3f8; }
+            QPushButton#primaryButton {
+                background: #1769e0;
+                color: #ffffff;
+                border-color: #1769e0;
+                font-weight: 700;
+                padding: 0 20px;
+            }
+            QPushButton#primaryButton:hover { background: #0f5ccc; }
+            QPushButton#exportButton {
+                background: #ffffff;
+                color: #1769e0;
+                border-color: #9bbff2;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            QFrame#card, QFrame#sidePanel {
+                background: #ffffff;
+                border: 1px solid #e3e8f0;
+                border-radius: 8px;
+            }
+            QFrame#sidePanel { background: #fbfcfe; }
+            QFrame#inlineFilterPanel {
+                background: #ffffff;
+                border: 1px solid #dfe6f1;
+                border-radius: 8px;
+                min-height: 42px;
+            }
+            QFrame#metricsBar {
+                background: #ffffff;
+                border: 1px solid #dfe6f1;
+                border-radius: 8px;
+            }
+            QFrame#metricItem { border: 0; background: transparent; }
+            QFrame#metricDivider {
+                color: #e1e7f0;
+                background: #e1e7f0;
+                max-width: 1px;
+            }
+            QLabel#metricLabel {
+                color: #5f6b7a;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QLabel#metricValue {
+                color: #162033;
+                font-size: 22px;
+                font-weight: 600;
+            }
+            QLabel#metricValue[tone="income"] { color: #138a4b; }
+            QLabel#metricValue[tone="expense"] { color: #d93f2f; }
+            QLabel#metricValue[tone="income"], QLabel#metricValue[tone="expense"] {
+                font-size: 19px;
+            }
+            QLabel#metricValue[tone="warning"] { color: #e07a1f; }
+            QLabel#metricValue[tone="neutral"] { color: #162033; }
+            QLabel {
+                font-family: "Microsoft YaHei UI", "Segoe UI", Arial;
+            }
+            QLabel#cardTitle {
+                font-size: 16px;
+                font-weight: 700;
+                color: #1f2d3d;
+            }
+            QLabel#fieldLabel {
+                color: #5f6b7a;
+                font-weight: 600;
+            }
+            QLabel#dropHint {
+                min-height: 88px;
+                color: #4b5b6d;
+                border: 1px dashed #9bbff2;
+                border-radius: 8px;
+                background: #f8fbff;
+                font-size: 14px;
+                font-weight: 400;
+            }
             QTableWidget {
                 gridline-color: #d8dde6;
                 selection-background-color: #cfe5ff;
                 background: #ffffff;
+                border: 1px solid #e3e8f0;
+                border-radius: 6px;
             }
             QHeaderView::section {
-                background: #eef1f5;
-                padding: 6px;
+                background: #f0f3f7;
+                padding: 7px;
                 border: 0;
                 border-right: 1px solid #d8dde6;
                 border-bottom: 1px solid #d8dde6;
-                font-weight: 600;
+                font-family: "Microsoft YaHei UI", "Segoe UI", Arial;
+                font-size: 13px;
+                font-weight: 500;
+                color: #1f2d3d;
+            }
+            QTabWidget::pane { border: 0; top: -1px; }
+            QTabBar::tab {
+                background: transparent;
+                border: 0;
+                border-bottom: 3px solid transparent;
+                padding: 10px 20px;
+                margin-right: 8px;
+                color: #5f6b7a;
+                font-size: 15px;
+                font-weight: 400;
+            }
+            QTabBar::tab:selected {
+                color: #1769e0;
+                font-weight: 500;
+                border-bottom-color: #1769e0;
+            }
+            QLineEdit, QDateEdit {
+                min-height: 28px;
+                padding: 0 8px;
+                border: 1px solid #d5dbe5;
+                border-radius: 6px;
+                background: #ffffff;
+            }
+            QDateEdit::drop-down {
+                width: 24px;
+                border: 0;
+                background: transparent;
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+            }
+            QDateEdit::down-arrow {
+                image: url(assets/down_arrow.svg);
+                width: 10px;
+                height: 10px;
+                margin-right: 7px;
             }
             QLabel#summaryLabel {
-                padding: 8px 10px;
-                background: #ffffff;
-                border: 1px solid #d8dde6;
+                padding: 10px 12px;
+                background: #f8fbff;
+                border: 1px solid #dbe8fb;
                 border-radius: 6px;
+                color: #1f2d3d;
+            }
+            QLabel#adjustPreviewLabel {
+                color: #5f6b7a;
+            }
+            QFrame#adjustResultCard {
+                padding: 8px;
+                background: #f8fbff;
+                border: 1px solid #dbe8fb;
+                border-radius: 8px;
+            }
+            QLabel#adjustResultValue {
+                color: #1f9d55;
+                font-size: 28px;
+                font-weight: 600;
+            }
+            QFrame#adjustResultCard QLabel#fieldLabel {
+                font-size: 14px;
+                font-weight: 500;
             }
             """
         )
@@ -436,6 +674,33 @@ class MainWindow(QMainWindow):
         self.issues = []
         self.adjustment_result = AdjustmentResult()
         self.render_empty()
+
+    def create_metric(self, label: str, value: str, tone: str) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("metricItem")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 4, 12, 4)
+        title = QLabel(label)
+        title.setObjectName("metricLabel")
+        number = QLabel(value)
+        number.setObjectName("metricValue")
+        number.setProperty("tone", tone)
+        number.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(title)
+        layout.addWidget(number)
+        frame.value_label = number
+        return frame
+
+    def set_metric(self, key: str, value: str):
+        metric = self.summary_metrics.get(key)
+        if metric is not None:
+            metric.value_label.setText(self.format_metric_value(key, value))
+
+    def format_metric_value(self, key: str, value: str) -> str:
+        if key not in ("income", "expense") or " / " not in value:
+            return value
+        count, amount = value.split(" / ", 1)
+        return f'<span style="font-weight:700;">{count}</span><span style="font-weight:400; font-size:16px;"> / {amount}</span>'
 
     def run(self):
         if not self.paths:
@@ -481,8 +746,38 @@ class MainWindow(QMainWindow):
     def update_monthly_tab_label(self, adjusted: bool):
         self.tabs.setTabText(self.monthly_tab_index, "调整月度统计" if adjusted else "月度统计")
 
+    def update_adjustment_preview(self):
+        if not self.adjustment_result.enabled:
+            self.adjust_net_value.setText("0.00")
+            self.adjust_check_value.setText("未启用")
+            self.adjust_preview_label.setText("原始统计保持不变")
+            return
+        total_row = next((row for row in self.adjustment_result.rows if row.month == "总计"), None)
+        if total_row is None:
+            self.adjust_net_value.setText("0.00")
+            self.adjust_check_value.setText("需复核")
+            self.adjust_preview_label.setText("暂无可调整月份")
+            return
+        check = balance_check(total_row, self.adjustment_result)
+        self.adjust_net_value.setText(f"{money_wan(total_row.adjusted_net)}")
+        self.adjust_check_value.setText(check)
+        self.adjust_preview_label.setText(
+            f"收入调整 {money_wan(total_row.income_adjustment)} 万元  "
+            f"支出调整 {money_wan(total_row.expense_adjustment)} 万元"
+        )
+
     def render_empty(self):
         self.update_monthly_tab_label(False)
+        self.adjustment_result = AdjustmentResult()
+        self.update_adjustment_preview()
+        for key, value in {
+            "files": "0",
+            "flows": "0",
+            "income": "0 / 0.00",
+            "expense": "0 / 0.00",
+            "issues": "0",
+        }.items():
+            self.set_metric(key, value)
         self.summary_label.setText("选择 PDF/Excel 文件或文件夹后开始处理；默认输出近半年，可手动修改日期范围。")
         self._set_table(self.overview, ["文件", "状态"], [])
         self._set_table(self.monthly, ["月份", "收入(万元)", "支出(万元)"], [])
@@ -491,6 +786,13 @@ class MainWindow(QMainWindow):
 
     def render_selected(self):
         self.update_monthly_tab_label(False)
+        self.adjustment_result = AdjustmentResult()
+        self.update_adjustment_preview()
+        self.set_metric("files", str(len(self.paths)))
+        self.set_metric("flows", "待处理")
+        self.set_metric("income", "待处理")
+        self.set_metric("expense", "待处理")
+        self.set_metric("issues", "待处理")
         rows = [[str(path), "待处理"] for path in self.paths]
         self._set_table(self.overview, ["文件", "状态"], rows)
         self.summary_label.setText(f"已选择 {len(self.paths)} 个文件，点击开始处理。")
@@ -499,6 +801,11 @@ class MainWindow(QMainWindow):
         all_transactions, duplicate_issues = dedupe_transactions([tx for result in self.results for tx in result.transactions])
         shown_issues = self.issues + duplicate_issues
         total = summarize(all_transactions, "全部文件")
+        self.set_metric("files", str(len(self.results)))
+        self.set_metric("flows", str(total.count))
+        self.set_metric("income", f"{total.income_count} / {money(total.income_sum)}")
+        self.set_metric("expense", f"{total.expense_count} / {money(total.expense_sum)}")
+        self.set_metric("issues", str(len(shown_issues)))
         self.summary_label.setText(
             f"文件 {len(self.results)} 个，流水 {total.count} 笔，收入 {total.income_count} 笔/{money(total.income_sum)}，"
             f"支出 {total.expense_count} 笔/{money(total.expense_sum)}，净额 {money(total.net)}，"
@@ -507,6 +814,7 @@ class MainWindow(QMainWindow):
 
         self.adjustment_result = apply_adjustments(all_transactions, self.adjustment_configs())
         self.update_monthly_tab_label(self.adjustment_result.enabled)
+        self.update_adjustment_preview()
         self._set_table(
             self.monthly,
             monthly_headers(self.adjustment_result.enabled),

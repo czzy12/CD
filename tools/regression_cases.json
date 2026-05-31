@@ -236,5 +236,175 @@
       "closing_balance": "320740.69",
       "issues": 0
     }
+  },
+  {
+    "name": "建行对公-活期存款明细账-0530-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/0530流水1建设对公/流水/银行流水_2.pdf",
+    "tags": ["ccb_corp", "corp", "deposit-detail"],
+    "expected": {
+      "count": 71,
+      "income_count": 12,
+      "income_sum": "647172.50",
+      "expense_count": 59,
+      "expense_sum": "643317.24",
+      "net": "3855.26",
+      "opening_balance": "858.69",
+      "closing_balance": "4713.95",
+      "issues": 0
+    }
+  },
+  {
+    "name": "建行对公-活期存款明细账-0530-3",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/0530流水1建设对公/流水/银行流水_3.pdf",
+    "tags": ["ccb_corp", "corp", "deposit-detail"],
+    "expected": {
+      "count": 26,
+      "income_count": 7,
+      "income_sum": "179002.71",
+      "expense_count": 19,
+      "expense_sum": "179126.86",
+      "net": "-124.15",
+      "opening_balance": "4713.95",
+      "closing_balance": "4589.80",
+      "issues": 0
+    }
+  },
+  {
+    "name": "建行对公-活期存款明细账-0530-4",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/0530流水1建设对公/流水/银行流水_4.pdf",
+    "tags": ["ccb_corp", "corp", "deposit-detail"],
+    "expected": {
+      "count": 36,
+      "income_count": 7,
+      "income_sum": "284611.00",
+      "expense_count": 29,
+      "expense_sum": "240848.55",
+      "net": "43762.45",
+      "opening_balance": "4589.80",
+      "closing_balance": "48352.25",
+      "issues": 0
+    }
+  },
+  {
+    "name": "建行对公-活期存款明细账-0530-5",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/0530流水1建设对公/流水/银行流水_5.pdf",
+    "tags": ["ccb_corp", "corp", "deposit-detail"],
+    "expected": {
+      "count": 89,
+      "income_count": 18,
+      "income_sum": "745428.59",
+      "expense_count": 71,
+      "expense_sum": "743898.41",
+      "net": "1530.18",
+      "opening_balance": "80.07",
+      "closing_balance": "1610.25",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行对公-活期明细-2025-11",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/中银对公流水2/流水/银行流水_6.pdf",
+    "tags": ["boc_corp", "corp", "boc-text"],
+    "expected": {
+      "count": 104,
+      "income_count": 51,
+      "income_sum": "9102000.00",
+      "expense_count": 53,
+      "expense_sum": "8696164.49",
+      "net": "405835.51",
+      "opening_balance": "2638.49",
+      "closing_balance": "408474.00",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行对公-活期明细-2025-12",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/中银对公流水2/流水/银行流水_0.pdf",
+    "tags": ["boc_corp", "corp", "boc-text"],
+    "expected": {
+      "count": 134,
+      "income_count": 17,
+      "income_sum": "2110009.79",
+      "expense_count": 117,
+      "expense_sum": "2515161.74",
+      "net": "-405151.95",
+      "opening_balance": "408474.00",
+      "closing_balance": "3322.05",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行对公-活期明细-2026-01",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/中银对公流水2/流水/银行流水_4.pdf",
+    "tags": ["boc_corp", "corp", "boc-text"],
+    "expected": {
+      "count": 76,
+      "income_count": 9,
+      "income_sum": "3195295.00",
+      "expense_count": 67,
+      "expense_sum": "2926387.38",
+      "net": "268907.62",
+      "opening_balance": "3322.05",
+      "closing_balance": "272229.67",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行对公-活期明细-2026-02",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/中银对公流水2/流水/银行流水_3.pdf",
+    "tags": ["boc_corp", "corp", "boc-text"],
+    "expected": {
+      "count": 30,
+      "income_count": 2,
+      "income_sum": "524650.57",
+      "expense_count": 28,
+      "expense_sum": "721149.01",
+      "net": "-196498.44",
+      "opening_balance": "272229.67",
+      "closing_balance": "75731.23",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行对公-活期明细-2026-03",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/中银对公流水2/流水/银行流水_2.pdf",
+    "tags": ["boc_corp", "corp", "boc-text"],
+    "expected": {
+      "count": 63,
+      "income_count": 11,
+      "income_sum": "1125032.18",
+      "expense_count": 52,
+      "expense_sum": "1070366.22",
+      "net": "54665.96",
+      "opening_balance": "75731.23",
+      "closing_balance": "130397.19",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行对公-活期明细-2026-04",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/中银对公流水2/流水/银行流水_5.pdf",
+    "tags": ["boc_corp", "corp", "boc-text"],
+    "expected": {
+      "count": 58,
+      "income_count": 6,
+      "income_sum": "603766.11",
+      "expense_count": 52,
+      "expense_sum": "637881.79",
+      "net": "-34115.68",
+      "opening_balance": "130397.19",
+      "closing_balance": "96281.51",
+      "issues": 0
+    }
   }
 ]

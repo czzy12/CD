@@ -14,6 +14,7 @@ class Detection:
 BANK_LABELS = {
     "abc": "农业银行个人",
     "abc_corp": "农业银行对公",
+    "boc_corp": "中国银行对公",
     "bocom": "交通银行",
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
@@ -90,6 +91,14 @@ def detect_bank_type(pdf_path: str) -> Detection:
     header_compact = header_text.replace(" ", "").replace("\n", "")
     if _has_ordered_chars(header_compact, "兴业银行交易流水"):
         return Detection("cib", BANK_LABELS["cib"], 95, "页眉命中银行名称: 兴业银行交易流水")
+    if (
+        "中国银行" in header_compact
+        and "单位人民币活期" in header_compact
+        and "借方发生额" in compact
+        and "贷方发生额" in compact
+        and "承前页余额" in compact
+    ):
+        return Detection("boc_corp", BANK_LABELS["boc_corp"], 98, "命中中国银行对公活期明细特征")
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),
@@ -117,6 +126,7 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("cmbc", "中国民生银行股份有限公司", 95),
         ("cib", "IndustrialBankTransactionDetails", 95),
         ("cib", "兴业银行交易流水", 95),
+        ("ccb_corp", "中国建设银行股份有限公司活期存款明细账", 98),
         ("ccb_corp", "中国建设银行账户明细信息", 95),
         ("ccb", "中国建设银行个人活期账户全部交易明细", 95),
         ("abc", "中国农业银行银行卡交易明细清单", 95),

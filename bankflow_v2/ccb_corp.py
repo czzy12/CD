@@ -19,6 +19,10 @@ def _clean_cell(value) -> str:
     return str(value or "").replace("\n", "").strip()
 
 
+def _split_cell(value) -> list[str]:
+    return [part.strip() for part in str(value or "").splitlines()]
+
+
 def _parse_time(raw: str | None) -> datetime | None:
     text = _clean_cell(raw)
     if len(text) == 16 and text[8] != " ":
@@ -29,8 +33,96 @@ def _parse_time(raw: str | None) -> datetime | None:
         return None
 
 
+def _parse_date(raw: str | None) -> datetime | None:
+    text = _clean_cell(raw)
+    try:
+        return datetime.strptime(text, "%Y%m%d")
+    except ValueError:
+        return None
+
+
 def _parse_money(raw: str | None) -> Decimal:
     return money_to_decimal(_clean_cell(raw)) or Decimal("0.00")
+
+
+def _cell_at(values: list[str], index: int) -> str:
+    return values[index] if index < len(values) else ""
+
+
+def _is_deposit_detail_table(table: list[list]) -> bool:
+    if len(table) < 3:
+        return False
+    header = "".join(_clean_cell(cell) for row in table[:2] for cell in row)
+    return "日期" in header and "发生额" in header and "借方" in header and "贷方" in header and "余额" in header
+
+
+def _extract_deposit_detail_rows(table: list[list], page_index: int) -> list[Transaction]:
+    transactions: list[Transaction] = []
+    for row_index, row in enumerate(table, start=1):
+        if len(row) < 9:
+            continue
+        dates = _split_cell(row[0])
+        if not dates or not any(_parse_date(date) for date in dates):
+            continue
+
+        debits = _split_cell(row[5])
+        credits = _split_cell(row[6])
+        balances = _split_cell(row[8])
+        vouchers = _split_cell(row[1]) if len(row) > 1 else []
+        summaries = _split_cell(row[3]) if len(row) > 3 else []
+        counterparties = _split_cell(row[4]) if len(row) > 4 else []
+        serials = _split_cell(row[9]) if len(row) > 9 else []
+
+        for index, date_text in enumerate(dates):
+            tx_time = _parse_date(date_text)
+            if tx_time is None:
+                continue
+
+            debit = _parse_money(_cell_at(debits, index))
+            credit = _parse_money(_cell_at(credits, index))
+            balance = money_to_decimal(_cell_at(balances, index))
+            income = credit
+            expense = debit
+            issues = []
+
+            if debit > 0 and credit > 0:
+                issues.append("借方和贷方同时有金额")
+            if debit == 0 and credit == 0:
+                issues.append("借方和贷方均为零")
+
+            raw_summary = _cell_at(summaries, index)
+            raw_counterparty = _cell_at(counterparties, index)
+            tx = Transaction(
+                transaction_time=tx_time,
+                income=income,
+                expense=expense,
+                balance=balance,
+                bank=BANK_NAME,
+                page_no=page_index,
+                row_no=row_index * 1000 + index,
+                raw_time=date_text,
+                raw_amount=f"{_cell_at(debits, index)}|{_cell_at(credits, index)}",
+                raw_balance=_cell_at(balances, index),
+                raw_text=" | ".join(part for part in (raw_summary, raw_counterparty) if part),
+                raw_fields=[
+                    date_text,
+                    _cell_at(vouchers, index),
+                    raw_summary,
+                    raw_counterparty,
+                    _cell_at(debits, index),
+                    _cell_at(credits, index),
+                    _cell_at(balances, index),
+                    _cell_at(serials, index),
+                ],
+                raw_headers=["日期", "凭证种类", "摘要", "对方户名", "借方", "贷方", "余额", "交易流水号"],
+                status="ok" if not issues else "review",
+                issues=issues,
+            )
+            tx.preserve_signed_columns = True
+            tx.merge_key = "|".join([date_text, _cell_at(debits, index), _cell_at(credits, index), _cell_at(balances, index), str(page_index), str(index)])
+            transactions.append(tx)
+
+    return transactions
 
 
 def _transaction_key(row: list) -> str:
@@ -50,6 +142,10 @@ def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
     with pdfplumber.open(pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
+                if _is_deposit_detail_table(table):
+                    transactions.extend(_extract_deposit_detail_rows(table, page_index))
+                    continue
+
                 for row_index, row in enumerate(table, start=1):
                     if len(row) <= BALANCE_COL:
                         continue

@@ -1,5 +1,6 @@
 from .abc import extract_abc
 from .abc_corp import extract_abc_corp
+from .boc_corp import extract_boc_corp
 from .bocom import extract_bocom
 from .cmb import extract_cmb
 from .citic import extract_citic
@@ -28,6 +29,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_abc(pdf_path)
     if bank == "abc_corp":
         return extract_abc_corp(pdf_path)
+    if bank == "boc_corp":
+        return extract_boc_corp(pdf_path)
     if bank == "bocom":
         return extract_bocom(pdf_path)
     if bank == "psbc":

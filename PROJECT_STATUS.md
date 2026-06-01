@@ -1,4 +1,4 @@
-# PDF流水项目当前状态
+﻿# PDF流水项目当前状态
 
 更新时间：2026-06-01
 
@@ -25,6 +25,7 @@ origin/work/2026-05-31-flow-adjustment
 当前最新本地提交：
 
 ```text
+HEAD Open income proof form from flow GUI
 988f56f Deduplicate income proof accounts
 ```
 
@@ -133,10 +134,12 @@ origin/work/2026-05-31-flow-adjustment
 - 民生对公 9 位账号 `158040883` 已验证可识别。
 - 同一类型同一账号的多份 PDF 在 `accounts[]` 中只保留一组。
 - 账户去重不影响交易明细和月度汇总。
+- 源码 GUI 按钮已改为“佐证填写”，自动保存 `.income_proof.json` 到桌面 `银行流水解析结果` 文件夹，并打开 Word 填写表预填 JSON。
 
 最近相关提交：
 
 ```text
+HEAD Open income proof form from flow GUI
 988f56f Deduplicate income proof accounts
 06b43fe Allow short labeled corporate account numbers
 c0fe7f3 Group GUI bank flows by income proof type

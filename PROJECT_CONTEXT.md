@@ -1,4 +1,4 @@
-# PDF银行流水识别项目上下文
+﻿# PDF银行流水识别项目上下文
 
 ## 必读顺序
 
@@ -212,10 +212,12 @@ D:\OneDrive\应用\remotely-save\Note Data\Vibe Coding\PDF流水
 5. 民生对公 9 位账号可识别，例如 `158040883`。
 6. 同一流水类型下同一账号拆成多份 PDF 时，导出 JSON 的 `accounts[]` 只保留一组。
 7. 账户去重不影响交易明细、月度汇总和金额计算。
+8. 源码 GUI 按钮已从“导出佐证JSON”改为“佐证填写”：点击后自动保存 `.income_proof.json` 到桌面 `银行流水解析结果` 文件夹，并打开 `D:\report workflow\启动收入佐证填表.bat` 预填该 JSON。
 
 最近本地提交：
 
 ```text
+HEAD Open income proof form from flow GUI
 988f56f Deduplicate income proof accounts
 06b43fe Allow short labeled corporate account numbers
 c0fe7f3 Group GUI bank flows by income proof type
@@ -229,8 +231,8 @@ c0fe7f3 Group GUI bank flows by income proof type
 
 当前优先方向：
 
-1. 用源码 GUI 跑完整收入佐证 JSON 端到端测试。
-2. 确认吕子龙样本中民生对公同账号只导出一组账户。
-3. 与 `D:\report workflow` 的 Word 自动生成 GUI 联调。
+1. 用源码 GUI 点击“佐证填写”跑完整端到端联调。
+2. 确认自动保存 JSON、自动打开 Word 填写表、预填路径均正常。
+3. 确认吕子龙样本中民生对公同账号只导出一组账户。
 4. 稳定后再决定是否重新打包 exe。
 5. 保持现有银行解析器和 Excel 导出稳定。

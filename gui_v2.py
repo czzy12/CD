@@ -1,5 +1,6 @@
 import sys
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, time
 from decimal import Decimal
@@ -294,7 +295,7 @@ class MainWindow(QMainWindow):
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
         export = QPushButton("导出 Excel")
-        export_income_json = QPushButton("导出佐证JSON")
+        export_income_json = QPushButton("佐证填写")
         run.setObjectName("primaryButton")
         export.setObjectName("exportButton")
         export_income_json.setObjectName("exportButton")
@@ -930,6 +931,7 @@ class MainWindow(QMainWindow):
         path = Path(file_name)
         if path.suffix.lower() != ".xlsx":
             path = path.with_suffix(".xlsx")
+        path.parent.mkdir(parents=True, exist_ok=True)
         write_workbook(path, self.results, self.issues, self.adjustment_configs())
         QMessageBox.information(self, "完成", f"已导出: {path}")
 
@@ -938,16 +940,17 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "提示", "请先处理流水后再导出。")
             return
         default_path = Path(default_export_path(self.results)).with_suffix(".income_proof.json")
-        file_name, _ = QFileDialog.getSaveFileName(self, "导出流水佐证 JSON", str(default_path), "JSON 文件 (*.json)")
-        if not file_name:
-            return
-        path = Path(file_name)
-        if path.suffix.lower() != ".json":
-            path = path.with_suffix(".json")
+        path = default_path
+        path.parent.mkdir(parents=True, exist_ok=True)
         write_income_proof_input(path, self.results)
         note = "客户、单位等字段仍需人工补充；未识别到的账号需人工补充。"
         if any(result_flow_type(result) == "对公" for result in self.results):
             note += "\n已识别到对公流水：JSON 会导出为 corporate_flow，但默认不启用，需后续人工确认。"
+        opened = open_income_proof_form(path)
+        if opened:
+            note += "\n\n已自动打开自雇流水佐证填表，并预填该 JSON。"
+        else:
+            note += "\n\n未找到 Word 填写表入口，请手动打开后选择该 JSON。"
         QMessageBox.information(self, "完成", f"已导出: {path}\n{note}")
 
     def adjustment_configs(self) -> list[AdjustmentConfig]:
@@ -1004,10 +1007,17 @@ def default_export_filename(results: list[FileResult]) -> str:
 
 def default_export_path(results: list[FileResult]) -> str:
     filename = default_export_filename(results)
-    desktop = Path.home() / "Desktop"
-    if desktop.exists():
-        return str(desktop / filename)
+    export_dir = default_export_dir()
+    if export_dir:
+        return str(export_dir / filename)
     return filename
+
+
+def default_export_dir() -> Path | None:
+    desktop = Path.home() / "Desktop"
+    if not desktop.exists():
+        return None
+    return desktop / "银行流水解析结果"
 
 
 def safe_filename_part(value: str) -> str:
@@ -1607,6 +1617,17 @@ def default_recent_month_range() -> tuple[QDate, QDate]:
     start = end_month.addMonths(-5)
     end = QDate(end_month.year(), end_month.month(), end_month.daysInMonth())
     return start, end
+
+
+def open_income_proof_form(json_path: Path) -> bool:
+    launcher = Path(r"D:\report workflow\启动收入佐证填表.bat")
+    if not launcher.exists():
+        return False
+    subprocess.Popen(
+        ["cmd", "/c", "start", "", str(launcher), str(json_path)],
+        cwd=str(launcher.parent),
+    )
+    return True
 
 
 def main():

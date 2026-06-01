@@ -1553,8 +1553,9 @@ def money_wan(value: Decimal | None) -> str:
 def default_recent_month_range() -> tuple[QDate, QDate]:
     today = QDate.currentDate()
     month_start = QDate(today.year(), today.month(), 1)
-    start = month_start.addMonths(-5)
-    end = QDate(today.year(), today.month(), today.daysInMonth())
+    end_month = month_start.addMonths(-1)
+    start = end_month.addMonths(-5)
+    end = QDate(end_month.year(), end_month.month(), end_month.daysInMonth())
     return start, end
 
 

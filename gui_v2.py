@@ -35,6 +35,7 @@ from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adj
 from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.generic_pdf import extract_generic_pdf
+from bankflow_v2.income_proof_export import write_income_proof_input
 from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import Issue, money, monthly_summaries, sort_transactions, summarize
 
@@ -48,6 +49,14 @@ ACCOUNT_NAME_PATTERNS = (
     r"户主\s*[:：]\s*([^\s，,]+)",
     r"Account Name\s*[:：]\s*([^\s，,]+)",
 )
+ACCOUNT_NO_PATTERNS = (
+    r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+    r"账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+    r"账户\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+    r"卡号\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+    r"银行卡号\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+    r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+)
 
 
 @dataclass
@@ -55,11 +64,14 @@ class FileResult:
     path: Path
     bank_id: str
     bank_label: str
+    bank_confidence: int
+    bank_reason: str
     summary: object
     transactions: list
     status: str
     message: str
     account_name: str = ""
+    account_no: str = ""
 
 
 class DropTable(QTableWidget):
@@ -195,6 +207,7 @@ class Worker(QThread):
                 detection = type("Detection", (), {
                     "bank_id": "excel",
                     "label": "Excel导入",
+                    "confidence": 100,
                     "reason": "Excel文件导入",
                 })()
             else:
@@ -203,6 +216,7 @@ class Worker(QThread):
             try:
                 transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
                 account_name = extract_account_name(path)
+                account_no = extract_account_no(path)
                 original_count = len(transactions)
                 transactions = self._filter_transactions(transactions)
                 for tx in transactions:
@@ -225,17 +239,20 @@ class Worker(QThread):
                         path,
                         detection.bank_id,
                         bank_label,
+                        detection.confidence,
+                        detection.reason,
                         file_summary,
                         transactions,
                         status,
                         message,
                         account_name,
+                        account_no,
                     )
                 )
             except Exception as exc:
                 issue = Issue("需复核", path.name, "", f"解析失败: {exc}")
                 all_issues.append(issue)
-                results.append(FileResult(path, detection.bank_id, detection.label, summarize([]), [], "需复核", str(exc), extract_account_name(path)))
+                results.append(FileResult(path, detection.bank_id, detection.label, detection.confidence, detection.reason, summarize([]), [], "需复核", str(exc), extract_account_name(path), extract_account_no(path)))
 
         self.finished.emit(results, all_issues)
 
@@ -276,13 +293,16 @@ class MainWindow(QMainWindow):
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
         export = QPushButton("导出 Excel")
+        export_income_json = QPushButton("导出佐证JSON")
         run.setObjectName("primaryButton")
         export.setObjectName("exportButton")
+        export_income_json.setObjectName("exportButton")
         add_files.clicked.connect(self.add_files)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
         export.clicked.connect(self.export_excel)
+        export_income_json.clicked.connect(self.export_income_proof_json)
 
         self.date_filter = QCheckBox("筛选日期")
         self.date_filter.setChecked(True)
@@ -318,6 +338,7 @@ class MainWindow(QMainWindow):
         toolbar.addSpacing(14)
         toolbar.addWidget(date_filter_panel)
         toolbar.addStretch(1)
+        toolbar.addWidget(export_income_json)
         toolbar.addWidget(export)
 
         self.income_adjust = QCheckBox("启用收入调整（微信）")
@@ -908,6 +929,20 @@ class MainWindow(QMainWindow):
         write_workbook(path, self.results, self.issues, self.adjustment_configs())
         QMessageBox.information(self, "完成", f"已导出: {path}")
 
+    def export_income_proof_json(self):
+        if not self.results:
+            QMessageBox.information(self, "提示", "请先处理流水后再导出。")
+            return
+        default_path = Path(default_export_path(self.results)).with_suffix(".income_proof.json")
+        file_name, _ = QFileDialog.getSaveFileName(self, "导出流水佐证 JSON", str(default_path), "JSON 文件 (*.json)")
+        if not file_name:
+            return
+        path = Path(file_name)
+        if path.suffix.lower() != ".json":
+            path = path.with_suffix(".json")
+        write_income_proof_input(path, self.results)
+        QMessageBox.information(self, "完成", f"已导出: {path}\n客户、单位等字段仍需人工补充；未识别到的账号需人工补充。")
+
     def adjustment_configs(self) -> list[AdjustmentConfig]:
         return [
             AdjustmentConfig(
@@ -980,12 +1015,33 @@ def extract_account_name(path: Path) -> str:
     return ""
 
 
+def extract_account_no(path: Path) -> str:
+    if path.suffix.lower() == ".pdf":
+        return extract_pdf_account_no(path)
+    if path.suffix.lower() in (".xlsx", ".xlsm"):
+        return extract_excel_account_no(path)
+    return ""
+
+
 def extract_pdf_account_name(path: Path) -> str:
     try:
         with pdfplumber.open(str(path)) as pdf:
             if not pdf.pages:
                 return ""
             return parse_account_name(pdf.pages[0].extract_text() or "")
+    except Exception:
+        return ""
+
+
+def extract_pdf_account_no(path: Path) -> str:
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            if not pdf.pages:
+                return ""
+            chunks = []
+            for page in pdf.pages[:2]:
+                chunks.append(page.extract_text() or "")
+            return parse_account_no("\n".join(chunks))
     except Exception:
         return ""
 
@@ -1005,11 +1061,51 @@ def extract_excel_account_name(path: Path) -> str:
         return ""
 
 
+def extract_excel_account_no(path: Path) -> str:
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            worksheet = workbook.worksheets[0]
+            chunks = []
+            for row in worksheet.iter_rows(min_row=1, max_row=30, values_only=True):
+                chunks.append(" ".join(str(cell or "") for cell in row))
+            return parse_account_no("\n".join(chunks))
+        finally:
+            workbook.close()
+    except Exception:
+        return ""
+
+
 def parse_account_name(text: str) -> str:
     for pattern in ACCOUNT_NAME_PATTERNS:
         match = re.search(pattern, text)
         if match:
             return match.group(1).strip()
+    return ""
+
+
+def normalize_account_no(value: str) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def valid_account_no(value: str) -> bool:
+    return 12 <= len(value) <= 22
+
+
+def parse_account_no(text: str) -> str:
+    header_lines = []
+    for raw_line in (text or "").splitlines()[:80]:
+        line = raw_line.strip()
+        if not line or "对方账号" in line or "对手账号" in line:
+            continue
+        header_lines.append(line)
+    header_text = "\n".join(header_lines)
+    for pattern in ACCOUNT_NO_PATTERNS:
+        match = re.search(pattern, header_text, re.I)
+        if match:
+            account_no = normalize_account_no(match.group(1))
+            if valid_account_no(account_no):
+                return account_no
     return ""
 
 

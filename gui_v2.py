@@ -50,12 +50,12 @@ ACCOUNT_NAME_PATTERNS = (
     r"Account Name\s*[:：]\s*([^\s，,]+)",
 )
 ACCOUNT_NO_PATTERNS = (
-    r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
-    r"账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
-    r"账户\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
-    r"卡号\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
-    r"银行卡号\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
-    r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s-]{10,30}[0-9])",
+    r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"账户\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"卡号\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"银行卡号\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
 )
 
 
@@ -1096,7 +1096,7 @@ def normalize_account_no(value: str) -> str:
 
 
 def valid_account_no(value: str) -> bool:
-    return 12 <= len(value) <= 22
+    return 8 <= len(value) <= 22
 
 
 def parse_account_no(text: str) -> str:

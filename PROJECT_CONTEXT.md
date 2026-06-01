@@ -201,12 +201,36 @@ python tools\regression.py --all
 D:\OneDrive\应用\remotely-save\Note Data\Vibe Coding\PDF流水
 ```
 
+## 2026-06-01 当前收入佐证集成状态
+
+已完成：
+
+1. GUI 已支持按流水类型区分个人、微信、对公。
+2. 已新增收入佐证 JSON 导出：`bankflow_v2/income_proof_export.py`。
+3. 默认日期范围已改为近 6 个完整月份。
+4. 账号识别已支持明确标签后的 8-22 位账号。
+5. 民生对公 9 位账号可识别，例如 `158040883`。
+6. 同一流水类型下同一账号拆成多份 PDF 时，导出 JSON 的 `accounts[]` 只保留一组。
+7. 账户去重不影响交易明细、月度汇总和金额计算。
+
+最近本地提交：
+
+```text
+988f56f Deduplicate income proof accounts
+06b43fe Allow short labeled corporate account numbers
+c0fe7f3 Group GUI bank flows by income proof type
+2d71713 Use previous six complete months by default
+4c8f852 Add income proof export and account review metadata
+```
+
+注意：当前源码已更新，但之前用户要求“先不打包 exe”，所以 `dist\BankFlowGUI\BankFlowGUI.exe` 不一定包含这些最新改动。
+
 ## 下一步方向
 
 当前优先方向：
 
-1. 新增标准 JSON 导出。
-2. 新增收入佐证 Word 填写。
-3. GUI 增加导出收入佐证 Word 的入口。
-4. 保持现有银行解析器和 Excel 导出稳定。
-5. 为 JSON 和 Word 输出补充测试。
+1. 用源码 GUI 跑完整收入佐证 JSON 端到端测试。
+2. 确认吕子龙样本中民生对公同账号只导出一组账户。
+3. 与 `D:\report workflow` 的 Word 自动生成 GUI 联调。
+4. 稳定后再决定是否重新打包 exe。
+5. 保持现有银行解析器和 Excel 导出稳定。

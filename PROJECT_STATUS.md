@@ -1,6 +1,6 @@
 # PDF流水项目当前状态
 
-更新时间：2026-05-31
+更新时间：2026-06-01
 
 ## 当前仓库
 
@@ -22,10 +22,10 @@ work/2026-05-31-flow-adjustment
 origin/work/2026-05-31-flow-adjustment
 ```
 
-当前基础提交：
+当前最新本地提交：
 
 ```text
-44a1d24 Add BOC corporate parser and delivery notes
+988f56f Deduplicate income proof accounts
 ```
 
 当前本地文档变更：
@@ -33,6 +33,7 @@ origin/work/2026-05-31-flow-adjustment
 - `PROJECT_CONTEXT.md` 已轻量整理为项目入口。
 - `PROJECT_STATUS.md` 记录当前最新状态。
 - `INTEGRATION_CONTRACT.md` 记录与车贷报告自动化总项目的集成契约。
+- `技术变更记录.md` 已补充 2026-06-01 收入佐证 JSON、对公账号识别与账户去重。
 
 ## 当前能力概览
 
@@ -50,6 +51,7 @@ origin/work/2026-05-31-flow-adjustment
 - 流水调整/测算层。
 - GUI。
 - Excel 导出。
+- 收入佐证 JSON 导出。
 - 统一回归测试。
 - PyInstaller 打包。
 
@@ -118,6 +120,31 @@ origin/work/2026-05-31-flow-adjustment
 - 日期筛选模块。
 - 左主内容区 + 右调整面板。
 - 摘要仪表板。
+
+### 收入佐证 JSON 接入
+
+已实现：
+
+- GUI 可导出收入佐证 JSON。
+- 默认按近 6 个完整月份筛选。
+- 个人、微信、对公流水分组。
+- 民生对公可识别为 `cmbc_corp`。
+- 明确标签后的 8-22 位账号可识别。
+- 民生对公 9 位账号 `158040883` 已验证可识别。
+- 同一类型同一账号的多份 PDF 在 `accounts[]` 中只保留一组。
+- 账户去重不影响交易明细和月度汇总。
+
+最近相关提交：
+
+```text
+988f56f Deduplicate income proof accounts
+06b43fe Allow short labeled corporate account numbers
+c0fe7f3 Group GUI bank flows by income proof type
+2d71713 Use previous six complete months by default
+4c8f852 Add income proof export and account review metadata
+```
+
+注意：源码已更新，打包版 exe 未确认包含这些改动。
 - 调整预览结果卡。
 - 下划线风格 tabs。
 

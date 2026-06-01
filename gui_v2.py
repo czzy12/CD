@@ -35,7 +35,7 @@ from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adj
 from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.generic_pdf import extract_generic_pdf
-from bankflow_v2.income_proof_export import write_income_proof_input
+from bankflow_v2.income_proof_export import flow_type as income_flow_type, write_income_proof_input
 from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import Issue, money, monthly_summaries, sort_transactions, summarize
 
@@ -222,6 +222,7 @@ class Worker(QThread):
                 for tx in transactions:
                     tx.source_file = path.name
                     tx.bank_label = bank_label
+                    tx.flow_type = income_flow_type(detection.bank_id)
                 file_summary = summarize(transactions, path.name)
                 all_issues.extend(file_summary.issues)
                 review_issues = [issue for issue in file_summary.issues if issue.level == "需复核"]
@@ -822,6 +823,7 @@ class MainWindow(QMainWindow):
         all_transactions, duplicate_issues = dedupe_transactions([tx for result in self.results for tx in result.transactions])
         shown_issues = self.issues + duplicate_issues
         total = summarize(all_transactions, "全部文件")
+        type_counts = flow_type_counts(self.results)
         self.set_metric("files", str(len(self.results)))
         self.set_metric("flows", str(total.count))
         self.set_metric("income", f"{total.income_count} / {money(total.income_sum)}")
@@ -830,7 +832,7 @@ class MainWindow(QMainWindow):
         self.summary_label.setText(
             f"文件 {len(self.results)} 个，流水 {total.count} 笔，收入 {total.income_count} 笔/{money(total.income_sum)}，"
             f"支出 {total.expense_count} 笔/{money(total.expense_sum)}，净额 {money(total.net)}，"
-            f"异常提示 {len(shown_issues)} 条。"
+            f"异常提示 {len(shown_issues)} 条。类型：{type_counts}。"
         )
 
         self.adjustment_result = apply_adjustments(all_transactions, self.adjustment_configs())
@@ -852,6 +854,7 @@ class MainWindow(QMainWindow):
             overview_rows.append(
                 [
                     result.path.name,
+                    result_flow_type(result),
                     result.bank_label or BANK_LABELS.get(result.bank_id, ""),
                     s.count,
                     s.income_count,
@@ -867,7 +870,7 @@ class MainWindow(QMainWindow):
             )
         self._set_table(
             self.overview,
-            ["文件", "银行", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额", "状态", "说明"],
+            ["文件", "流水类型", "银行", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额", "状态", "说明"],
             overview_rows,
         )
 
@@ -877,6 +880,7 @@ class MainWindow(QMainWindow):
                 [
                     tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
                     getattr(tx, "source_file", ""),
+                    transaction_flow_type(tx),
                     getattr(tx, "bank_label", tx.bank),
                     money(tx.income),
                     money(tx.expense),
@@ -887,7 +891,7 @@ class MainWindow(QMainWindow):
                     tx.raw_balance,
                 ]
             )
-        self._set_table(self.details, ["时间", "文件", "银行", "收入", "支出", "余额", "状态", "提示", "原始金额", "原始余额"], detail_rows)
+        self._set_table(self.details, ["时间", "文件", "流水类型", "银行", "收入", "支出", "余额", "状态", "提示", "原始金额", "原始余额"], detail_rows)
 
         issue_rows = [[issue.level, issue.source, issue.time, issue.message, issue.raw_amount, issue.raw_balance] for issue in shown_issues]
         self._set_table(self.issue_table, ["级别", "来源", "时间", "提示", "原始金额", "原始余额"], issue_rows)
@@ -941,7 +945,10 @@ class MainWindow(QMainWindow):
         if path.suffix.lower() != ".json":
             path = path.with_suffix(".json")
         write_income_proof_input(path, self.results)
-        QMessageBox.information(self, "完成", f"已导出: {path}\n客户、单位等字段仍需人工补充；未识别到的账号需人工补充。")
+        note = "客户、单位等字段仍需人工补充；未识别到的账号需人工补充。"
+        if any(result_flow_type(result) == "对公" for result in self.results):
+            note += "\n已识别到对公流水：JSON 会导出为 corporate_flow，但默认不启用，需后续人工确认。"
+        QMessageBox.information(self, "完成", f"已导出: {path}\n{note}")
 
     def adjustment_configs(self) -> list[AdjustmentConfig]:
         return [
@@ -1121,6 +1128,7 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], a
         overview_rows.append(
             [
                 result.path.name,
+                result_flow_type(result),
                 result.bank_label,
                 s.count,
                 s.income_count,
@@ -1135,16 +1143,16 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], a
             ]
         )
         all_transactions.extend(result.transactions)
-    write_sheet(overview, ["文件", "银行", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额", "状态", "说明"], overview_rows)
+    write_sheet(overview, ["文件", "流水类型", "银行", "流水笔数", "收入笔数", "收入", "支出笔数", "支出", "净额", "期初余额", "期末余额", "状态", "说明"], overview_rows)
 
     all_transactions, duplicate_issues = dedupe_transactions(all_transactions)
     shown_issues = issues + duplicate_issues
-    monthly_rows = build_monthly_rows(all_transactions, for_excel=True)
+    monthly_rows = build_monthly_display_rows(all_transactions, AdjustmentResult(), for_excel=True)
     write_sheet(monthly, monthly_headers(False), monthly_rows)
 
     adjustment_result = apply_adjustments(all_transactions, adjustment_configs or [])
     adjusted = wb.create_sheet("调整后月度统计")
-    write_sheet(adjusted, monthly_headers(True), build_adjusted_rows(adjustment_result, for_excel=True))
+    write_sheet(adjusted, monthly_headers(True), [["全部"] + row for row in build_adjusted_rows(adjustment_result, for_excel=True)])
 
     parameters = wb.create_sheet("调整参数")
     write_sheet(parameters, ["参数", "值"], adjustment_result.parameters)
@@ -1167,6 +1175,7 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], a
             [
                 tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
                 getattr(tx, "source_file", ""),
+                transaction_flow_type(tx),
                 getattr(tx, "bank_label", tx.bank),
                 float(tx.income),
                 float(tx.expense),
@@ -1177,7 +1186,7 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], a
                 tx.raw_balance,
             ]
         )
-    write_sheet(details, ["时间", "文件", "银行", "收入", "支出", "余额", "状态", "提示", "原始金额", "原始余额"], detail_rows)
+    write_sheet(details, ["时间", "文件", "流水类型", "银行", "收入", "支出", "余额", "状态", "提示", "原始金额", "原始余额"], detail_rows)
 
     issue_sheet = wb.create_sheet("异常提示")
     issue_rows = [[issue.level, issue.source, issue.time, issue.message, issue.raw_amount, issue.raw_balance] for issue in shown_issues]
@@ -1227,20 +1236,47 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
     return unique, issues
 
 
+def result_flow_type(result: FileResult) -> str:
+    return income_flow_type(result.bank_id)
+
+
+def transaction_flow_type(tx) -> str:
+    value = getattr(tx, "flow_type", "")
+    return value or "个人"
+
+
+def flow_type_counts(results: list[FileResult]) -> str:
+    counts = {"个人": 0, "微信": 0, "对公": 0}
+    for result in results:
+        counts[result_flow_type(result)] = counts.get(result_flow_type(result), 0) + 1
+    return "，".join(f"{key}{value}份" for key, value in counts.items() if value) or "无"
+
+
+def grouped_transactions(transactions: list) -> list[tuple[str, list]]:
+    order = ["个人", "微信", "对公"]
+    groups = []
+    for flow_type in order:
+        items = [tx for tx in transactions if transaction_flow_type(tx) == flow_type]
+        if items:
+            groups.append((flow_type, items))
+    return groups
+
+
 def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list]:
     rows = []
     for month, s in monthly_summaries(transactions):
-        rows.append(_summary_row(month, s, for_excel))
+        rows.append(_summary_row("", month, s, for_excel))
 
     if rows:
         total = summarize(transactions, "总计")
-        rows.append(_summary_row("总计", total, for_excel))
+        rows.append(_summary_row("", "总计", total, for_excel))
         rows.append(_monthly_average_row(total, len(rows) - 1, for_excel, adjusted=False))
     return rows
 
 
 def monthly_headers(adjusted: bool = False) -> list[str]:
     headers = [
+        "流水类型",
         "月份",
         "收入笔数",
         "收入(万元)",
@@ -1265,8 +1301,20 @@ def monthly_headers(adjusted: bool = False) -> list[str]:
 
 def build_monthly_display_rows(transactions: list, adjustment: AdjustmentResult, for_excel: bool = False) -> list[list]:
     if not adjustment.enabled:
-        return build_monthly_rows(transactions, for_excel)
-    return build_adjusted_rows(adjustment, for_excel)
+        rows = []
+        groups = grouped_transactions(transactions)
+        for flow_type, items in groups:
+            group_rows = build_monthly_rows(items, for_excel)
+            for row in group_rows:
+                row[0] = flow_type
+            rows.extend(group_rows)
+        if len(groups) > 1:
+            total_rows = build_monthly_rows(transactions, for_excel)
+            for row in total_rows:
+                row[0] = "全部"
+            rows.extend(total_rows)
+        return rows
+    return [["全部"] + row for row in build_adjusted_rows(adjustment, for_excel)]
 
 
 def build_adjusted_rows(adjustment: AdjustmentResult, for_excel: bool = False) -> list[list]:
@@ -1367,7 +1415,7 @@ def _monthly_average_row(total, month_count: int, for_excel: bool, adjusted: boo
         expense_value = money_wan(expense_average)
     if adjusted:
         return ["月均", "", income_value, "", expense_value, "", "", "", "", "", "", "", "", "", f"按 {month_count} 个月平均"]
-    return ["月均", "", income_value, "", expense_value, "", "", "", ""]
+    return ["", "月均", "", income_value, "", expense_value, "", "", "", ""]
 
 
 def balance_delta(opening: Decimal | None, closing: Decimal | None) -> Decimal | None:
@@ -1513,9 +1561,10 @@ def _combined_summary_row(
     ]
 
 
-def _summary_row(label: str, s, for_excel: bool) -> list:
+def _summary_row(flow_type: str, label: str, s, for_excel: bool) -> list:
     if for_excel:
         return [
+            flow_type,
             label,
             s.income_count,
             float(to_wan(s.income_sum)),
@@ -1527,6 +1576,7 @@ def _summary_row(label: str, s, for_excel: bool) -> list:
             s.count,
         ]
     return [
+        flow_type,
         label,
         s.income_count,
         money_wan(s.income_sum),

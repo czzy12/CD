@@ -83,6 +83,23 @@ def account_from_result(result) -> dict:
     }
 
 
+def unique_accounts(results: list) -> list[dict]:
+    accounts: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for result in results:
+        account = account_from_result(result)
+        account_no = account.get("account_no", "")
+        if not account_no:
+            accounts.append(account)
+            continue
+        key = (account.get("flow_type", ""), account_no)
+        if key in seen:
+            continue
+        seen.add(key)
+        accounts.append(account)
+    return accounts
+
+
 def latest_balance_wan(results: Iterable) -> float | None:
     total = Decimal("0")
     found = False
@@ -107,7 +124,7 @@ def flow_block(results: list) -> dict:
     total = summarize(selected_transactions, "收入佐证导出")
 
     return {
-        "accounts": [account_from_result(result) for result in results[:5]],
+        "accounts": unique_accounts(results)[:5],
         "latest_balance_wan": latest_balance_wan(results),
         "summary": {
             "income_count_total": int(total.income_count),

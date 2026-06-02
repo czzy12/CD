@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable
 
-from .summary import monthly_summaries, summarize
+from .summary import Summary, monthly_summaries, summarize
 
 
 CENT = Decimal("0.01")
@@ -100,16 +100,109 @@ def unique_accounts(results: list) -> list[dict]:
     return accounts
 
 
+def result_latest_time(result) -> datetime:
+    transactions = getattr(result, "transactions", []) or []
+    if not transactions:
+        return datetime.min
+    return max(tx.transaction_time for tx in transactions)
+
+
+def balance_group_key(result) -> tuple[str, str]:
+    account_no = getattr(result, "account_no", "") or ""
+    if account_no:
+        return (flow_type(getattr(result, "bank_id", "")), account_no)
+    source_path = getattr(getattr(result, "path", None), "name", "")
+    return (flow_type(getattr(result, "bank_id", "")), source_path)
+
+
 def latest_balance_wan(results: Iterable) -> float | None:
-    total = Decimal("0")
-    found = False
+    latest_by_account: dict[tuple[str, str], tuple[datetime, Decimal]] = {}
     for result in results:
         summary = getattr(result, "summary", None)
         closing = getattr(summary, "closing_balance", None)
-        if closing is not None:
-            total += closing
-            found = True
-    return to_wan(total) if found else None
+        if closing is None:
+            continue
+        key = balance_group_key(result)
+        latest_time = result_latest_time(result)
+        previous = latest_by_account.get(key)
+        if previous is None or latest_time >= previous[0]:
+            latest_by_account[key] = (latest_time, closing)
+    if not latest_by_account:
+        return None
+    total = sum((closing for _latest_time, closing in latest_by_account.values()), Decimal("0"))
+    return to_wan(total)
+
+
+def copy_summary(summary: Summary) -> Summary:
+    return Summary(
+        count=summary.count,
+        income_count=summary.income_count,
+        income_sum=summary.income_sum,
+        expense_count=summary.expense_count,
+        expense_sum=summary.expense_sum,
+        net=summary.net,
+        opening_balance=summary.opening_balance,
+        closing_balance=summary.closing_balance,
+        issues=list(summary.issues),
+    )
+
+
+def balance_wechat_summaries(month_pairs: list[tuple[str, Summary]]) -> dict[str, Summary]:
+    balanced = {month: copy_summary(summary) for month, summary in month_pairs}
+    if not balanced:
+        return balanced
+    months = list(balanced)
+    rng_seed = "|".join(
+        [
+            "wechat_default_expense",
+            ",".join(months),
+            ",".join(str(balanced[month].income_sum) for month in months),
+            ",".join(str(balanced[month].expense_sum) for month in months),
+        ]
+    )
+    import random
+
+    rng = random.Random(rng_seed)
+    for index, month in enumerate(months):
+        summary = balanced[month]
+        if summary.income_sum <= Decimal("0"):
+            target_net = Decimal("0.00")
+        elif index == 0 or index == len(months) - 1:
+            target_net = min(Decimal("0.01"), summary.income_sum).quantize(CENT)
+        else:
+            random_net = (Decimal(rng.randint(2, 100)) / Decimal("100")).quantize(CENT)
+            target_net = min(random_net, summary.income_sum).quantize(CENT)
+        summary.expense_sum = max(summary.income_sum - target_net, Decimal("0.00")).quantize(CENT)
+        summary.net = (summary.income_sum - summary.expense_sum).quantize(CENT)
+    return balanced
+
+
+def combined_month_summaries(results: list, selected_months: set[str]) -> list[tuple[str, Summary]]:
+    normal_transactions = []
+    wechat_transactions = []
+    for result in results:
+        target = wechat_transactions if flow_type(getattr(result, "bank_id", "")) == "微信" else normal_transactions
+        target.extend(getattr(result, "transactions", []) or [])
+
+    normal_by_month = {month: summary for month, summary in monthly_summaries(normal_transactions) if month in selected_months}
+    wechat_pairs = [(month, summary) for month, summary in monthly_summaries(wechat_transactions) if month in selected_months]
+    wechat_by_month = balance_wechat_summaries(wechat_pairs)
+    rows = []
+    for month in sorted(selected_months):
+        normal = normal_by_month.get(month, Summary())
+        wechat = wechat_by_month.get(month, Summary())
+        rows.append((
+            month,
+            Summary(
+                count=normal.count + wechat.count,
+                income_count=normal.income_count + wechat.income_count,
+                income_sum=(normal.income_sum + wechat.income_sum).quantize(CENT),
+                expense_count=normal.expense_count + wechat.expense_count,
+                expense_sum=(normal.expense_sum + wechat.expense_sum).quantize(CENT),
+                net=(normal.net + wechat.net).quantize(CENT),
+            ),
+        ))
+    return rows
 
 
 def flow_block(results: list) -> dict:
@@ -118,10 +211,16 @@ def flow_block(results: list) -> dict:
     month_pairs = month_pairs[-6:]
     # Rebuild the transaction slice by month so totals match the exported rows.
     months = {month for month, _summary in month_pairs}
-    selected_transactions = [
-        tx for tx in transactions if tx.transaction_time.strftime("%Y-%m") in months
-    ]
-    total = summarize(selected_transactions, "收入佐证导出")
+    month_pairs = combined_month_summaries(results, months)
+    total = Summary()
+    for _month, summary in month_pairs:
+        total.count += summary.count
+        total.income_count += summary.income_count
+        total.income_sum += summary.income_sum
+        total.expense_count += summary.expense_count
+        total.expense_sum += summary.expense_sum
+    total.income_sum = total.income_sum.quantize(CENT)
+    total.expense_sum = total.expense_sum.quantize(CENT)
 
     return {
         "accounts": unique_accounts(results)[:5],

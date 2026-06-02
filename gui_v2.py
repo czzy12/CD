@@ -36,9 +36,9 @@ from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adj
 from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
 from bankflow_v2.excel_input import extract_excel_transactions
 from bankflow_v2.generic_pdf import extract_generic_pdf
-from bankflow_v2.income_proof_export import flow_type as income_flow_type, write_income_proof_input
+from bankflow_v2.income_proof_export import balance_wechat_summaries, flow_type as income_flow_type, write_income_proof_input
 from bankflow_v2.pipeline import extract_transactions
-from bankflow_v2.summary import Issue, money, monthly_summaries, sort_transactions, summarize
+from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_transactions, summarize
 
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
@@ -52,6 +52,8 @@ ACCOUNT_NAME_PATTERNS = (
 )
 ACCOUNT_NO_PATTERNS = (
     r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"账号/卡号\s*(?:Account/Card No\.?)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"Account/Card\s*No\.?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
     r"账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
     r"账户\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
     r"卡号\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
@@ -1272,13 +1274,19 @@ def grouped_transactions(transactions: list) -> list[tuple[str, list]]:
     return groups
 
 
-def build_monthly_rows(transactions: list, for_excel: bool = False) -> list[list]:
+def build_monthly_rows(transactions: list, for_excel: bool = False, balance_wechat: bool = False) -> list[list]:
     rows = []
-    for month, s in monthly_summaries(transactions):
+    month_pairs = monthly_summaries(transactions)
+    if balance_wechat:
+        month_pairs = list(balance_wechat_summaries(month_pairs).items())
+    for month, s in month_pairs:
         rows.append(_summary_row("", month, s, for_excel))
 
     if rows:
-        total = summarize(transactions, "总计")
+        if balance_wechat:
+            total = sum_summaries([s for _month, s in month_pairs])
+        else:
+            total = summarize(transactions, "总计")
         rows.append(_summary_row("", "总计", total, for_excel))
         rows.append(_monthly_average_row(total, len(rows) - 1, for_excel, adjusted=False))
     return rows
@@ -1314,17 +1322,51 @@ def build_monthly_display_rows(transactions: list, adjustment: AdjustmentResult,
         rows = []
         groups = grouped_transactions(transactions)
         for flow_type, items in groups:
-            group_rows = build_monthly_rows(items, for_excel)
+            group_rows = build_monthly_rows(items, for_excel, balance_wechat=flow_type == "微信")
             for row in group_rows:
                 row[0] = flow_type
             rows.extend(group_rows)
         if len(groups) > 1:
-            total_rows = build_monthly_rows(transactions, for_excel)
+            total_rows = build_combined_monthly_rows(groups, for_excel)
             for row in total_rows:
                 row[0] = "全部"
             rows.extend(total_rows)
         return rows
     return [["全部"] + row for row in build_adjusted_rows(adjustment, for_excel)]
+
+
+def build_combined_monthly_rows(groups: list[tuple[str, list]], for_excel: bool = False) -> list[list]:
+    summaries_by_month: dict[str, list[Summary]] = {}
+    for flow_type, items in groups:
+        month_pairs = monthly_summaries(items)
+        if flow_type == "微信":
+            month_pairs = list(balance_wechat_summaries(month_pairs).items())
+        for month, summary in month_pairs:
+            summaries_by_month.setdefault(month, []).append(summary)
+
+    rows = []
+    combined_pairs = [(month, sum_summaries(summaries)) for month, summaries in sorted(summaries_by_month.items())]
+    for month, summary in combined_pairs:
+        rows.append(_summary_row("", month, summary, for_excel))
+    if rows:
+        total = sum_summaries([summary for _month, summary in combined_pairs])
+        rows.append(_summary_row("", "总计", total, for_excel))
+        rows.append(_monthly_average_row(total, len(rows) - 1, for_excel, adjusted=False))
+    return rows
+
+
+def sum_summaries(summaries: list[Summary]) -> Summary:
+    total = Summary()
+    for summary in summaries:
+        total.count += summary.count
+        total.income_count += summary.income_count
+        total.income_sum += summary.income_sum
+        total.expense_count += summary.expense_count
+        total.expense_sum += summary.expense_sum
+    total.income_sum = total.income_sum.quantize(Decimal("0.01"))
+    total.expense_sum = total.expense_sum.quantize(Decimal("0.01"))
+    total.net = (total.income_sum - total.expense_sum).quantize(Decimal("0.01"))
+    return total
 
 
 def build_adjusted_rows(adjustment: AdjustmentResult, for_excel: bool = False) -> list[list]:

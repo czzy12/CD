@@ -100,6 +100,12 @@ def detect_bank_type(pdf_path: str) -> Detection:
     ):
         return Detection("boc_corp", BANK_LABELS["boc_corp"], 98, "命中中国银行对公活期明细特征")
 
+    if (
+        "中国邮政储蓄银行账户交易明细专用回单" in header_compact
+        and "支出金额收入金额余额" in compact
+    ):
+        return Detection("psbc", BANK_LABELS["psbc"], 98, "命中邮储对公账户交易明细专用回单特征")
+
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),
         ("icbc_corp", "凭证号对方账号交易时间借贷标志", 98),

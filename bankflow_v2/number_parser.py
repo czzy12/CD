@@ -58,6 +58,7 @@ def amount_candidates(raw: str | None) -> list[Decimal]:
         int_part, frac = clean.split(".", 1)
         matches.append(f"{sign}{int_part}.{frac[:2]}")
         matches.append(f"{sign}{int_part}.{frac[0]}{frac[2]}")
+        matches.append(f"{sign}{int_part}.{frac[1:3]}")
     values: list[Decimal] = []
     seen: set[Decimal] = set()
 
@@ -123,6 +124,7 @@ def balance_candidates(raw: str | None) -> list[Decimal]:
             int_part, frac = clean.split(".", 1)
             matches.append(f"{int_part}.{frac[:2]}")
             matches.append(f"{int_part}.{frac[0]}{frac[2]}")
+            matches.append(f"{int_part}.{frac[1:3]}")
 
     values: list[Decimal] = []
     seen: set[Decimal] = set()

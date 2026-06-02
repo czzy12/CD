@@ -53,6 +53,11 @@ def _row_is_transaction(row: list) -> bool:
     return parse_icbc_time(row[DATE_COL]) is not None
 
 
+def _row_is_non_current_account(row: list) -> bool:
+    account_type_text = "".join(_clean_cell(cell) for cell in row[1:4])
+    return "活期" not in account_type_text and ("定期" in account_type_text or "通知存款" in account_type_text)
+
+
 def extract_icbc(pdf_path: str) -> list[Transaction]:
     rows: list[tuple[int, int, list, datetime]] = []
 
@@ -61,6 +66,8 @@ def extract_icbc(pdf_path: str) -> list[Transaction]:
             for table in page.extract_tables():
                 for row_index, row in enumerate(table, start=1):
                     if not row or not _row_is_transaction(row):
+                        continue
+                    if _row_is_non_current_account(row):
                         continue
 
                     tx_time = parse_icbc_time(row[DATE_COL])

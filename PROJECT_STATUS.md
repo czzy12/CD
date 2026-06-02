@@ -1,6 +1,6 @@
 ﻿# PDF流水项目当前状态
 
-更新时间：2026-06-01
+更新时间：2026-06-02
 
 ## 当前仓库
 
@@ -25,8 +25,8 @@ origin/work/2026-05-31-flow-adjustment
 当前最新本地提交：
 
 ```text
-HEAD Open income proof form from flow GUI
-988f56f Deduplicate income proof accounts
+HEAD Support PSBC corporate statements
+7f71879 Refine income proof export balances and WeChat output
 ```
 
 当前本地文档变更：
@@ -34,7 +34,7 @@ HEAD Open income proof form from flow GUI
 - `PROJECT_CONTEXT.md` 已轻量整理为项目入口。
 - `PROJECT_STATUS.md` 记录当前最新状态。
 - `INTEGRATION_CONTRACT.md` 记录与车贷报告自动化总项目的集成契约。
-- `技术变更记录.md` 已补充 2026-06-01 收入佐证 JSON、对公账号识别与账户去重。
+- Obsidian `技术变更记录.md` 已补充 2026-06-02 邮储对公、工行个人强水印活期/定期混排、农行对公倒序/表格账户明细。
 
 ## 当前能力概览
 
@@ -78,12 +78,14 @@ HEAD Open income proof form from flow GUI
 
 - 工商银行个人历史明细。
 - 工商银行个人活期/定期混排。
+- 工商银行个人强水印活期/定期混排，默认统计活期流水，跳过定期/通知存款子账户行。
 - 工商银行对公旧版 A/B。
 - 工商银行企业存款对账单新版 C。
 - 建设银行个人。
 - 建设银行对公活期存款明细账。
 - 农业银行个人。
 - 农业银行对公。
+- 农业银行对公倒序账户明细和表格账户明细。
 - 中国银行对公活期明细。
 - 交通银行 6 列日期版。
 - 交通银行 11 列时间版。
@@ -150,7 +152,7 @@ c0fe7f3 Group GUI bank flows by income proof type
 4c8f852 Add income proof export and account review metadata
 ```
 
-注意：源码已更新，打包版 exe 未确认包含这些改动。
+注意：本次按用户要求不打包 EXE；`启动GUI.bat` 通过 `python gui_v2.py` 启动源码 GUI，因此本地启动 GUI 会使用最新源码。`dist\BankFlowGUI\BankFlowGUI.exe` 不代表当前最新源码状态。
 - 调整预览结果卡。
 - 下划线风格 tabs。
 
@@ -178,13 +180,13 @@ python -m py_compile bankflow_v2\summary.py bankflow_v2\pipeline.py bankflow_v2\
 最近执行：
 
 ```powershell
-python tools\regression.py --all
+python tools\regression.py --all --allow-missing
 ```
 
 结果：
 
 ```text
-19 PASS / 5 FAIL
+22 PASS / 0 FAIL / 5 SKIP
 ```
 
 说明：
@@ -205,7 +207,7 @@ python tools\regression.py --all --allow-missing
 视为样本缺失跳过，目标结果应为：
 
 ```text
-19 PASS / 0 FAIL / 5 SKIP
+22 PASS / 0 FAIL / 5 SKIP
 ```
 
 ## 当前不支持或不作为稳定核心

@@ -39,15 +39,32 @@
     "path": "C:/Users/lenovo/Desktop/流水测试/0526/工商银行历史明细（申请单号：26050110572953314933）.pdf",
     "tags": ["icbc", "personal", "term-account"],
     "expected": {
-      "count": 114,
-      "income_count": 39,
-      "income_sum": "6326210.92",
-      "expense_count": 75,
-      "expense_sum": "6336938.07",
+      "count": 108,
+      "income_count": 36,
+      "income_sum": "4626210.92",
+      "expense_count": 72,
+      "expense_sum": "4636938.07",
       "net": "-10727.15",
       "opening_balance": "19554.61",
       "closing_balance": "8827.46",
-      "issues": 13
+      "issues": 0
+    }
+  },
+  {
+    "name": "工行个人-强水印活期定期混排-王兰",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/0602/王兰  个人流水.pdf",
+    "tags": ["icbc", "personal", "term-account", "watermark"],
+    "expected": {
+      "count": 42,
+      "income_count": 27,
+      "income_sum": "16555043.34",
+      "expense_count": 15,
+      "expense_sum": "16031847.65",
+      "net": "523195.69",
+      "opening_balance": "983.59",
+      "closing_balance": "524179.28",
+      "issues": 0
     }
   },
   {
@@ -64,6 +81,40 @@
       "net": "65.20",
       "opening_balance": "10.57",
       "closing_balance": "75.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农行对公-倒序账户明细-公户0",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/0530流水测试/公户_0.pdf",
+    "tags": ["abc_corp", "corp", "reverse-order"],
+    "expected": {
+      "count": 997,
+      "income_count": 62,
+      "income_sum": "5417769.04",
+      "expense_count": 935,
+      "expense_sum": "5848379.54",
+      "net": "-430610.50",
+      "opening_balance": "641280.58",
+      "closing_balance": "210670.08",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农行对公-表格账户明细-农行公户1",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/0530流水测试/农行 公户(1).pdf",
+    "tags": ["abc_corp", "corp", "table", "reverse-order"],
+    "expected": {
+      "count": 528,
+      "income_count": 107,
+      "income_sum": "5044575.78",
+      "expense_count": 421,
+      "expense_sum": "5046802.40",
+      "net": "-2226.62",
+      "opening_balance": "2611.41",
+      "closing_balance": "384.79",
       "issues": 0
     }
   },

@@ -25,7 +25,6 @@ origin/work/2026-05-31-flow-adjustment
 当前最新本地提交：
 
 ```text
-本轮保存：GUI 可信度和月度显示调整
 当前提交见 git log -1
 ```
 
@@ -35,6 +34,7 @@ origin/work/2026-05-31-flow-adjustment
 - `PROJECT_STATUS.md` 记录当前最新状态。
 - `INTEGRATION_CONTRACT.md` 记录与车贷报告自动化总项目的集成契约。
 - Obsidian `技术变更记录.md` 已补充 2026-06-03 GUI 可信度、月度显示、隐藏流水明细以及待处理兰州银行可信度口径。
+- 2026-06-03：PDF GUI 的“佐证填写”成功路径不再弹出“已导出/已自动打开”提示框；只有无法自动打开 Word 收入佐证填表时才提示。提交：`当前提交见 git log -1`。
 
 ## 当前能力概览
 
@@ -318,3 +318,5 @@ Excel 导出保持不变。
 2. 更新 `技术变更记录.md`。
 3. 涉及银行适配时更新 `银行适配手册.md`。
 4. 涉及总项目接口时更新 `INTEGRATION_CONTRACT.md`。
+
+

@@ -965,15 +965,9 @@ class MainWindow(QMainWindow):
         path = default_path
         path.parent.mkdir(parents=True, exist_ok=True)
         write_income_proof_input(path, self.results)
-        note = "客户、单位等字段仍需人工补充；未识别到的账号需人工补充。"
-        if any(result_flow_type(result) == "对公" for result in self.results):
-            note += "\n已识别到对公流水：JSON 会导出为 corporate_flow，但默认不启用，需后续人工确认。"
         opened = open_income_proof_form(path)
-        if opened:
-            note += "\n\n已自动打开自雇流水佐证填表，并预填该 JSON。"
-        else:
-            note += "\n\n未找到 Word 填写表入口，请手动打开后选择该 JSON。"
-        QMessageBox.information(self, "完成", f"已导出: {path}\n{note}")
+        if not opened:
+            QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到 Word 填写表入口，请手动打开后选择该 JSON。")
 
     def adjustment_configs(self) -> list[AdjustmentConfig]:
         return [

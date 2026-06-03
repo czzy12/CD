@@ -201,41 +201,36 @@ python tools\regression.py --all
 D:\OneDrive\应用\remotely-save\Note Data\Vibe Coding\PDF流水
 ```
 
-## 2026-06-01 当前收入佐证集成状态
+## 2026-06-03 当前 GUI 与可信度状态
 
 已完成：
 
-1. GUI 已支持按流水类型区分个人、微信、对公。
-2. 已新增收入佐证 JSON 导出：`bankflow_v2/income_proof_export.py`。
-3. 默认日期范围已改为近 6 个完整月份。
-4. 账号识别已支持明确标签后的 8-22 位账号。
-5. 民生对公 9 位账号可识别，例如 `158040883`。
-6. 同一流水类型下同一账号拆成多份 PDF 时，导出 JSON 的 `accounts[]` 只保留一组。
-7. 账户去重不影响交易明细、月度汇总和金额计算。
-8. 源码 GUI 按钮已从“导出佐证JSON”改为“佐证填写”：点击后自动保存 `.income_proof.json` 到桌面 `银行流水解析结果` 文件夹，并打开 `D:\report workflow\启动收入佐证填表.bat` 预填该 JSON。
-9. 收入佐证导出期末余额按“流水类型 + 账号”分组，同一账号多份 PDF 只取最新交易日期对应的期末余额。
-10. 微信流水默认输出使用支出平衡口径：收入不动，只调整支出；首月和末月净额为 0.01 元，中间月份净额为随机正数。
-11. 账号识别已支持交通银行 `账号/卡号Account/Card No` 标签。
+1. GUI 顶部汇总栏新增 `可信度` 字段，显示 `高 100% / 中 82% / 低 58%` 这种短格式。
+2. 可信度只在 GUI 显示，不写入 Excel 导出。
+3. `日期范围内没有流水` 只作为异常提示，不参与可信度评分。
+4. 最后两个月都有流水只作为可信度加分项，没有则不扣分。
+5. 微信流水不要求期初/期末余额，避免天然无余额列导致可信度被压到 98%。
+6. GUI 月度统计去掉 `期初余额(万元)`、`期末余额(万元)` 两列；Excel 导出保持原字段。
+7. 启用 `收入调整（微信）` 或 `收支平衡调整（个/公）` 后，GUI 月度表仍先显示按流水类型分组的原始统计，下面再显示 `全部` 调整统计。
+8. GUI 不再显示 `流水明细` tab；Excel 导出仍保留流水明细。
+9. 样本 `公户_8.pdf`、`微信流水_1.pdf` 已验证合并可信度为 `高 100%`。
+10. 未打包 EXE；`启动GUI.bat` 仍通过 `python gui_v2.py` 启动最新源码。
 
-最近本地提交：
+最近验证：
 
 ```text
-HEAD Open income proof form from flow GUI
-988f56f Deduplicate income proof accounts
-06b43fe Allow short labeled corporate account numbers
-c0fe7f3 Group GUI bank flows by income proof type
-2d71713 Use previous six complete months by default
-4c8f852 Add income proof export and account review metadata
+python -m py_compile gui_v2.py
+python tools\regression.py --all --allow-missing
+22 PASS / 0 FAIL / 5 SKIP
 ```
 
-注意：当前源码已更新，但之前用户要求“先不打包 exe”，所以 `dist\BankFlowGUI\BankFlowGUI.exe` 不一定包含这些最新改动。
+注意：当前源码已更新，但用户明确要求没说打包前不要打包 EXE，所以 `dist\BankFlowGUI\BankFlowGUI.exe` 不代表当前最新源码状态。
 
 ## 下一步方向
 
 当前优先方向：
 
-1. 用源码 GUI 点击“佐证填写”跑完整端到端联调。
-2. 确认自动保存 JSON、自动打开 Word 填写表、预填路径均正常。
-3. 确认吕子龙样本中民生对公同账号只导出一组账户。
-4. 稳定后再决定是否重新打包 exe。
-5. 保持现有银行解析器和 Excel 导出稳定。
+1. 继续处理 `D:\Codex data\CD_assets\PDF流水\打包测试\城商行\兰州银行.pdf`：未识别且通用识别也没有流水时，可信度应显示为 `0`，不要显示 21% 这类弱可信分。
+2. 继续保持可信度只做 GUI 提示，不影响导出。
+3. 稳定后再决定是否重新打包 exe。
+4. 保持现有银行解析器和 Excel 导出稳定。

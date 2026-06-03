@@ -42,6 +42,7 @@ from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_t
 
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
+DATE_RANGE_EMPTY_MESSAGE = "日期范围内没有流水"
 SALARY_KEYWORDS = ("工资", "代发", "薪资", "薪酬", "奖金")
 ACCOUNT_NAME_PATTERNS = (
     r"户名\s*(?:Account Name)?\s*[:：]\s*([^\s，,]+)",
@@ -75,6 +76,14 @@ class FileResult:
     message: str
     account_name: str = ""
     account_no: str = ""
+
+
+@dataclass
+class ConfidenceInfo:
+    score: int
+    level: str
+    tone: str
+    reason: str
 
 
 class DropTable(QTableWidget):
@@ -235,7 +244,7 @@ class Worker(QThread):
                     status = "需复核"
                 message = fallback_message if transactions else (fallback_message or "未解析到流水")
                 if original_count and not transactions:
-                    message = "日期范围内没有流水"
+                    message = DATE_RANGE_EMPTY_MESSAGE
                 if message and (not transactions or review_issues):
                     all_issues.append(Issue("需复核", path.name, "", message))
                 results.append(
@@ -281,6 +290,7 @@ class MainWindow(QMainWindow):
             "income": self.create_metric("收入", "0 / 0.00", "income"),
             "expense": self.create_metric("支出", "0 / 0.00", "expense"),
             "issues": self.create_metric("异常", "0", "warning"),
+            "confidence": self.create_metric("可信度", "-", "neutral"),
         }
         self.adjust_preview_label = QLabel("启用调整后显示预览")
         self.adjust_preview_label.setObjectName("adjustPreviewLabel")
@@ -379,7 +389,6 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.monthly_tab_index = self.tabs.addTab(self.monthly, "月度统计")
         self.tabs.addTab(self.overview, "文件汇总")
-        self.tabs.addTab(self.details, "流水明细")
         self.tabs.addTab(self.issue_table, "异常提示")
 
         central = DropWidget()
@@ -408,7 +417,7 @@ class MainWindow(QMainWindow):
         metrics_layout.setContentsMargins(16, 10, 16, 10)
         metrics_layout.setSpacing(0)
         for index, metric in enumerate(self.summary_metrics.values()):
-            metrics_layout.addWidget(metric)
+            metrics_layout.addWidget(metric, 1)
             if index < len(self.summary_metrics) - 1:
                 divider = QFrame()
                 divider.setObjectName("metricDivider")
@@ -561,6 +570,9 @@ class MainWindow(QMainWindow):
                 font-size: 19px;
             }
             QLabel#metricValue[tone="warning"] { color: #e07a1f; }
+            QLabel#metricValue[tone="confidenceHigh"] { color: #138a4b; }
+            QLabel#metricValue[tone="confidenceMedium"] { color: #e07a1f; }
+            QLabel#metricValue[tone="confidenceLow"] { color: #d93f2f; }
             QLabel#metricValue[tone="neutral"] { color: #162033; }
             QLabel {
                 font-family: "Microsoft YaHei UI", "Segoe UI", Arial;
@@ -716,9 +728,13 @@ class MainWindow(QMainWindow):
         frame.value_label = number
         return frame
 
-    def set_metric(self, key: str, value: str):
+    def set_metric(self, key: str, value: str, tone: str | None = None):
         metric = self.summary_metrics.get(key)
         if metric is not None:
+            if tone is not None:
+                metric.value_label.setProperty("tone", tone)
+                metric.value_label.style().unpolish(metric.value_label)
+                metric.value_label.style().polish(metric.value_label)
             metric.value_label.setText(self.format_metric_value(key, value))
 
     def format_metric_value(self, key: str, value: str) -> str:
@@ -801,8 +817,9 @@ class MainWindow(QMainWindow):
             "income": "0 / 0.00",
             "expense": "0 / 0.00",
             "issues": "0",
+            "confidence": "-",
         }.items():
-            self.set_metric(key, value)
+            self.set_metric(key, value, "neutral" if key == "confidence" else None)
         self.summary_label.setText("选择 PDF/Excel 文件或文件夹后开始处理；默认输出近半年，可手动修改日期范围。")
         self._set_table(self.overview, ["文件", "状态"], [])
         self._set_table(self.monthly, ["月份", "收入(万元)", "支出(万元)"], [])
@@ -818,6 +835,7 @@ class MainWindow(QMainWindow):
         self.set_metric("income", "待处理")
         self.set_metric("expense", "待处理")
         self.set_metric("issues", "待处理")
+        self.set_metric("confidence", "待处理", "neutral")
         rows = [[str(path), "待处理"] for path in self.paths]
         self._set_table(self.overview, ["文件", "状态"], rows)
         self.summary_label.setText(f"已选择 {len(self.paths)} 个文件，点击开始处理。")
@@ -832,10 +850,12 @@ class MainWindow(QMainWindow):
         self.set_metric("income", f"{total.income_count} / {money(total.income_sum)}")
         self.set_metric("expense", f"{total.expense_count} / {money(total.expense_sum)}")
         self.set_metric("issues", str(len(shown_issues)))
+        confidence = calculate_confidence(self.results, shown_issues, self.selected_date_range())
+        self.set_metric("confidence", f"{confidence.level} {confidence.score}%", confidence.tone)
         self.summary_label.setText(
             f"文件 {len(self.results)} 个，流水 {total.count} 笔，收入 {total.income_count} 笔/{money(total.income_sum)}，"
             f"支出 {total.expense_count} 笔/{money(total.expense_sum)}，净额 {money(total.net)}，"
-            f"异常提示 {len(shown_issues)} 条。类型：{type_counts}。"
+            f"异常提示 {len(shown_issues)} 条，可信度 {confidence.level} {confidence.score}%。类型：{type_counts}。"
         )
 
         self.adjustment_result = apply_adjustments(all_transactions, self.adjustment_configs())
@@ -843,8 +863,8 @@ class MainWindow(QMainWindow):
         self.update_adjustment_preview()
         self._set_table(
             self.monthly,
-            monthly_headers(self.adjustment_result.enabled),
-            build_monthly_display_rows(all_transactions, self.adjustment_result),
+            monthly_headers(self.adjustment_result.enabled, include_balances=False),
+            build_monthly_display_rows(all_transactions, self.adjustment_result, include_balances=False),
         )
         if self.adjustment_result.enabled:
             self.summary_label.setText(self.summary_label.text() + " 已启用调整，月度统计显示调整后数据。")
@@ -1264,6 +1284,129 @@ def flow_type_counts(results: list[FileResult]) -> str:
     return "，".join(f"{key}{value}份" for key, value in counts.items() if value) or "无"
 
 
+def calculate_confidence(results: list[FileResult], issues: list[Issue], date_range: tuple[datetime | None, datetime | None]) -> ConfidenceInfo:
+    if not results:
+        return ConfidenceInfo(0, "-", "neutral", "暂无结果")
+
+    scored_results = [result for result in results if not is_date_range_empty_result(result)]
+    scored_issues = [issue for issue in issues if not is_date_range_empty_issue(issue)]
+    if not scored_results:
+        return ConfidenceInfo(0, "-", "neutral", DATE_RANGE_EMPTY_MESSAGE)
+
+    weighted_score = 0
+    total_weight = 0
+    reasons: list[str] = []
+    for result in scored_results:
+        score, reason = result_confidence_score(result, date_range)
+        weight = max(int(getattr(result.summary, "count", 0)), 1)
+        weighted_score += score * weight
+        total_weight += weight
+        reasons.append(reason)
+
+    score = round(weighted_score / total_weight) if total_weight else 0
+    review_count = sum(1 for issue in scored_issues if issue.level == "需复核")
+    low_risk_count = sum(1 for issue in scored_issues if issue.level != "需复核")
+    score -= min(18, review_count * 4)
+    score -= min(6, low_risk_count)
+    score = max(0, min(100, score))
+
+    if score >= 90:
+        level = "高"
+        tone = "confidenceHigh"
+    elif score >= 70:
+        level = "中"
+        tone = "confidenceMedium"
+    else:
+        level = "低"
+        tone = "confidenceLow"
+    return ConfidenceInfo(score, level, tone, "；".join(reasons))
+
+
+def result_confidence_score(result: FileResult, date_range: tuple[datetime | None, datetime | None]) -> tuple[int, str]:
+    summary = result.summary
+    count = int(getattr(summary, "count", 0))
+    if count <= 0:
+        return 25, "未识别到流水"
+
+    used_generic = result.status == "通用识别" or "通用识别" in (result.bank_label or "") or result.bank_id in ("generic_pdf", "cmbc", "cib")
+    if used_generic:
+        score = 68
+        reason = "通用识别"
+    elif result.bank_id == "excel":
+        score = 86
+        reason = "Excel导入"
+    else:
+        score = min(94, max(78, int(result.bank_confidence or 80)))
+        reason = "专用解析"
+
+    review_issues = [issue for issue in getattr(summary, "issues", []) if issue.level == "需复核"]
+    low_risk_issues = [issue for issue in getattr(summary, "issues", []) if issue.level != "需复核"]
+    score -= min(22, len(review_issues) * 6)
+    score -= min(8, len(low_risk_issues) * 2)
+
+    if not confidence_needs_balance(result):
+        score += 6
+    elif getattr(summary, "opening_balance", None) is not None and getattr(summary, "closing_balance", None) is not None:
+        has_balance_break = any("余额不连续" in issue.message and issue.level == "需复核" for issue in getattr(summary, "issues", []))
+        score += 12 if not has_balance_break else 3
+    else:
+        score -= 6
+
+    if last_two_months_have_flows(result.transactions, date_range):
+        score += 10
+
+    if result.message and result.status == "需复核" and result.message != DATE_RANGE_EMPTY_MESSAGE:
+        score -= 8
+
+    return max(0, min(100, score)), reason
+
+
+def confidence_needs_balance(result: FileResult) -> bool:
+    if result.bank_id == "wechat":
+        return False
+    if result.transactions and all(getattr(tx, "balance_optional", False) for tx in result.transactions):
+        return False
+    return True
+
+
+def is_date_range_empty_result(result: FileResult) -> bool:
+    return int(getattr(result.summary, "count", 0)) == 0 and result.message == DATE_RANGE_EMPTY_MESSAGE
+
+
+def is_date_range_empty_issue(issue: Issue) -> bool:
+    return issue.message == DATE_RANGE_EMPTY_MESSAGE
+
+
+def last_two_months_have_flows(transactions: list, date_range: tuple[datetime | None, datetime | None]) -> bool:
+    target_months = last_two_month_keys(date_range)
+    if len(target_months) < 2 and transactions:
+        latest = max(tx.transaction_time for tx in transactions)
+        month_start = datetime(latest.year, latest.month, 1)
+        target_months = [add_months(month_start, -1).strftime("%Y-%m"), month_start.strftime("%Y-%m")]
+    if len(target_months) < 2:
+        return False
+    seen = {tx.transaction_time.strftime("%Y-%m") for tx in transactions}
+    return all(month in seen for month in target_months)
+
+
+def last_two_month_keys(date_range: tuple[datetime | None, datetime | None]) -> list[str]:
+    _start, end = date_range
+    if end is None:
+        if not date_range[0]:
+            return []
+        end = max(date_range[0], datetime.now())
+    month_start = datetime(end.year, end.month, 1)
+    previous = add_months(month_start, -1)
+    return [previous.strftime("%Y-%m"), month_start.strftime("%Y-%m")]
+
+
+def add_months(value: datetime, months: int) -> datetime:
+    month_index = value.year * 12 + value.month - 1 + months
+    year = month_index // 12
+    month = month_index % 12 + 1
+    return datetime(year, month, 1)
+
+
 def grouped_transactions(transactions: list) -> list[tuple[str, list]]:
     order = ["个人", "微信", "对公"]
     groups = []
@@ -1292,7 +1435,7 @@ def build_monthly_rows(transactions: list, for_excel: bool = False, balance_wech
     return rows
 
 
-def monthly_headers(adjusted: bool = False) -> list[str]:
+def monthly_headers(adjusted: bool = False, include_balances: bool = True) -> list[str]:
     headers = [
         "流水类型",
         "月份",
@@ -1301,10 +1444,10 @@ def monthly_headers(adjusted: bool = False) -> list[str]:
         "支出笔数",
         "支出(万元)",
         "净额(万元)",
-        "期初余额(万元)",
-        "期末余额(万元)",
         "流水笔数",
     ]
+    if include_balances:
+        headers[7:7] = ["期初余额(万元)", "期末余额(万元)"]
     if adjusted:
         headers.extend([
             "收入调整(万元)",
@@ -1317,22 +1460,40 @@ def monthly_headers(adjusted: bool = False) -> list[str]:
     return headers
 
 
-def build_monthly_display_rows(transactions: list, adjustment: AdjustmentResult, for_excel: bool = False) -> list[list]:
+def build_monthly_display_rows(
+    transactions: list,
+    adjustment: AdjustmentResult,
+    for_excel: bool = False,
+    include_balances: bool = True,
+) -> list[list]:
     if not adjustment.enabled:
-        rows = []
-        groups = grouped_transactions(transactions)
-        for flow_type, items in groups:
-            group_rows = build_monthly_rows(items, for_excel, balance_wechat=flow_type == "微信")
-            for row in group_rows:
-                row[0] = flow_type
-            rows.extend(group_rows)
-        if len(groups) > 1:
-            total_rows = build_combined_monthly_rows(groups, for_excel)
-            for row in total_rows:
-                row[0] = "全部"
-            rows.extend(total_rows)
-        return rows
-    return [["全部"] + row for row in build_adjusted_rows(adjustment, for_excel)]
+        rows = build_grouped_monthly_display_rows(transactions, for_excel)
+    else:
+        rows = build_grouped_monthly_display_rows(transactions, for_excel, include_combined=False)
+        rows.extend([["全部"] + row for row in build_adjusted_rows(adjustment, for_excel)])
+    if not include_balances:
+        rows = [without_monthly_balance_columns(row) for row in rows]
+    return rows
+
+
+def build_grouped_monthly_display_rows(transactions: list, for_excel: bool = False, include_combined: bool = True) -> list[list]:
+    rows = []
+    groups = grouped_transactions(transactions)
+    for flow_type, items in groups:
+        group_rows = build_monthly_rows(items, for_excel, balance_wechat=flow_type == "微信")
+        for row in group_rows:
+            row[0] = flow_type
+        rows.extend(group_rows)
+    if include_combined and len(groups) > 1:
+        total_rows = build_combined_monthly_rows(groups, for_excel)
+        for row in total_rows:
+            row[0] = "全部"
+        rows.extend(total_rows)
+    return rows
+
+
+def without_monthly_balance_columns(row: list) -> list:
+    return [value for index, value in enumerate(row) if index not in (7, 8)]
 
 
 def build_combined_monthly_rows(groups: list[tuple[str, list]], for_excel: bool = False) -> list[list]:

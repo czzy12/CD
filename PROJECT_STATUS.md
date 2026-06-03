@@ -1,6 +1,6 @@
 ﻿# PDF流水项目当前状态
 
-更新时间：2026-06-02
+更新时间：2026-06-03
 
 ## 当前仓库
 
@@ -25,8 +25,8 @@ origin/work/2026-05-31-flow-adjustment
 当前最新本地提交：
 
 ```text
-HEAD Support PSBC corporate statements
-7f71879 Refine income proof export balances and WeChat output
+本轮保存：GUI 可信度和月度显示调整
+当前提交见 git log -1
 ```
 
 当前本地文档变更：
@@ -34,7 +34,7 @@ HEAD Support PSBC corporate statements
 - `PROJECT_CONTEXT.md` 已轻量整理为项目入口。
 - `PROJECT_STATUS.md` 记录当前最新状态。
 - `INTEGRATION_CONTRACT.md` 记录与车贷报告自动化总项目的集成契约。
-- Obsidian `技术变更记录.md` 已补充 2026-06-02 邮储对公、工行个人强水印活期/定期混排、农行对公倒序/表格账户明细。
+- Obsidian `技术变更记录.md` 已补充 2026-06-03 GUI 可信度、月度显示、隐藏流水明细以及待处理兰州银行可信度口径。
 
 ## 当前能力概览
 
@@ -49,6 +49,7 @@ HEAD Support PSBC corporate statements
 - 月度统计。
 - 文件汇总。
 - 异常提示。
+- GUI 可信度提示。
 - 流水调整/测算层。
 - GUI。
 - Excel 导出。
@@ -123,6 +124,12 @@ HEAD Support PSBC corporate statements
 - 日期筛选模块。
 - 左主内容区 + 右调整面板。
 - 摘要仪表板。
+- 顶部可信度字段，显示 `高/中/低 + 百分比`。
+- 月度统计 GUI 隐藏期初/期末余额两列。
+- 调整启用后，月度统计仍保留按流水类型分组显示，下面再追加 `全部` 调整统计。
+- GUI 不再显示 `流水明细` tab；Excel 导出仍保留明细。
+- `日期范围内没有流水` 不参与可信度评分。
+- 微信流水不要求期初/期末余额，天然无余额列也可达到 100%。
 
 ### 收入佐证 JSON 接入
 
@@ -168,7 +175,7 @@ c0fe7f3 Group GUI bank flows by income proof type
 最近执行：
 
 ```powershell
-python -m py_compile bankflow_v2\summary.py bankflow_v2\pipeline.py bankflow_v2\adjustment.py gui_v2.py tools\regression.py
+python -m py_compile gui_v2.py
 ```
 
 结果：
@@ -247,6 +254,16 @@ PDF / Excel / 微信流水
 
 ### 第一优先级
 
+修复未识别且通用识别也没有流水时的可信度口径：
+
+```text
+D:\Codex data\CD_assets\PDF流水\打包测试\城商行\兰州银行.pdf
+```
+
+当前用户反馈：这类样本没有流水条数，可信度不应显示 21%，应显示为 `0` 或等价的无可信度提示。只改 GUI 可信度显示，不影响导出。
+
+### 第二优先级
+
 新增标准 JSON 导出：
 
 ```text
@@ -260,7 +277,7 @@ build_bankflow_result(transactions, adjustment_result, metadata) -> dict
 write_bankflow_json(result, path) -> None
 ```
 
-### 第二优先级
+### 第三优先级
 
 新增收入佐证 Word 填写：
 
@@ -271,7 +288,7 @@ templates/收入佐证模板.docx
 
 Word 填写只读取标准结果，不直接解析 PDF。
 
-### 第三优先级
+### 第四优先级
 
 GUI 增加：
 
@@ -282,7 +299,7 @@ GUI 增加：
 
 Excel 导出保持不变。
 
-### 第四优先级
+### 第五优先级
 
 为 JSON 和 Word 输出补充测试。
 

@@ -144,6 +144,8 @@ PDF / Excel / 微信流水 -> Transaction -> Summary / Adjustment -> 标准 JSON
 - 中信银行。
 - 民生银行对公。
 - 浦发银行个人/对公。
+- 齐鲁银行对公。
+- 农村信用社表格流水。
 - 微信流水。
 - Excel 导入。
 - 通用 PDF 兜底识别。
@@ -214,14 +216,15 @@ D:\OneDrive\应用\remotely-save\Note Data\Vibe Coding\PDF流水
 7. 启用 `收入调整（微信）` 或 `收支平衡调整（个/公）` 后，GUI 月度表仍先显示按流水类型分组的原始统计，下面再显示 `全部` 调整统计。
 8. GUI 不再显示 `流水明细` tab；Excel 导出仍保留流水明细。
 9. 样本 `公户_8.pdf`、`微信流水_1.pdf` 已验证合并可信度为 `高 100%`。
-10. 未打包 EXE；`启动GUI.bat` 仍通过 `python gui_v2.py` 启动最新源码。
+10. 未识别且通用识别也没有流水时，可信度显示为 `低 0%`，兰州银行样本已验证。
+11. 未打包 EXE；`启动GUI.bat` 仍通过 `python gui_v2.py` 启动最新源码。
 
 最近验证：
 
 ```text
-python -m py_compile gui_v2.py
+python -m py_compile bankflow_v2\summary.py bankflow_v2\pipeline.py bankflow_v2\adjustment.py bankflow_v2\qilu_corp.py bankflow_v2\rural_credit.py gui_v2.py tools\regression.py
 python tools\regression.py --all --allow-missing
-22 PASS / 0 FAIL / 5 SKIP
+24 PASS / 0 FAIL / 5 SKIP
 ```
 
 注意：当前源码已更新，但用户明确要求没说打包前不要打包 EXE，所以 `dist\BankFlowGUI\BankFlowGUI.exe` 不代表当前最新源码状态。
@@ -230,7 +233,7 @@ python tools\regression.py --all --allow-missing
 
 当前优先方向：
 
-1. 继续处理 `D:\Codex data\CD_assets\PDF流水\打包测试\城商行\兰州银行.pdf`：未识别且通用识别也没有流水时，可信度应显示为 `0`，不要显示 21% 这类弱可信分。
+1. 新增标准 JSON 导出，供车贷报告自动化总项目读取。
 2. 继续保持可信度只做 GUI 提示，不影响导出。
 3. 稳定后再决定是否重新打包 exe。
 4. 保持现有银行解析器和 Excel 导出稳定。

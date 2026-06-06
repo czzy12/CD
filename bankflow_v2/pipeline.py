@@ -12,6 +12,8 @@ from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
 from .models import Transaction
 from .psbc import extract_psbc
+from .qilu_corp import extract_qilu_corp
+from .rural_credit import extract_rural_credit
 from .spdb import extract_spdb, extract_spdb_corp
 from .wechat import extract_wechat
 
@@ -35,6 +37,10 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_bocom(pdf_path)
     if bank == "psbc":
         return extract_psbc(pdf_path)
+    if bank == "qilu_corp":
+        return extract_qilu_corp(pdf_path)
+    if bank == "rural_credit":
+        return extract_rural_credit(pdf_path)
     if bank == "cmbc_corp":
         return extract_cmbc_corp(pdf_path)
     if bank == "cmb":

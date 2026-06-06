@@ -1320,7 +1320,7 @@ def result_confidence_score(result: FileResult, date_range: tuple[datetime | Non
     summary = result.summary
     count = int(getattr(summary, "count", 0))
     if count <= 0:
-        return 25, "未识别到流水"
+        return 0, "未识别到流水"
 
     used_generic = result.status == "通用识别" or "通用识别" in (result.bank_label or "") or result.bank_id in ("generic_pdf", "cmbc", "cib")
     if used_generic:

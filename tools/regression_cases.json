@@ -457,5 +457,39 @@
       "closing_balance": "96281.51",
       "issues": 0
     }
+  },
+  {
+    "name": "齐鲁银行对公-单位活期存款账户交易明细",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/杨和平/齐鲁银行对公.pdf",
+    "tags": ["qilu_corp", "corp", "qilu-table"],
+    "expected": {
+      "count": 1521,
+      "income_count": 484,
+      "income_sum": "60215496.73",
+      "expense_count": 1037,
+      "expense_sum": "59347060.15",
+      "net": "868436.58",
+      "opening_balance": "3930196.45",
+      "closing_balance": "4798633.03",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农村信用社-个人交易流水表格",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/罗文峰/流水.pdf",
+    "tags": ["rural_credit", "personal", "table"],
+    "expected": {
+      "count": 211,
+      "income_count": 67,
+      "income_sum": "5812859.79",
+      "expense_count": 144,
+      "expense_sum": "5670778.56",
+      "net": "142081.23",
+      "opening_balance": "70528.21",
+      "closing_balance": "212609.44",
+      "issues": 0
+    }
   }
 ]

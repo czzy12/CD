@@ -1,6 +1,6 @@
 ﻿# PDF流水项目当前状态
 
-更新时间：2026-06-03
+更新时间：2026-06-06
 
 ## 当前仓库
 
@@ -96,6 +96,8 @@ origin/work/2026-05-31-flow-adjustment
 - 中信银行个人账户交易明细。
 - 浦发银行个人。
 - 浦发银行对公。
+- 齐鲁银行对公单位活期存款账户交易明细。
+- 农村信用社个人交易流水表格。
 - 微信流水。
 - Excel 导入。
 - 通用 PDF 兜底。
@@ -130,6 +132,7 @@ origin/work/2026-05-31-flow-adjustment
 - GUI 不再显示 `流水明细` tab；Excel 导出仍保留明细。
 - `日期范围内没有流水` 不参与可信度评分。
 - 微信流水不要求期初/期末余额，天然无余额列也可达到 100%。
+- 未识别且通用识别也没有流水时，可信度显示为 `低 0%`，不再给弱可信基础分。
 
 ### 收入佐证 JSON 接入
 
@@ -163,19 +166,21 @@ c0fe7f3 Group GUI bank flows by income proof type
 - 调整预览结果卡。
 - 下划线风格 tabs。
 
-### 新增对公格式
+### 新增/扩展格式
 
 已实现：
 
 - 建设银行对公活期存款明细账。
 - 中国银行对公活期明细文本流水。
+- 齐鲁银行对公单位活期存款账户交易明细。
+- 农村信用社个人交易流水表格。
 
 ## 当前验证结果
 
 最近执行：
 
 ```powershell
-python -m py_compile gui_v2.py
+python -m py_compile bankflow_v2\summary.py bankflow_v2\pipeline.py bankflow_v2\adjustment.py bankflow_v2\qilu_corp.py bankflow_v2\rural_credit.py gui_v2.py tools\regression.py
 ```
 
 结果：
@@ -193,12 +198,12 @@ python tools\regression.py --all --allow-missing
 结果：
 
 ```text
-22 PASS / 0 FAIL / 5 SKIP
+24 PASS / 0 FAIL / 5 SKIP
 ```
 
 说明：
 
-5 个 FAIL 均为本机缺少桌面路径样本文件，不是解析逻辑失败。
+5 个 SKIP 均为本机缺少桌面路径样本文件，不是解析逻辑失败。
 
 缺失样本包括：
 
@@ -214,7 +219,7 @@ python tools\regression.py --all --allow-missing
 视为样本缺失跳过，目标结果应为：
 
 ```text
-22 PASS / 0 FAIL / 5 SKIP
+24 PASS / 0 FAIL / 5 SKIP
 ```
 
 ## 当前不支持或不作为稳定核心
@@ -252,17 +257,11 @@ PDF / Excel / 微信流水
 
 ## 下一步优先级
 
+### 已完成
+
+- 修复未识别且通用识别也没有流水时的可信度口径：`D:\Codex data\CD_assets\PDF流水\打包测试\城商行\兰州银行.pdf` 验证为 `低 0%`。只改 GUI 可信度显示，不影响导出。
+
 ### 第一优先级
-
-修复未识别且通用识别也没有流水时的可信度口径：
-
-```text
-D:\Codex data\CD_assets\PDF流水\打包测试\城商行\兰州银行.pdf
-```
-
-当前用户反馈：这类样本没有流水条数，可信度不应显示 21%，应显示为 `0` 或等价的无可信度提示。只改 GUI 可信度显示，不影响导出。
-
-### 第二优先级
 
 新增标准 JSON 导出：
 
@@ -277,7 +276,7 @@ build_bankflow_result(transactions, adjustment_result, metadata) -> dict
 write_bankflow_json(result, path) -> None
 ```
 
-### 第三优先级
+### 第二优先级
 
 新增收入佐证 Word 填写：
 
@@ -288,7 +287,7 @@ templates/收入佐证模板.docx
 
 Word 填写只读取标准结果，不直接解析 PDF。
 
-### 第四优先级
+### 第三优先级
 
 GUI 增加：
 
@@ -299,7 +298,7 @@ GUI 增加：
 
 Excel 导出保持不变。
 
-### 第五优先级
+### 第四优先级
 
 为 JSON 和 Word 输出补充测试。
 

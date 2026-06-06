@@ -20,6 +20,7 @@ BANK_LABELS = {
     "ccb_corp": "建设银行对公",
     "cmb": "招商银行",
     "citic": "中信银行个人",
+    "citic_corp": "中信银行对公",
     "cmbc": "民生银行个人",
     "cmbc_corp": "民生银行对公",
     "cib": "兴业银行",
@@ -107,6 +108,16 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "支出金额收入金额余额" in compact
     ):
         return Detection("psbc", BANK_LABELS["psbc"], 98, "命中邮储对公账户交易明细专用回单特征")
+
+    if (
+        "账户交易明细" in header_compact
+        and "柜员交易号" in compact
+        and "动账资金分簿" in compact
+        and "借方发生额" in compact
+        and "贷方发生额" in compact
+        and "余额" in compact
+    ):
+        return Detection("citic_corp", BANK_LABELS["citic_corp"], 95, "命中中信对公账户交易明细表头")
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),

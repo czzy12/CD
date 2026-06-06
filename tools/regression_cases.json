@@ -221,6 +221,23 @@
     }
   },
   {
+    "name": "中信银行对公-账户交易明细-江丽娟",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/江丽娟/中信.pdf",
+    "tags": ["citic_corp", "corp"],
+    "expected": {
+      "count": 245,
+      "income_count": 15,
+      "income_sum": "1057985.59",
+      "expense_count": 230,
+      "expense_sum": "887384.26",
+      "net": "170601.33",
+      "opening_balance": "41933.33",
+      "closing_balance": "212534.66",
+      "issues": 0
+    }
+  },
+  {
     "name": "工行对公-企业存款对账单-李翠1",
     "bank": "auto",
     "path": "C:/Users/lenovo/Desktop/李翠/新建文件夹/1ec55131bdef4834abf32edd2838146e1780065135040.pdf",

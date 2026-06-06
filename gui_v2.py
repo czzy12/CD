@@ -851,11 +851,11 @@ class MainWindow(QMainWindow):
         self.set_metric("expense", f"{total.expense_count} / {money(total.expense_sum)}")
         self.set_metric("issues", str(len(shown_issues)))
         confidence = calculate_confidence(self.results, shown_issues, self.selected_date_range())
-        self.set_metric("confidence", f"{confidence.level} {confidence.score}%", confidence.tone)
+        self.set_metric("confidence", confidence.level, confidence.tone)
         self.summary_label.setText(
             f"文件 {len(self.results)} 个，流水 {total.count} 笔，收入 {total.income_count} 笔/{money(total.income_sum)}，"
             f"支出 {total.expense_count} 笔/{money(total.expense_sum)}，净额 {money(total.net)}，"
-            f"异常提示 {len(shown_issues)} 条，可信度 {confidence.level} {confidence.score}%。类型：{type_counts}。"
+            f"异常提示 {len(shown_issues)} 条，可信度 {confidence.level}。类型：{type_counts}。"
         )
 
         self.adjustment_result = apply_adjustments(all_transactions, self.adjustment_configs())
@@ -1286,6 +1286,8 @@ def calculate_confidence(results: list[FileResult], issues: list[Issue], date_ra
     scored_issues = [issue for issue in issues if not is_date_range_empty_issue(issue)]
     if not scored_results:
         return ConfidenceInfo(0, "-", "neutral", DATE_RANGE_EMPTY_MESSAGE)
+    if not any(int(getattr(result.summary, "count", 0)) > 0 for result in scored_results):
+        return ConfidenceInfo(0, "未识别", "confidenceLow", "未识别到流水")
 
     weighted_score = 0
     total_weight = 0
@@ -1341,18 +1343,39 @@ def result_confidence_score(result: FileResult, date_range: tuple[datetime | Non
     if not confidence_needs_balance(result):
         score += 6
     elif getattr(summary, "opening_balance", None) is not None and getattr(summary, "closing_balance", None) is not None:
-        has_balance_break = any("余额不连续" in issue.message and issue.level == "需复核" for issue in getattr(summary, "issues", []))
-        score += 12 if not has_balance_break else 3
+        has_balance_break = has_review_balance_break(summary)
+        if summary_balance_closed(summary):
+            score += 18 if not has_balance_break else 6
+        else:
+            score -= 14
     else:
         score -= 6
 
     if last_two_months_have_flows(result.transactions, date_range):
-        score += 10
+        score += 5
+        if last_two_months_closed_without_review(result.transactions, date_range):
+            score += 8
 
     if result.message and result.status == "需复核" and result.message != DATE_RANGE_EMPTY_MESSAGE:
         score -= 8
 
     return max(0, min(100, score)), reason
+
+
+def summary_balance_closed(summary) -> bool:
+    opening = getattr(summary, "opening_balance", None)
+    closing = getattr(summary, "closing_balance", None)
+    if opening is None or closing is None:
+        return False
+    expected_change = (closing - opening).quantize(Decimal("0.01"))
+    return getattr(summary, "net", Decimal("0.00")).quantize(Decimal("0.01")) == expected_change
+
+
+def has_review_balance_break(summary) -> bool:
+    return any(
+        "余额不连续" in issue.message and issue.level == "需复核"
+        for issue in getattr(summary, "issues", [])
+    )
 
 
 def confidence_needs_balance(result: FileResult) -> bool:
@@ -1381,6 +1404,37 @@ def last_two_months_have_flows(transactions: list, date_range: tuple[datetime | 
         return False
     seen = {tx.transaction_time.strftime("%Y-%m") for tx in transactions}
     return all(month in seen for month in target_months)
+
+
+def last_two_months_closed_without_review(transactions: list, date_range: tuple[datetime | None, datetime | None]) -> bool:
+    target_months = last_two_month_keys(date_range)
+    if len(target_months) < 2 and transactions:
+        latest = max(tx.transaction_time for tx in transactions)
+        month_start = datetime(latest.year, latest.month, 1)
+        target_months = [add_months(month_start, -1).strftime("%Y-%m"), month_start.strftime("%Y-%m")]
+    if len(target_months) < 2:
+        return False
+
+    for month in target_months:
+        month_transactions = [tx for tx in transactions if tx.transaction_time.strftime("%Y-%m") == month]
+        if not month_transactions:
+            return False
+        month_summary = summarize(month_transactions, month)
+        if any(issue.level == "需复核" for issue in month_summary.issues):
+            return False
+        if confidence_needs_balance_for_transactions(month_transactions) and not summary_balance_closed(month_summary):
+            return False
+    return True
+
+
+def confidence_needs_balance_for_transactions(transactions: list) -> bool:
+    if not transactions:
+        return True
+    if all(getattr(tx, "bank", "") == "微信流水" for tx in transactions):
+        return False
+    if all(getattr(tx, "balance_optional", False) for tx in transactions):
+        return False
+    return True
 
 
 def last_two_month_keys(date_range: tuple[datetime | None, datetime | None]) -> list[str]:

@@ -53,7 +53,15 @@ def _is_deposit_detail_table(table: list[list]) -> bool:
     if len(table) < 3:
         return False
     header = "".join(_clean_cell(cell) for row in table[:2] for cell in row)
-    return "日期" in header and "发生额" in header and "借方" in header and "贷方" in header and "余额" in header
+    return (
+        "账号" not in header
+        and "交易时间" not in header
+        and "日期" in header
+        and "发生额" in header
+        and "借方" in header
+        and "贷方" in header
+        and "余额" in header
+    )
 
 
 def _extract_deposit_detail_rows(table: list[list], page_index: int) -> list[Transaction]:

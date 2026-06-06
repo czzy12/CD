@@ -6,10 +6,6 @@ from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
 
-import pdfplumber
-from openpyxl import Workbook
-from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill
 from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import (
@@ -33,11 +29,7 @@ from PyQt6.QtWidgets import (
 )
 
 from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adjustments, parse_amount_wan
-from bankflow_v2.auto_detect import BANK_LABELS, detect_bank_type
-from bankflow_v2.excel_input import extract_excel_transactions
-from bankflow_v2.generic_pdf import extract_generic_pdf
 from bankflow_v2.income_proof_export import balance_wechat_summaries, flow_type as income_flow_type, write_income_proof_input
-from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_transactions, summarize
 
 
@@ -181,21 +173,31 @@ class Worker(QThread):
 
     def _extract_with_fallback(self, path: Path, detection) -> tuple[list, str, str, bool]:
         if path.suffix.lower() in (".xlsx", ".xlsm"):
+            from bankflow_v2.excel_input import extract_excel_transactions
+
             return extract_excel_transactions(str(path)), "Excel导入", "Excel文件导入", False
 
         if not detection.bank_id:
+            from bankflow_v2.generic_pdf import extract_generic_pdf
+
             transactions = extract_generic_pdf(str(path))
             if transactions:
                 return transactions, "通用PDF识别", f"{detection.reason}，已使用通用识别", True
             return [], "未识别", detection.reason, False
 
         if detection.bank_id in ("cmbc", "cib", "generic_pdf"):
+            from bankflow_v2.pipeline import extract_transactions
+
             transactions = extract_transactions(str(path), detection.bank_id)
             return transactions, self._generic_pdf_label(detection), "已使用通用识别", True
 
         try:
+            from bankflow_v2.pipeline import extract_transactions
+
             transactions = extract_transactions(str(path), detection.bank_id)
         except Exception as exc:
+            from bankflow_v2.generic_pdf import extract_generic_pdf
+
             fallback = extract_generic_pdf(str(path))
             if fallback:
                 return fallback, self._generic_pdf_label(detection), f"专用解析失败：{exc}；已使用通用识别", True
@@ -203,6 +205,8 @@ class Worker(QThread):
 
         if transactions:
             return transactions, detection.label, "", False
+
+        from bankflow_v2.generic_pdf import extract_generic_pdf
 
         fallback = extract_generic_pdf(str(path))
         if fallback:
@@ -223,6 +227,8 @@ class Worker(QThread):
                     "reason": "Excel文件导入",
                 })()
             else:
+                from bankflow_v2.auto_detect import detect_bank_type
+
                 detection = detect_bank_type(str(path))
 
             try:
@@ -306,16 +312,13 @@ class MainWindow(QMainWindow):
         add_folder = QPushButton("选择文件夹")
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
-        export = QPushButton("导出 Excel")
         export_income_json = QPushButton("佐证填写")
         run.setObjectName("primaryButton")
-        export.setObjectName("exportButton")
         export_income_json.setObjectName("exportButton")
         add_files.clicked.connect(self.add_files)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
-        export.clicked.connect(self.export_excel)
         export_income_json.clicked.connect(self.export_income_proof_json)
 
         self.date_filter = QCheckBox("筛选日期")
@@ -353,21 +356,19 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(date_filter_panel)
         toolbar.addStretch(1)
         toolbar.addWidget(export_income_json)
-        toolbar.addWidget(export)
 
         self.income_adjust = QCheckBox("启用收入调整（微信）")
         self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
         self.adjust_amount = QLineEdit()
         self.adjust_amount.setPlaceholderText("万元")
-        self.adjust_amount.setMinimumWidth(160)
         self.adjust_start_month = QDateEdit()
         self.adjust_start_month.setCalendarPopup(True)
         self.adjust_start_month.setDisplayFormat("yyyy-MM")
-        self.adjust_start_month.setFixedWidth(120)
+        self.adjust_start_month.setFixedWidth(108)
         self.adjust_end_month = QDateEdit()
         self.adjust_end_month.setCalendarPopup(True)
         self.adjust_end_month.setDisplayFormat("yyyy-MM")
-        self.adjust_end_month.setFixedWidth(120)
+        self.adjust_end_month.setFixedWidth(108)
         self.adjust_start_month.setDate(start_date)
         self.adjust_end_month.setDate(end_date)
         self.random_adjust = QCheckBox("固定分配")
@@ -434,9 +435,10 @@ class MainWindow(QMainWindow):
 
         adjustment_panel = QFrame()
         adjustment_panel.setObjectName("sidePanel")
-        adjustment_panel.setFixedWidth(330)
+        adjustment_panel.setFixedWidth(290)
         adjustment_layout = QVBoxLayout(adjustment_panel)
-        adjustment_layout.setSpacing(12)
+        adjustment_layout.setContentsMargins(14, 14, 14, 14)
+        adjustment_layout.setSpacing(9)
         adjustment_title = QLabel("流水调整")
         adjustment_title.setObjectName("cardTitle")
         adjustment_layout.addWidget(adjustment_title)
@@ -455,6 +457,8 @@ class MainWindow(QMainWindow):
         preview_card = QFrame()
         preview_card.setObjectName("adjustResultCard")
         preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(10, 8, 10, 8)
+        preview_layout.setSpacing(7)
         preview_title = QLabel("调整预览（所选期间）")
         preview_title.setObjectName("fieldLabel")
         result_row = QHBoxLayout()
@@ -478,12 +482,14 @@ class MainWindow(QMainWindow):
         preview_layout.addLayout(result_row)
         adjustment_layout.addWidget(preview_card)
         adjustment_layout.addWidget(self.adjust_preview_label)
-        adjustment_layout.addStretch(1)
 
         content = QHBoxLayout()
         content.setSpacing(14)
         content.addLayout(left_area, 1)
-        content.addWidget(adjustment_panel)
+        side_column = QVBoxLayout()
+        side_column.addWidget(adjustment_panel, 0, Qt.AlignmentFlag.AlignTop)
+        side_column.addStretch(1)
+        content.addLayout(side_column)
         layout.addLayout(content, 1)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
@@ -570,6 +576,7 @@ class MainWindow(QMainWindow):
                 font-size: 19px;
             }
             QLabel#metricValue[tone="warning"] { color: #e07a1f; }
+            QLabel#metricValue[tone="confidenceVeryHigh"] { color: #0b6f3a; }
             QLabel#metricValue[tone="confidenceHigh"] { color: #138a4b; }
             QLabel#metricValue[tone="confidenceMedium"] { color: #e07a1f; }
             QLabel#metricValue[tone="confidenceLow"] { color: #d93f2f; }
@@ -878,7 +885,7 @@ class MainWindow(QMainWindow):
                 [
                     result.path.name,
                     result_flow_type(result),
-                    result.bank_label or BANK_LABELS.get(result.bank_id, ""),
+                    result_bank_label(result),
                     s.count,
                     s.income_count,
                     money(s.income_sum),
@@ -924,8 +931,6 @@ class MainWindow(QMainWindow):
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.setRowCount(len(rows))
-        warn_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
-        del warn_fill
         for row_index, row in enumerate(rows):
             row = list(row)
             if len(row) < len(headers):
@@ -999,6 +1004,8 @@ class MainWindow(QMainWindow):
 
 
 def write_sheet(ws, headers: list[str], rows: list[list]):
+    from openpyxl.styles import Font, PatternFill
+
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -1058,6 +1065,8 @@ def extract_account_no(path: Path) -> str:
 
 def extract_pdf_account_name(path: Path) -> str:
     try:
+        import pdfplumber
+
         with pdfplumber.open(str(path)) as pdf:
             if not pdf.pages:
                 return ""
@@ -1068,6 +1077,8 @@ def extract_pdf_account_name(path: Path) -> str:
 
 def extract_pdf_account_no(path: Path) -> str:
     try:
+        import pdfplumber
+
         with pdfplumber.open(str(path)) as pdf:
             if not pdf.pages:
                 return ""
@@ -1081,6 +1092,8 @@ def extract_pdf_account_no(path: Path) -> str:
 
 def extract_excel_account_name(path: Path) -> str:
     try:
+        from openpyxl import load_workbook
+
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
             worksheet = workbook.worksheets[0]
@@ -1096,6 +1109,8 @@ def extract_excel_account_name(path: Path) -> str:
 
 def extract_excel_account_no(path: Path) -> str:
     try:
+        from openpyxl import load_workbook
+
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
             worksheet = workbook.worksheets[0]
@@ -1143,6 +1158,8 @@ def parse_account_no(text: str) -> str:
 
 
 def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], adjustment_configs: list[AdjustmentConfig] | None = None):
+    from openpyxl import Workbook
+
     wb = Workbook()
     monthly = wb.active
     monthly.title = "原始月度统计"
@@ -1266,6 +1283,14 @@ def result_flow_type(result: FileResult) -> str:
     return income_flow_type(result.bank_id)
 
 
+def result_bank_label(result: FileResult) -> str:
+    if result.bank_label:
+        return result.bank_label
+    from bankflow_v2.auto_detect import BANK_LABELS
+
+    return BANK_LABELS.get(result.bank_id, "")
+
+
 def transaction_flow_type(tx) -> str:
     value = getattr(tx, "flow_type", "")
     return value or "个人"
@@ -1306,7 +1331,10 @@ def calculate_confidence(results: list[FileResult], issues: list[Issue], date_ra
     score -= min(6, low_risk_count)
     score = max(0, min(100, score))
 
-    if score >= 90:
+    if is_extremely_high_confidence(scored_results, scored_issues):
+        level = "极高"
+        tone = "confidenceVeryHigh"
+    elif score >= 90:
         level = "高"
         tone = "confidenceHigh"
     elif score >= 70:
@@ -1324,7 +1352,7 @@ def result_confidence_score(result: FileResult, date_range: tuple[datetime | Non
     if count <= 0:
         return 0, "未识别到流水"
 
-    used_generic = result.status == "通用识别" or "通用识别" in (result.bank_label or "") or result.bank_id in ("generic_pdf", "cmbc", "cib")
+    used_generic = is_generic_confidence_result(result)
     if used_generic:
         score = 68
         reason = "通用识别"
@@ -1360,6 +1388,29 @@ def result_confidence_score(result: FileResult, date_range: tuple[datetime | Non
         score -= 8
 
     return max(0, min(100, score)), reason
+
+
+def is_extremely_high_confidence(results: list[FileResult], issues: list[Issue]) -> bool:
+    if issues:
+        return False
+    for result in results:
+        if int(getattr(result.summary, "count", 0)) <= 0:
+            return False
+        if is_generic_confidence_result(result) or result.bank_id == "excel":
+            return False
+        if getattr(result.summary, "issues", []):
+            return False
+        if result.message and result.message != DATE_RANGE_EMPTY_MESSAGE:
+            return False
+    return True
+
+
+def is_generic_confidence_result(result: FileResult) -> bool:
+    return (
+        result.status == "通用识别"
+        or "通用识别" in (result.bank_label or "")
+        or result.bank_id in ("generic_pdf", "cmbc", "cib")
+    )
 
 
 def summary_balance_closed(summary) -> bool:
@@ -1770,7 +1821,7 @@ def build_combined_summary_rows(results: list[FileResult], transactions: list, f
         rows.append(_combined_summary_row(
             "文件",
             result.path.name,
-            result.bank_label or BANK_LABELS.get(result.bank_id, ""),
+            result_bank_label(result),
             result.summary,
             result.status,
             result.message,

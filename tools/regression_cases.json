@@ -508,5 +508,90 @@
       "closing_balance": "212609.44",
       "issues": 0
     }
+  },
+  {
+    "name": "九江银行-个人交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/九江银行.pdf",
+    "tags": ["jiujiang", "personal", "city-commercial"],
+    "expected": {
+      "count": 453,
+      "income_count": 141,
+      "income_sum": "1879984.11",
+      "expense_count": 312,
+      "expense_sum": "1878705.32",
+      "net": "1278.79",
+      "opening_balance": "5977.73",
+      "closing_balance": "7256.52",
+      "issues": 0
+    }
+  },
+  {
+    "name": "佛山农村商业银行-个人交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/佛山农村商业.pdf",
+    "tags": ["foshan_rural", "personal", "city-commercial"],
+    "expected": {
+      "count": 533,
+      "income_count": 44,
+      "income_sum": "231090.38",
+      "expense_count": 489,
+      "expense_sum": "232054.96",
+      "net": "-964.58",
+      "opening_balance": "3515.00",
+      "closing_balance": "2550.42",
+      "issues": 0
+    }
+  },
+  {
+    "name": "兰州银行-对公账户对账单",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/兰州银行.pdf",
+    "tags": ["lanzhou", "corp", "city-commercial"],
+    "expected": {
+      "count": 117,
+      "income_count": 79,
+      "income_sum": "730989.59",
+      "expense_count": 38,
+      "expense_sum": "730862.28",
+      "net": "127.31",
+      "opening_balance": "0.00",
+      "closing_balance": "127.31",
+      "issues": 0
+    }
+  },
+  {
+    "name": "宁波银行-个人交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/宁波银行.pdf",
+    "tags": ["ningbo", "personal", "city-commercial"],
+    "expected": {
+      "count": 27,
+      "income_count": 9,
+      "income_sum": "59906.84",
+      "expense_count": 18,
+      "expense_sum": "56662.64",
+      "net": "3244.20",
+      "opening_balance": "0.00",
+      "closing_balance": "3244.20",
+      "issues": 0
+    }
+  },
+  {
+    "name": "南京银行对公-账户交易明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/银行流水_1(1).pdf",
+    "tags": ["nanjing_corp", "corp", "city-commercial"],
+    "expected": {
+      "count": 601,
+      "income_count": 262,
+      "income_sum": "10156770.01",
+      "expense_count": 339,
+      "expense_sum": "10156844.08",
+      "net": "-74.07",
+      "opening_balance": "173.82",
+      "closing_balance": "99.75",
+      "issues": 0
+    }
   }
 ]

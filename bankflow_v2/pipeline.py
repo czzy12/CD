@@ -4,6 +4,13 @@ from .boc_corp import extract_boc_corp
 from .bocom import extract_bocom
 from .cmb import extract_cmb
 from .citic import extract_citic, extract_citic_corp
+from .city_commercial import (
+    extract_foshan_rural,
+    extract_jiujiang,
+    extract_lanzhou,
+    extract_nanjing_corp,
+    extract_ningbo,
+)
 from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
@@ -49,6 +56,16 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_citic(pdf_path)
     if bank == "citic_corp":
         return extract_citic_corp(pdf_path)
+    if bank == "jiujiang":
+        return extract_jiujiang(pdf_path)
+    if bank == "foshan_rural":
+        return extract_foshan_rural(pdf_path)
+    if bank == "lanzhou":
+        return extract_lanzhou(pdf_path)
+    if bank == "ningbo":
+        return extract_ningbo(pdf_path)
+    if bank == "nanjing_corp":
+        return extract_nanjing_corp(pdf_path)
     if bank == "spdb":
         return extract_spdb(pdf_path)
     if bank == "spdb_corp":

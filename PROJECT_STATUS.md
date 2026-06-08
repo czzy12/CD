@@ -1,6 +1,6 @@
 ﻿# PDF流水项目当前状态
 
-更新时间：2026-06-07
+更新时间：2026-06-08
 
 ## 当前仓库
 
@@ -196,7 +196,7 @@ origin/work/2026-05-31-flow-adjustment
 最近执行：
 
 ```powershell
-python -m py_compile bankflow_v2\summary.py bankflow_v2\pipeline.py bankflow_v2\adjustment.py bankflow_v2\qilu_corp.py bankflow_v2\rural_credit.py gui_v2.py tools\regression.py
+python -m py_compile bankflow_v2\abc.py bankflow_v2\bocom.py bankflow_v2\summary.py gui_v2.py tools\regression.py
 ```
 
 结果：

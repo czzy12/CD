@@ -972,7 +972,7 @@ class MainWindow(QMainWindow):
         write_income_proof_input(path, self.results)
         opened = open_income_proof_form(path)
         if not opened:
-            QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到 Word 填写表入口，请手动打开后选择该 JSON。")
+            QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")
 
     def adjustment_configs(self) -> list[AdjustmentConfig]:
         return [
@@ -1936,13 +1936,27 @@ def default_recent_month_range() -> tuple[QDate, QDate]:
 
 
 def open_income_proof_form(json_path: Path) -> bool:
-    launcher = Path(r"D:\report workflow\启动收入佐证填表.bat")
-    if not launcher.exists():
+    candidates = []
+    if getattr(sys, "frozen", False):
+        app_dir = Path(sys.executable).resolve().parent
+        candidates.extend([
+            app_dir.parent / "收入佐证" / "IncomeProofGUI.exe",
+            app_dir / "IncomeProofGUI.exe",
+        ])
+    else:
+        app_dir = Path(__file__).resolve().parent
+        candidates.extend([
+            app_dir.parent / "收入佐证" / "IncomeProofGUI.exe",
+            Path(r"D:\report workflow\启动收入佐证填表.bat"),
+        ])
+    launcher = next((path for path in candidates if path.exists()), None)
+    if launcher is None:
         return False
-    subprocess.Popen(
-        ["cmd", "/c", "start", "", str(launcher), str(json_path)],
-        cwd=str(launcher.parent),
-    )
+    if launcher.suffix.lower() in (".bat", ".cmd"):
+        command = ["cmd", "/c", "start", "", str(launcher), str(json_path)]
+    else:
+        command = [str(launcher), str(json_path)]
+    subprocess.Popen(command, cwd=str(launcher.parent))
     return True
 
 

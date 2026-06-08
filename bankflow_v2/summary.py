@@ -63,6 +63,16 @@ def sort_transactions(transactions: list[Transaction]) -> list[Transaction]:
     return sorted(transactions, key=sort_key)
 
 
+def needs_total_balance_check(transactions: list[Transaction]) -> bool:
+    if not transactions:
+        return False
+    if all(getattr(tx, "bank", "") == "微信流水" for tx in transactions):
+        return False
+    if all(getattr(tx, "balance_optional", False) for tx in transactions):
+        return False
+    return True
+
+
 def summarize(transactions: list[Transaction], source: str = "") -> Summary:
     ordered = sort_transactions(transactions)
     summary = Summary()
@@ -97,6 +107,25 @@ def summarize(transactions: list[Transaction], source: str = "") -> Summary:
         summary.closing_balance = ordered[-1].balance.quantize(CENT)
 
     summary.issues = collect_issues(ordered, source)
+    if (
+        needs_total_balance_check(ordered)
+        and summary.opening_balance is not None
+        and summary.closing_balance is not None
+    ):
+        balance_change = (summary.closing_balance - summary.opening_balance).quantize(CENT)
+        if summary.net != balance_change:
+            summary.issues.append(
+                Issue(
+                    "需复核",
+                    source,
+                    "",
+                    (
+                        f"收支余额不闭合: 收入 {money(summary.income_sum)} - 支出 {money(summary.expense_sum)} "
+                        f"= 净额 {money(summary.net)}, 期末余额 {money(summary.closing_balance)} "
+                        f"- 期初余额 {money(summary.opening_balance)} = 余额变动 {money(balance_change)}"
+                    ),
+                )
+            )
     return summary
 
 

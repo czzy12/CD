@@ -280,7 +280,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("银行流水 PDF/Excel 解析")
-        self.resize(1280, 760)
+        self.resize(1120, 680)
+        self.setMinimumSize(960, 600)
         self.paths: list[Path] = []
         self.results: list[FileResult] = []
         self.issues: list[Issue] = []
@@ -292,7 +293,6 @@ class MainWindow(QMainWindow):
         self.summary_label.setObjectName("summaryLabel")
         self.summary_metrics = {
             "files": self.create_metric("文件", "0", "neutral"),
-            "flows": self.create_metric("流水", "0", "neutral"),
             "income": self.create_metric("收入", "0 / 0.00", "income"),
             "expense": self.create_metric("支出", "0 / 0.00", "expense"),
             "issues": self.create_metric("异常", "0", "warning"),
@@ -326,11 +326,11 @@ class MainWindow(QMainWindow):
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDisplayFormat("yyyy-MM-dd")
-        self.start_date.setFixedWidth(142)
+        self.start_date.setFixedWidth(118)
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDisplayFormat("yyyy-MM-dd")
-        self.end_date.setFixedWidth(142)
+        self.end_date.setFixedWidth(118)
         start_date, end_date = default_recent_month_range()
         self.start_date.setDate(start_date)
         self.end_date.setDate(end_date)
@@ -338,8 +338,8 @@ class MainWindow(QMainWindow):
         date_filter_panel = QFrame()
         date_filter_panel.setObjectName("inlineFilterPanel")
         date_filter_layout = QHBoxLayout(date_filter_panel)
-        date_filter_layout.setContentsMargins(14, 7, 14, 7)
-        date_filter_layout.setSpacing(8)
+        date_filter_layout.setContentsMargins(10, 6, 10, 6)
+        date_filter_layout.setSpacing(6)
         date_filter_layout.addWidget(self.date_filter)
         date_filter_layout.addWidget(QLabel("从"))
         date_filter_layout.addWidget(self.start_date)
@@ -347,7 +347,7 @@ class MainWindow(QMainWindow):
         date_filter_layout.addWidget(self.end_date)
 
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(10)
+        toolbar.setSpacing(8)
         toolbar.addWidget(run)
         toolbar.addWidget(add_files)
         toolbar.addWidget(add_folder)
@@ -395,8 +395,8 @@ class MainWindow(QMainWindow):
         central = DropWidget()
         central.filesDropped.connect(self.add_paths)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(14, 12, 14, 10)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 10, 10, 8)
+        layout.setSpacing(10)
         layout.addLayout(toolbar)
 
         file_card = QFrame()
@@ -415,7 +415,7 @@ class MainWindow(QMainWindow):
         metrics_bar = QFrame()
         metrics_bar.setObjectName("metricsBar")
         metrics_layout = QHBoxLayout(metrics_bar)
-        metrics_layout.setContentsMargins(16, 10, 16, 10)
+        metrics_layout.setContentsMargins(10, 8, 10, 8)
         metrics_layout.setSpacing(0)
         for index, metric in enumerate(self.summary_metrics.values()):
             metrics_layout.addWidget(metric, 1)
@@ -435,10 +435,10 @@ class MainWindow(QMainWindow):
 
         adjustment_panel = QFrame()
         adjustment_panel.setObjectName("sidePanel")
-        adjustment_panel.setFixedWidth(290)
+        adjustment_panel.setFixedWidth(250)
         adjustment_layout = QVBoxLayout(adjustment_panel)
-        adjustment_layout.setContentsMargins(14, 14, 14, 14)
-        adjustment_layout.setSpacing(9)
+        adjustment_layout.setContentsMargins(12, 12, 12, 12)
+        adjustment_layout.setSpacing(8)
         adjustment_title = QLabel("流水调整")
         adjustment_title.setObjectName("cardTitle")
         adjustment_layout.addWidget(adjustment_title)
@@ -484,7 +484,7 @@ class MainWindow(QMainWindow):
         adjustment_layout.addWidget(self.adjust_preview_label)
 
         content = QHBoxLayout()
-        content.setSpacing(14)
+        content.setSpacing(10)
         content.addLayout(left_area, 1)
         side_column = QVBoxLayout()
         side_column.addWidget(adjustment_panel, 0, Qt.AlignmentFlag.AlignTop)
@@ -527,7 +527,7 @@ class MainWindow(QMainWindow):
                 color: #ffffff;
                 border-color: #1769e0;
                 font-weight: 700;
-                padding: 0 20px;
+                padding: 0 16px;
             }
             QPushButton#primaryButton:hover { background: #0f5ccc; }
             QPushButton#exportButton {
@@ -547,7 +547,7 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
                 border: 1px solid #dfe6f1;
                 border-radius: 8px;
-                min-height: 42px;
+                min-height: 36px;
             }
             QFrame#metricsBar {
                 background: #ffffff;
@@ -562,18 +562,18 @@ class MainWindow(QMainWindow):
             }
             QLabel#metricLabel {
                 color: #5f6b7a;
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: 500;
             }
             QLabel#metricValue {
                 color: #162033;
-                font-size: 22px;
+                font-size: 20px;
                 font-weight: 600;
             }
             QLabel#metricValue[tone="income"] { color: #138a4b; }
             QLabel#metricValue[tone="expense"] { color: #d93f2f; }
             QLabel#metricValue[tone="income"], QLabel#metricValue[tone="expense"] {
-                font-size: 19px;
+                font-size: 18px;
             }
             QLabel#metricValue[tone="warning"] { color: #e07a1f; }
             QLabel#metricValue[tone="confidenceVeryHigh"] { color: #0b6f3a; }
@@ -594,7 +594,7 @@ class MainWindow(QMainWindow):
                 font-weight: 600;
             }
             QLabel#dropHint {
-                min-height: 88px;
+                min-height: 64px;
                 color: #4b5b6d;
                 border: 1px dashed #9bbff2;
                 border-radius: 8px;
@@ -674,11 +674,11 @@ class MainWindow(QMainWindow):
             }
             QLabel#adjustResultValue {
                 color: #1f9d55;
-                font-size: 28px;
+                font-size: 20px;
                 font-weight: 600;
             }
             QFrame#adjustResultCard QLabel#fieldLabel {
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: 500;
             }
             """
@@ -723,7 +723,7 @@ class MainWindow(QMainWindow):
         frame = QFrame()
         frame.setObjectName("metricItem")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 4, 12, 4)
+        layout.setContentsMargins(8, 3, 8, 3)
         title = QLabel(label)
         title.setObjectName("metricLabel")
         number = QLabel(value)
@@ -748,7 +748,7 @@ class MainWindow(QMainWindow):
         if key not in ("income", "expense") or " / " not in value:
             return value
         count, amount = value.split(" / ", 1)
-        return f'<span style="font-weight:700;">{count}</span><span style="font-weight:400; font-size:16px;"> / {amount}</span>'
+        return f'<span style="font-weight:700;">{count}</span><span style="font-weight:400; font-size:13px;"> / {amount}</span>'
 
     def run(self):
         if not self.paths:
@@ -1373,16 +1373,16 @@ def result_confidence_score(result: FileResult, date_range: tuple[datetime | Non
     elif getattr(summary, "opening_balance", None) is not None and getattr(summary, "closing_balance", None) is not None:
         has_balance_break = has_review_balance_break(summary)
         if summary_balance_closed(summary):
-            score += 18 if not has_balance_break else 6
+            score += 26 if not has_balance_break else 10
         else:
-            score -= 14
+            score -= 24
     else:
         score -= 6
 
     if last_two_months_have_flows(result.transactions, date_range):
-        score += 5
+        score += 8
         if last_two_months_closed_without_review(result.transactions, date_range):
-            score += 8
+            score += 14
 
     if result.message and result.status == "需复核" and result.message != DATE_RANGE_EMPTY_MESSAGE:
         score -= 8
@@ -1396,13 +1396,27 @@ def is_extremely_high_confidence(results: list[FileResult], issues: list[Issue])
     for result in results:
         if int(getattr(result.summary, "count", 0)) <= 0:
             return False
-        if is_generic_confidence_result(result) or result.bank_id == "excel":
+        if result.bank_id == "excel":
+            return False
+        if is_generic_confidence_result(result) and not summary_balance_closed(result.summary):
             return False
         if getattr(result.summary, "issues", []):
             return False
         if result.message and result.message != DATE_RANGE_EMPTY_MESSAGE:
             return False
     return True
+
+
+def only_total_balance_closure_issues(results: list[FileResult], issues: list[Issue]) -> bool:
+    if not issues:
+        return False
+    if any(int(getattr(result.summary, "count", 0)) <= 0 for result in results):
+        return False
+    return all(is_total_balance_closure_issue(issue) for issue in issues)
+
+
+def is_total_balance_closure_issue(issue: Issue) -> bool:
+    return issue.level == "需复核" and str(issue.message).startswith("收支余额不闭合")
 
 
 def is_generic_confidence_result(result: FileResult) -> bool:

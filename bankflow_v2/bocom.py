@@ -53,9 +53,15 @@ def _row_is_date_only_transaction(row: list) -> bool:
 def _amounts_from_direction(direction: str, amount: Decimal) -> tuple[Decimal, Decimal, list[str]]:
     issues: list[str] = []
     if "贷" in direction or "Cr" in direction:
-        return amount, Decimal("0.00"), issues
+        signed_amount = amount
+        if signed_amount >= 0:
+            return signed_amount, Decimal("0.00"), issues
+        return Decimal("0.00"), -signed_amount, issues
     if "借" in direction or "Dr" in direction:
-        return Decimal("0.00"), amount, issues
+        signed_amount = -amount
+        if signed_amount >= 0:
+            return signed_amount, Decimal("0.00"), issues
+        return Decimal("0.00"), -signed_amount, issues
     issues.append("借贷方向无法解析")
     return Decimal("0.00"), Decimal("0.00"), issues
 

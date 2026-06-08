@@ -126,10 +126,10 @@
     "expected": {
       "count": 216,
       "income_count": 46,
-      "income_sum": "553877.79",
+      "income_sum": "630237.79",
       "expense_count": 170,
       "expense_sum": "590241.05",
-      "net": "-36363.26",
+      "net": "39996.74",
       "opening_balance": "3.52",
       "closing_balance": "40000.26",
       "issues": 0

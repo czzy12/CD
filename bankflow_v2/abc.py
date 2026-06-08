@@ -5,7 +5,7 @@ from decimal import Decimal
 import pdfplumber
 
 from .models import Transaction
-from .number_parser import choose_amount_and_balance
+from .number_parser import money_to_decimal
 
 
 BANK_NAME = "中国农业银行"
@@ -15,6 +15,35 @@ LINE_RE = re.compile(
     r"(?P<amount>[+-]?\d[\d,]*\.\d{2})\s+"
     r"(?P<balance>\d[\d,]*\.\d{2})(?:\s+(?P<counterparty>.*))?$"
 )
+
+
+def parse_abc_amount_and_balance(
+    amount_raw: str,
+    balance_raw: str,
+    transaction_type: str,
+    previous_balance: Decimal | None,
+) -> tuple[Decimal, Decimal | None, list[str]]:
+    amount = money_to_decimal(amount_raw) or Decimal("0.00")
+    balance = money_to_decimal(balance_raw)
+    issues: list[str] = []
+
+    if balance is None:
+        return amount, None, ["余额无法解析"]
+
+    if previous_balance is None:
+        return amount, balance, issues
+
+    balance_delta = (balance - previous_balance).quantize(Decimal("0.01"))
+    if balance_delta == amount:
+        return amount, balance, issues
+
+    # 农行“自动抹账”明细常显示原交易方向，但余额按冲正方向变化。
+    # 这种场景按余额差统计，避免把后续清晰余额截断成后缀值。
+    if transaction_type == "自动抹账" and balance_delta == -amount:
+        return balance_delta, balance, issues
+
+    issues.append(f"余额不连续: 期望 {(previous_balance + amount).quantize(Decimal('0.01'))}, 解析 {balance}")
+    return amount, balance, issues
 
 
 def parse_abc_time(raw_date: str, raw_time: str | None = None) -> datetime | None:
@@ -54,9 +83,10 @@ def extract_abc(pdf_path: str) -> list[Transaction]:
                 if tx_time is None:
                     continue
 
-                amount, balance, issues = choose_amount_and_balance(
+                amount, balance, issues = parse_abc_amount_and_balance(
                     match.group("amount"),
                     match.group("balance"),
+                    match.group("type"),
                     previous_balance,
                 )
 

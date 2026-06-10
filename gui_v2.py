@@ -44,14 +44,14 @@ ACCOUNT_NAME_PATTERNS = (
     r"Account Name\s*[:：]\s*([^\s，,]+)",
 )
 ACCOUNT_NO_PATTERNS = (
-    r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"账号/卡号\s*(?:Account/Card No\.?)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"Account/Card\s*No\.?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"账户\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"卡号\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"银行卡号\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
-    r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s-]{6,30}[0-9])",
+    r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"账号/卡号\s*(?:Account/Card No\.?)?\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"Account/Card\s*No\.?\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"账户\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"卡号\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"银行卡号\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+    r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
 )
 
 
@@ -964,7 +964,9 @@ class MainWindow(QMainWindow):
 
     def export_income_proof_json(self):
         if not self.results:
-            QMessageBox.information(self, "提示", "请先处理流水后再导出。")
+            opened = open_income_proof_form()
+            if not opened:
+                QMessageBox.warning(self, "未打开填表", "未找到收入佐证程序，请确认工具包目录完整。")
             return
         default_path = Path(default_export_path(self.results)).with_suffix(".income_proof.json")
         path = default_path
@@ -1037,10 +1039,11 @@ def default_export_path(results: list[FileResult]) -> str:
 
 
 def default_export_dir() -> Path | None:
-    desktop = Path.home() / "Desktop"
-    if not desktop.exists():
-        return None
-    return desktop / "银行流水解析结果"
+    if getattr(sys, "frozen", False):
+        base = Path(sys.executable).resolve().parent
+    else:
+        base = Path(__file__).resolve().parent
+    return base / "银行流水解析结果"
 
 
 def safe_filename_part(value: str) -> str:
@@ -1133,11 +1136,15 @@ def parse_account_name(text: str) -> str:
 
 
 def normalize_account_no(value: str) -> str:
-    return re.sub(r"\D", "", value or "")
+    return re.sub(r"[^0-9*＊]", "", value or "").replace("＊", "*")
 
 
 def valid_account_no(value: str) -> bool:
-    return 8 <= len(value) <= 22
+    if not 8 <= len(value) <= 22:
+        return False
+    if re.fullmatch(r"20\d{6}", value):
+        return False
+    return bool(re.search(r"\d", value))
 
 
 def parse_account_no(text: str) -> str:
@@ -1935,7 +1942,7 @@ def default_recent_month_range() -> tuple[QDate, QDate]:
     return start, end
 
 
-def open_income_proof_form(json_path: Path) -> bool:
+def open_income_proof_form(json_path: Path | None = None) -> bool:
     candidates = []
     if getattr(sys, "frozen", False):
         app_dir = Path(sys.executable).resolve().parent
@@ -1952,10 +1959,9 @@ def open_income_proof_form(json_path: Path) -> bool:
     launcher = next((path for path in candidates if path.exists()), None)
     if launcher is None:
         return False
-    if launcher.suffix.lower() in (".bat", ".cmd"):
-        command = ["cmd", "/c", "start", "", str(launcher), str(json_path)]
-    else:
-        command = [str(launcher), str(json_path)]
+    command = [str(launcher)]
+    if json_path is not None:
+        command.append(str(json_path))
     subprocess.Popen(command, cwd=str(launcher.parent))
     return True
 

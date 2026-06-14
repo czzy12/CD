@@ -17,10 +17,13 @@ from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
 from .chengdu_rural_corp import extract_chengdu_rural_corp
+from .cib import extract_cib
 from .generic_pdf import extract_generic_pdf
+from .huaxia import extract_huaxia
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
 from .models import Transaction
+from .pingan import extract_pingan
 from .psbc import extract_psbc
 from .qilu_corp import extract_qilu_corp
 from .rural_credit import extract_rural_credit
@@ -33,6 +36,8 @@ from .zhongyuan import extract_zhongyuan
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
     if bank == "icbc":
         return extract_icbc(pdf_path)
+    if bank == "huaxia":
+        return extract_huaxia(pdf_path)
     if bank == "icbc_corp":
         return extract_icbc_corp(pdf_path)
     if bank == "ccb":
@@ -53,6 +58,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_bocom_corp(pdf_path)
     if bank == "psbc":
         return extract_psbc(pdf_path)
+    if bank == "pingan":
+        return extract_pingan(pdf_path)
     if bank == "qilu_corp":
         return extract_qilu_corp(pdf_path)
     if bank == "rural_credit":
@@ -88,7 +95,7 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
     if bank == "cmbc":
         return extract_generic_pdf(pdf_path, "民生银行个人")
     if bank == "cib":
-        return extract_generic_pdf(pdf_path, "兴业银行")
+        return extract_cib(pdf_path)
     if bank == "generic_pdf":
         return extract_generic_pdf(pdf_path)
     if bank == "wechat":

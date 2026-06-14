@@ -25,10 +25,12 @@ BANK_LABELS = {
     "citic": "中信银行个人",
     "citic_corp": "中信银行对公",
     "foshan_rural": "佛山农村商业银行",
+    "huaxia": "华夏银行",
     "jiujiang": "九江银行",
     "lanzhou": "兰州银行",
     "nanjing_corp": "南京银行对公",
     "ningbo": "宁波银行",
+    "pingan": "平安银行",
     "cmbc": "民生银行个人",
     "cmbc_corp": "民生银行对公",
     "cib": "兴业银行",
@@ -140,6 +142,28 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     if "上海银行交易明细" in header_compact and "TransactionDetails" in compact and "交易金额期末金额" in compact:
         return Detection("shanghai", BANK_LABELS["shanghai"], 98, "命中上海银行个人交易明细")
+
+    if (
+        "华夏银行个人账户交易流水" in header_compact
+        and "HuaxiaBankPersonalTransactionStatement" in compact
+        and "交易金额余额" in compact
+    ):
+        return Detection("huaxia", BANK_LABELS["huaxia"], 98, "命中华夏银行个人账户交易流水电子版")
+
+    if (
+        "平安银行个人账户交易明细清单" in compact
+        and "TransactionDetailsListofPersonalAccountofPinganBank" in compact
+        and "交易金额余额交易地点摘要" in compact
+    ):
+        return Detection("pingan", BANK_LABELS["pingan"], 98, "命中平安银行个人账户交易明细清单")
+
+    if (
+        "清单编号" in compact
+        and "ListNumber" in compact
+        and "交易金额余额交易地点摘要备注" in compact
+        and "CounterpartyInformation" in compact
+    ):
+        return Detection("pingan", BANK_LABELS["pingan"], 92, "命中平安银行个人账户交易明细清单续页")
 
     if (
         "账户交易明细" in header_compact

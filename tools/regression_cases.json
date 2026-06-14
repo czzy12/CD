@@ -1052,5 +1052,107 @@
       "closing_balance": "5089.77",
       "issues": 0
     }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202512至202602",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_2.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 173,
+      "income_count": 38,
+      "income_sum": "2267972.91",
+      "expense_count": 135,
+      "expense_sum": "2265772.30",
+      "net": "2200.61",
+      "opening_balance": "2365.25",
+      "closing_balance": "4565.86",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202602至202603",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_0.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 165,
+      "income_count": 43,
+      "income_sum": "1172216.86",
+      "expense_count": 122,
+      "expense_sum": "1162090.00",
+      "net": "10126.86",
+      "opening_balance": "4565.86",
+      "closing_balance": "14692.72",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202603至202605",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_3.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 173,
+      "income_count": 41,
+      "income_sum": "2092761.39",
+      "expense_count": 132,
+      "expense_sum": "2082984.96",
+      "net": "9776.43",
+      "opening_balance": "14692.72",
+      "closing_balance": "24469.15",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202606",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_1.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 8,
+      "income_count": 2,
+      "income_sum": "82065.00",
+      "expense_count": 6,
+      "expense_sum": "89989.00",
+      "net": "-7924.00",
+      "opening_balance": "24469.15",
+      "closing_balance": "16545.15",
+      "issues": 0
+    }
+  },
+  {
+    "name": "兴业银行个人-交易流水-江强",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/8c61235fa2a34b999d0f65bae2bf9b451781072000482.pdf",
+    "tags": ["cib", "personal"],
+    "expected": {
+      "count": 44,
+      "income_count": 18,
+      "income_sum": "435131.93",
+      "expense_count": 26,
+      "expense_sum": "422329.39",
+      "net": "12802.54",
+      "opening_balance": "8259.53",
+      "closing_balance": "21062.07",
+      "issues": 0
+    }
+  },
+  {
+    "name": "华夏银行个人-账户交易流水电子版-辛雨",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/银行流水_0(3).pdf",
+    "tags": ["huaxia", "personal"],
+    "expected": {
+      "count": 1010,
+      "income_count": 270,
+      "income_sum": "3399817.50",
+      "expense_count": 740,
+      "expense_sum": "3192180.57",
+      "net": "207636.93",
+      "opening_balance": "59910.35",
+      "closing_balance": "267547.28",
+      "issues": 0
+    }
   }
 ]

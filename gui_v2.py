@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
         add_folder = QPushButton("选择文件夹")
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
-        export_income_json = QPushButton("佐证填写")
+        export_income_json = QPushButton("经营佐证")
         export_salary_json = QPushButton("工资佐证")
         run.setObjectName("primaryButton")
         export_income_json.setObjectName("exportButton")
@@ -986,9 +986,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")
 
     def export_salary_income_proof_json(self):
-        if not self.results:
-            QMessageBox.information(self, "提示", "请先处理流水后再导出工资佐证。")
-            return
         default_path = Path(default_export_path(self.results)).with_suffix(".salary_income_proof.json")
         path = default_path
         path.parent.mkdir(parents=True, exist_ok=True)

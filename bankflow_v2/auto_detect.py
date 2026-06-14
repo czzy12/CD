@@ -16,6 +16,7 @@ BANK_LABELS = {
     "abc_corp": "农业银行对公",
     "boc_corp": "中国银行对公",
     "bocom": "交通银行",
+    "bocom_corp": "交通银行对公",
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
     "chengdu_rural_corp": "成都农村商业银行对公",
@@ -36,6 +37,8 @@ BANK_LABELS = {
     "psbc": "邮储银行",
     "qilu_corp": "齐鲁银行对公",
     "rural_credit": "农村信用社",
+    "shanghai": "上海银行个人",
+    "shanghai_corp": "上海银行对公",
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
     "wechat": "微信流水",
@@ -116,6 +119,27 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "支出金额收入金额余额" in compact
     ):
         return Detection("psbc", BANK_LABELS["psbc"], 98, "命中邮储对公账户交易明细专用回单特征")
+
+    if (
+        "交通银行四川省分行明细对账单" in header_compact
+        and "会计日期交易日期交易名称" in compact
+        and "借方发生额贷方发生额余额" in compact
+    ):
+        return Detection("bocom_corp", BANK_LABELS["bocom_corp"], 98, "命中交通银行对公明细对账单")
+
+    if (
+        ("账户明细对账单" in header_compact or "账户明细查询" in header_compact)
+        and (
+            "上海银行" in compact
+            or "交易流水号交易时间记账日期交易方向" in compact
+            or "序号交易时间借方金额贷方金额余额" in compact
+        )
+        and (("借方金额贷方金额余额" in compact) or ("借方发生额贷方发生额余额" in compact))
+    ):
+        return Detection("shanghai_corp", BANK_LABELS["shanghai_corp"], 98, "命中上海银行对公账户明细")
+
+    if "上海银行交易明细" in header_compact and "TransactionDetails" in compact and "交易金额期末金额" in compact:
+        return Detection("shanghai", BANK_LABELS["shanghai"], 98, "命中上海银行个人交易明细")
 
     if (
         "账户交易明细" in header_compact

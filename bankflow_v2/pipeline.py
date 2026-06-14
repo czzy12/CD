@@ -2,6 +2,7 @@ from .abc import extract_abc
 from .abc_corp import extract_abc_corp
 from .boc_corp import extract_boc_corp
 from .bocom import extract_bocom
+from .bocom_corp import extract_bocom_corp
 from .cmb import extract_cmb
 from .cmb_corp import extract_cmb_corp
 from .citic import extract_citic, extract_citic_corp
@@ -23,6 +24,7 @@ from .models import Transaction
 from .psbc import extract_psbc
 from .qilu_corp import extract_qilu_corp
 from .rural_credit import extract_rural_credit
+from .shanghai import extract_shanghai, extract_shanghai_corp
 from .spdb import extract_spdb, extract_spdb_corp
 from .wechat import extract_wechat
 from .zhongyuan import extract_zhongyuan
@@ -47,12 +49,18 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_boc_corp(pdf_path)
     if bank == "bocom":
         return extract_bocom(pdf_path)
+    if bank == "bocom_corp":
+        return extract_bocom_corp(pdf_path)
     if bank == "psbc":
         return extract_psbc(pdf_path)
     if bank == "qilu_corp":
         return extract_qilu_corp(pdf_path)
     if bank == "rural_credit":
         return extract_rural_credit(pdf_path)
+    if bank == "shanghai":
+        return extract_shanghai(pdf_path)
+    if bank == "shanghai_corp":
+        return extract_shanghai_corp(pdf_path)
     if bank == "cmbc_corp":
         return extract_cmbc_corp(pdf_path)
     if bank == "cmb":

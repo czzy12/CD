@@ -729,5 +729,328 @@
       "closing_balance": "447226.95",
       "issues": 0
     }
+  },
+  {
+    "name": "交行对公-明细对账单-202512-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202512-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 0,
+      "income_sum": "0.00",
+      "expense_count": 25,
+      "expense_sum": "284984.63",
+      "net": "-284984.63",
+      "opening_balance": "365462.54",
+      "closing_balance": "80477.91",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202512-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202512-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 5,
+      "income_sum": "3650097.19",
+      "expense_count": 20,
+      "expense_sum": "3366511.94",
+      "net": "283585.25",
+      "opening_balance": "80477.91",
+      "closing_balance": "364063.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202512-3",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202512-3.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 36,
+      "income_count": 11,
+      "income_sum": "5301707.63",
+      "expense_count": 25,
+      "expense_sum": "5544847.63",
+      "net": "-243140.00",
+      "opening_balance": "364063.16",
+      "closing_balance": "120923.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202601-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202601-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 11,
+      "income_sum": "6069200.00",
+      "expense_count": 14,
+      "expense_sum": "6129653.58",
+      "net": "-60453.58",
+      "opening_balance": "120923.16",
+      "closing_balance": "60469.58",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202601-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202601-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 27,
+      "income_count": 9,
+      "income_sum": "865586.04",
+      "expense_count": 18,
+      "expense_sum": "869196.95",
+      "net": "-3610.91",
+      "opening_balance": "60469.58",
+      "closing_balance": "56858.67",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202602-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202602-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 9,
+      "income_sum": "3963767.65",
+      "expense_count": 16,
+      "expense_sum": "3410112.55",
+      "net": "553655.10",
+      "opening_balance": "56858.67",
+      "closing_balance": "610513.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202602-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202602-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 8,
+      "income_count": 1,
+      "income_sum": "86440.04",
+      "expense_count": 7,
+      "expense_sum": "295451.40",
+      "net": "-209011.36",
+      "opening_balance": "610513.77",
+      "closing_balance": "401502.41",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202603-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202603-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 11,
+      "income_sum": "438105.37",
+      "expense_count": 14,
+      "expense_sum": "385210.88",
+      "net": "52894.49",
+      "opening_balance": "401502.41",
+      "closing_balance": "454396.90",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202603-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202603-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 9,
+      "income_count": 2,
+      "income_sum": "280552.03",
+      "expense_count": 7,
+      "expense_sum": "228060.00",
+      "net": "52492.03",
+      "opening_balance": "454396.90",
+      "closing_balance": "506888.93",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 11,
+      "income_sum": "2643800.00",
+      "expense_count": 14,
+      "expense_sum": "3085555.95",
+      "net": "-441755.95",
+      "opening_balance": "506888.93",
+      "closing_balance": "65132.98",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 8,
+      "income_sum": "4090000.00",
+      "expense_count": 17,
+      "expense_sum": "3942556.59",
+      "net": "147443.41",
+      "opening_balance": "65132.98",
+      "closing_balance": "212576.39",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-3",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-3.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 50,
+      "income_count": 8,
+      "income_sum": "7777303.84",
+      "expense_count": 42,
+      "expense_sum": "1958062.08",
+      "net": "5819241.76",
+      "opening_balance": "212576.39",
+      "closing_balance": "6031818.15",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-4",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-4.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 14,
+      "income_count": 1,
+      "income_sum": "320000.00",
+      "expense_count": 13,
+      "expense_sum": "5584200.40",
+      "net": "-5264200.40",
+      "opening_balance": "6031818.15",
+      "closing_balance": "767617.75",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202605-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202605-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 6,
+      "income_sum": "475898.58",
+      "expense_count": 19,
+      "expense_sum": "835342.65",
+      "net": "-359444.07",
+      "opening_balance": "767617.75",
+      "closing_balance": "408173.68",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202605-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202605-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 21,
+      "income_count": 3,
+      "income_sum": "442113.94",
+      "expense_count": 18,
+      "expense_sum": "821260.32",
+      "net": "-379146.38",
+      "opening_balance": "408173.68",
+      "closing_balance": "29027.30",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行对公-账户明细对账单-集欣物流",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/公户_0(4).pdf",
+    "tags": ["shanghai_corp", "corp", "shanghai"],
+    "expected": {
+      "count": 1169,
+      "income_count": 112,
+      "income_sum": "10869904.93",
+      "expense_count": 1057,
+      "expense_sum": "10553472.22",
+      "net": "316432.71",
+      "opening_balance": "105920.91",
+      "closing_balance": "422353.62",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行对公-账户明细查询-金溪物流",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/杨丽丽(1)/杨丽丽/公户_0.pdf",
+    "tags": ["shanghai_corp", "corp", "shanghai"],
+    "expected": {
+      "count": 1381,
+      "income_count": 683,
+      "income_sum": "31574957.40",
+      "expense_count": 698,
+      "expense_sum": "30351041.40",
+      "net": "1223916.00",
+      "opening_balance": "59607.44",
+      "closing_balance": "1283523.44",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行个人-交易明细-杨丽丽-202506至202606后段",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/杨丽丽(1)/杨丽丽/银行流水_0.pdf",
+    "tags": ["shanghai", "personal"],
+    "expected": {
+      "count": 294,
+      "income_count": 27,
+      "income_sum": "86353.77",
+      "expense_count": 267,
+      "expense_sum": "88209.23",
+      "net": "-1855.46",
+      "opening_balance": "5089.77",
+      "closing_balance": "3234.31",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行个人-交易明细-杨丽丽-202506至202606前段",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/杨丽丽(1)/杨丽丽/银行流水_1.pdf",
+    "tags": ["shanghai", "personal"],
+    "expected": {
+      "count": 206,
+      "income_count": 29,
+      "income_sum": "57856.97",
+      "expense_count": 177,
+      "expense_sum": "83353.98",
+      "net": "-25497.01",
+      "opening_balance": "30586.78",
+      "closing_balance": "5089.77",
+      "issues": 0
+    }
   }
 ]

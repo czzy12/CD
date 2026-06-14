@@ -9,6 +9,8 @@ from .summary import Summary, monthly_summaries, summarize
 
 CENT = Decimal("0.01")
 WAN = Decimal("10000")
+SALARY_KEYWORDS = ("工资", "薪资", "薪酬", "奖金", "奖", "代发工资")
+SALARY_EXCLUDE_KEYWORDS = ("补助", "补贴", "补增资", "报销", "退款")
 
 
 CORP_BANK_IDS = {
@@ -205,7 +207,72 @@ def combined_month_summaries(results: list, selected_months: set[str]) -> list[t
     return rows
 
 
-def flow_block(results: list) -> dict:
+def salary_match_text(tx) -> str:
+    raw_fields = " | ".join(str(field) for field in getattr(tx, "raw_fields", []) or [])
+    return f"{getattr(tx, 'raw_text', '')} | {raw_fields} | {getattr(tx, 'raw_amount', '')}".strip()
+
+
+def is_salary_transaction(tx) -> bool:
+    if tx.income <= Decimal("0.00"):
+        return False
+    text = salary_match_text(tx)
+    if any(keyword in text for keyword in SALARY_EXCLUDE_KEYWORDS):
+        return False
+    return any(keyword in text for keyword in SALARY_KEYWORDS)
+
+
+def salary_flow_block(results: list) -> dict:
+    all_transactions = [tx for result in results for tx in getattr(result, "transactions", [])]
+    salary_transactions = [tx for tx in all_transactions if is_salary_transaction(tx)]
+    all_months = dict(monthly_summaries(all_transactions))
+    salary_months = dict(monthly_summaries(salary_transactions))
+    selected_months = sorted(salary_months or all_months)[-6:]
+
+    total_salary = Summary()
+    total_expense = Summary()
+    rows = []
+    for month in selected_months:
+        salary_summary = salary_months.get(month, Summary())
+        all_summary = all_months.get(month, Summary())
+        total_salary.income_count += salary_summary.income_count
+        total_salary.income_sum += salary_summary.income_sum
+        total_expense.expense_count += all_summary.expense_count
+        total_expense.expense_sum += all_summary.expense_sum
+        rows.append(
+            {
+                "month": month.replace("-", "."),
+                "income_count": int(salary_summary.income_count),
+                "income_amount_wan": to_wan(salary_summary.income_sum) or 0,
+                "expense_count": int(all_summary.expense_count),
+                "expense_amount_wan": to_wan(all_summary.expense_sum) or 0,
+            }
+        )
+
+    total_salary.income_sum = total_salary.income_sum.quantize(CENT)
+    total_expense.expense_sum = total_expense.expense_sum.quantize(CENT)
+    month_count = Decimal("6")
+    return {
+        "accounts": unique_accounts(results)[:5],
+        "latest_balance_wan": latest_balance_wan(results),
+        "salary_keywords": list(SALARY_KEYWORDS),
+        "salary_transaction_count": int(total_salary.income_count),
+        "summary": {
+            "income_count_total": int(total_salary.income_count),
+            "income_amount_total_wan": to_wan(total_salary.income_sum) or 0,
+            "expense_count_total": int(total_expense.expense_count),
+            "expense_amount_total_wan": to_wan(total_expense.expense_sum) or 0,
+            "income_monthly_avg_wan": to_wan(total_salary.income_sum / month_count) or 0,
+            "expense_monthly_avg_wan": to_wan(total_expense.expense_sum / month_count) or 0,
+        },
+        "months": rows,
+    }
+
+
+def flow_block(results: list, target_flow_type: str | None = None) -> dict:
+    if target_flow_type == "对公":
+        results = [result for result in results if flow_type(getattr(result, "bank_id", "")) == "对公"]
+    elif target_flow_type == "个人":
+        results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
     transactions = [tx for result in results for tx in getattr(result, "transactions", [])]
     month_pairs = monthly_summaries(transactions)
     month_pairs = month_pairs[-6:]
@@ -247,12 +314,8 @@ def flow_block(results: list) -> dict:
 
 
 def build_income_proof_input(results: list, template_path: str = "", output_path: str = "") -> dict:
-    personal_results = [
-        result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"
-    ]
-    corporate_results = [
-        result for result in results if flow_type(getattr(result, "bank_id", "")) == "对公"
-    ]
+    personal_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
+    corporate_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) == "对公"]
 
     return {
         "schema_version": "1.0",
@@ -279,8 +342,8 @@ def build_income_proof_input(results: list, template_path: str = "", output_path
         "flow_policy": {
             "use_corporate_flow": False,
         },
-        "personal_flow": flow_block(personal_results) if personal_results else empty_flow(),
-        "corporate_flow": flow_block(corporate_results) if corporate_results else empty_flow(),
+        "personal_flow": flow_block(results, "个人") if personal_results else empty_flow(),
+        "corporate_flow": flow_block(results, "对公") if corporate_results else empty_flow(),
         "notes": {
             "supplement": "",
             "export_note": "客户、单位、占股、地区等字段需人工补充或由后续系统/API填入；未识别到的账号需人工补充；对公流水必须人工确认后才启用。",
@@ -306,4 +369,36 @@ def empty_flow() -> dict:
 
 def write_income_proof_input(path: Path, results: list, template_path: str = "", output_path: str = "") -> None:
     data = build_income_proof_input(results, template_path=template_path, output_path=output_path)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def build_salary_income_proof_input(results: list, template_path: str = "", output_path: str = "") -> dict:
+    personal_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
+    return {
+        "schema_version": "1.0",
+        "proof_type": "salary",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "source_path": template_path or "D:\\report workflow\\data\\流水佐证工资.docx",
+        "output_path": output_path or "D:\\report workflow\\data\\生成结果_流水佐证工资.docx",
+        "customer": {
+            "name": "",
+            "city": "",
+            "system_monthly_income_wan": 0,
+            "report_date": datetime.now().strftime("%Y年%m月%d日"),
+        },
+        "flow_policy": {
+            "use_corporate_flow": False,
+        },
+        "salary_flow": salary_flow_block(personal_results) if personal_results else empty_flow(),
+        "personal_flow": flow_block(personal_results, "个人") if personal_results else empty_flow(),
+        "corporate_flow": empty_flow(),
+        "notes": {
+            "supplement": "",
+            "export_note": "工资类佐证：流入仅统计摘要/原始字段命中工资、薪资、薪酬、奖金、奖、代发工资的入账，并排除补助、补贴、补增资、报销、退款；流出统计个人账户全量支出。",
+        },
+    }
+
+
+def write_salary_income_proof_input(path: Path, results: list, template_path: str = "", output_path: str = "") -> None:
+    data = build_salary_income_proof_input(results, template_path=template_path, output_path=output_path)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

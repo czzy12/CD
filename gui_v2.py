@@ -29,7 +29,12 @@ from PyQt6.QtWidgets import (
 )
 
 from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adjustments, parse_amount_wan
-from bankflow_v2.income_proof_export import balance_wechat_summaries, flow_type as income_flow_type, write_income_proof_input
+from bankflow_v2.income_proof_export import (
+    balance_wechat_summaries,
+    flow_type as income_flow_type,
+    write_income_proof_input,
+    write_salary_income_proof_input,
+)
 from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_transactions, summarize
 
 
@@ -313,13 +318,16 @@ class MainWindow(QMainWindow):
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
         export_income_json = QPushButton("佐证填写")
+        export_salary_json = QPushButton("工资佐证")
         run.setObjectName("primaryButton")
         export_income_json.setObjectName("exportButton")
+        export_salary_json.setObjectName("exportButton")
         add_files.clicked.connect(self.add_files)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
         export_income_json.clicked.connect(self.export_income_proof_json)
+        export_salary_json.clicked.connect(self.export_salary_income_proof_json)
 
         self.date_filter = QCheckBox("筛选日期")
         self.date_filter.setChecked(True)
@@ -355,6 +363,7 @@ class MainWindow(QMainWindow):
         toolbar.addSpacing(14)
         toolbar.addWidget(date_filter_panel)
         toolbar.addStretch(1)
+        toolbar.addWidget(export_salary_json)
         toolbar.addWidget(export_income_json)
 
         self.income_adjust = QCheckBox("启用收入调整（微信）")
@@ -972,6 +981,18 @@ class MainWindow(QMainWindow):
         path = default_path
         path.parent.mkdir(parents=True, exist_ok=True)
         write_income_proof_input(path, self.results)
+        opened = open_income_proof_form(path)
+        if not opened:
+            QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")
+
+    def export_salary_income_proof_json(self):
+        if not self.results:
+            QMessageBox.information(self, "提示", "请先处理流水后再导出工资佐证。")
+            return
+        default_path = Path(default_export_path(self.results)).with_suffix(".salary_income_proof.json")
+        path = default_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_salary_income_proof_input(path, self.results)
         opened = open_income_proof_form(path)
         if not opened:
             QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")

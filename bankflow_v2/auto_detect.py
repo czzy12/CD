@@ -18,7 +18,9 @@ BANK_LABELS = {
     "bocom": "交通银行",
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
+    "chengdu_rural_corp": "成都农村商业银行对公",
     "cmb": "招商银行",
+    "cmb_corp": "招商银行对公",
     "citic": "中信银行个人",
     "citic_corp": "中信银行对公",
     "foshan_rural": "佛山农村商业银行",
@@ -37,6 +39,7 @@ BANK_LABELS = {
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
     "wechat": "微信流水",
+    "zhongyuan": "中原银行",
 }
 
 
@@ -124,6 +127,19 @@ def detect_bank_type(pdf_path: str) -> Detection:
     ):
         return Detection("citic_corp", BANK_LABELS["citic_corp"], 95, "命中中信对公账户交易明细表头")
 
+    if "账务明细清单" in header_compact and "StatementOfAccount" in header_compact and "招商银行" in compact:
+        return Detection("cmb_corp", BANK_LABELS["cmb_corp"], 98, "命中招商银行对公账务明细清单")
+
+    if "账户交易流水" in header_compact and "中原银行" in compact and "收支状态" in compact:
+        return Detection("zhongyuan", BANK_LABELS["zhongyuan"], 98, "命中中原银行账户交易流水")
+
+    if (
+        "成都农村商业银行" in compact
+        and "客户明细" in header_compact
+        and "借方金额贷方金额余额" in compact
+    ):
+        return Detection("chengdu_rural_corp", BANK_LABELS["chengdu_rural_corp"], 98, "命中成都农商银行客户明细")
+
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),
         ("icbc_corp", "凭证号对方账号交易时间借贷标志", 98),
@@ -143,6 +159,7 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("psbc", "中国邮政储蓄银行借记账户历史明细", 95),
         ("qilu_corp", "单位活期存款账户交易明细", 98),
         ("rural_credit", "交易流水号交易日期交易网点收入/支出交易金额实时余额", 95),
+        ("cmb_corp", "账务明细清单StatementOfAccount", 98),
         ("cmb", "TransactionStatementofChinaMerchantsBank", 95),
         ("citic", "账户交易明细Transactiondetails", 95),
         ("citic", "交易日期收入金额支出金额账户余额交易摘要", 90),

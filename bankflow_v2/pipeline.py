@@ -3,6 +3,7 @@ from .abc_corp import extract_abc_corp
 from .boc_corp import extract_boc_corp
 from .bocom import extract_bocom
 from .cmb import extract_cmb
+from .cmb_corp import extract_cmb_corp
 from .citic import extract_citic, extract_citic_corp
 from .city_commercial import (
     extract_foshan_rural,
@@ -14,6 +15,7 @@ from .city_commercial import (
 from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
+from .chengdu_rural_corp import extract_chengdu_rural_corp
 from .generic_pdf import extract_generic_pdf
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
@@ -23,6 +25,7 @@ from .qilu_corp import extract_qilu_corp
 from .rural_credit import extract_rural_credit
 from .spdb import extract_spdb, extract_spdb_corp
 from .wechat import extract_wechat
+from .zhongyuan import extract_zhongyuan
 
 
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
@@ -34,6 +37,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_ccb(pdf_path)
     if bank == "ccb_corp":
         return extract_ccb_corp(pdf_path)
+    if bank == "chengdu_rural_corp":
+        return extract_chengdu_rural_corp(pdf_path)
     if bank == "abc":
         return extract_abc(pdf_path)
     if bank == "abc_corp":
@@ -52,6 +57,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_cmbc_corp(pdf_path)
     if bank == "cmb":
         return extract_cmb(pdf_path)
+    if bank == "cmb_corp":
+        return extract_cmb_corp(pdf_path)
     if bank == "citic":
         return extract_citic(pdf_path)
     if bank == "citic_corp":
@@ -78,4 +85,6 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_generic_pdf(pdf_path)
     if bank == "wechat":
         return extract_wechat(pdf_path)
+    if bank == "zhongyuan":
+        return extract_zhongyuan(pdf_path)
     raise ValueError(f"v2 暂未适配该银行: {bank}")

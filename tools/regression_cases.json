@@ -187,6 +187,108 @@
     }
   },
   {
+    "name": "招商银行对公-账务明细清单-2026-05",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_2.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 10,
+      "income_count": 1,
+      "income_sum": "16000.00",
+      "expense_count": 9,
+      "expense_sum": "62804.18",
+      "net": "-46804.18",
+      "opening_balance": "51311.95",
+      "closing_balance": "4507.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-02",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_3.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 7,
+      "income_count": 2,
+      "income_sum": "21000.00",
+      "expense_count": 5,
+      "expense_sum": "27598.60",
+      "net": "-6598.60",
+      "opening_balance": "9126.69",
+      "closing_balance": "2528.09",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-03",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_4.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 30,
+      "income_count": 11,
+      "income_sum": "119096.91",
+      "expense_count": 19,
+      "expense_sum": "121229.41",
+      "net": "-2132.50",
+      "opening_balance": "2528.09",
+      "closing_balance": "395.59",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-04",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_5.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 30,
+      "income_count": 8,
+      "income_sum": "563000.00",
+      "expense_count": 22,
+      "expense_sum": "601894.33",
+      "net": "-38894.33",
+      "opening_balance": "202546.28",
+      "closing_balance": "163651.95",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2025-12",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_6.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 12,
+      "income_count": 2,
+      "income_sum": "20005.96",
+      "expense_count": 10,
+      "expense_sum": "213659.78",
+      "net": "-193653.82",
+      "opening_balance": "198039.72",
+      "closing_balance": "4385.90",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-01",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_7.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 8,
+      "income_count": 1,
+      "income_sum": "25000.00",
+      "expense_count": 7,
+      "expense_sum": "20259.21",
+      "net": "4740.79",
+      "opening_balance": "4385.90",
+      "closing_balance": "9126.69",
+      "issues": 0
+    }
+  },
+  {
     "name": "民生银行-对公单位账户对账单",
     "bank": "auto",
     "path": "C:/Users/lenovo/Desktop/马培忠/流水/民生对公.pdf",
@@ -591,6 +693,40 @@
       "net": "-74.07",
       "opening_balance": "173.82",
       "closing_balance": "99.75",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中原银行-账户交易流水-石丁庚",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/石丁庚/中原银行.pdf",
+    "tags": ["zhongyuan", "personal", "table"],
+    "expected": {
+      "count": 202,
+      "income_count": 42,
+      "income_sum": "422348.09",
+      "expense_count": 160,
+      "expense_sum": "388424.90",
+      "net": "33923.19",
+      "opening_balance": "4041.37",
+      "closing_balance": "37964.56",
+      "issues": 0
+    }
+  },
+  {
+    "name": "成都农村商业银行对公-客户明细-张建蓉",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/张建蓉/张建蓉20260613131759/基础资料/公户_0.pdf",
+    "tags": ["chengdu_rural_corp", "corp", "table"],
+    "expected": {
+      "count": 103,
+      "income_count": 18,
+      "income_sum": "4542903.55",
+      "expense_count": 85,
+      "expense_sum": "4104442.61",
+      "net": "438460.94",
+      "opening_balance": "8766.01",
+      "closing_balance": "447226.95",
       "issues": 0
     }
   }

@@ -31,7 +31,7 @@ a = Analysis(
         'transformers',
     ],
     noarchive=False,
-    optimize=0,
+    optimize=2,
 )
 pyz = PYZ(a.pure)
 

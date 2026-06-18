@@ -25,6 +25,7 @@ BANK_LABELS = {
     "citic": "中信银行个人",
     "citic_corp": "中信银行对公",
     "foshan_rural": "佛山农村商业银行",
+    "guilin_corp": "桂林银行对公",
     "huaxia": "华夏银行",
     "jiujiang": "九江银行",
     "lanzhou": "兰州银行",
@@ -187,6 +188,12 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "借方金额贷方金额余额" in compact
     ):
         return Detection("chengdu_rural_corp", BANK_LABELS["chengdu_rural_corp"], 98, "命中成都农商银行客户明细")
+
+    if (
+        "桂林银行企业客户交易清单" in header_compact
+        and "交易日期对方账号对方户名收入支出余额" in compact
+    ):
+        return Detection("guilin_corp", BANK_LABELS["guilin_corp"], 98, "命中桂林银行企业客户交易清单")
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),

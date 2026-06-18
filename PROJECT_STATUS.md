@@ -1,6 +1,6 @@
 ﻿# PDF流水项目当前状态
 
-更新时间：2026-06-14
+更新时间：2026-06-18
 
 ## 当前仓库
 
@@ -47,6 +47,7 @@ origin/work/2026-05-31-flow-adjustment
 - 2026-06-13：新增成都农村商业银行对公 `客户明细` 独立适配，支持表格列内换行的 `借方金额 / 贷方金额 / 余额` 版式。
 - 2026-06-14：完成 `流水0613` 专项 PDF 适配：交通银行对公 15 份、上海银行 4 份、华夏银行 1 份、平安银行 4 份、兴业银行 1 份均纳入回归；排除 Excel 和图片型 OCR/PCR 后，目录内 28 个 PDF 均可识别并解析。
 - 2026-06-14：PDF GUI 新增 `工资佐证` 入口，导出 `.salary_income_proof.json` 供收入佐证 Word 项目填写工资类模板；工资类流入只统计工资/薪资/薪酬/奖金/奖/代发工资等入账，并排除补助、补贴、补增资、报销、退款；流出仍按个人账户全量支出统计。
+- 2026-06-18：新增桂林银行对公 `企业客户交易清单` 独立适配，支持坐标抽取收入/支出/余额分列，并保留负数支出冲正符号。
 
 详细记录索引：
 
@@ -97,7 +98,7 @@ origin/work/2026-05-31-flow-adjustment
 当前主要覆盖：
 
 - 国有行和股份行常见个人/对公 PDF：工商、建设、农业、中国、交通、邮储、招商、兴业、平安、民生、中信、浦发、上海、华夏。
-- 城商行/农商行专项格式：齐鲁、成都农商、九江、佛山农商、兰州、宁波、南京、中原等。
+- 城商行/农商行专项格式：齐鲁、成都农商、九江、佛山农商、兰州、宁波、南京、中原、桂林银行等。
 - 微信流水、Excel 导入、HTML 伪 `.xlsx` 导入和通用 PDF 兜底。
 
 ## 最新功能状态
@@ -161,6 +162,7 @@ origin/work/2026-05-31-flow-adjustment
 - 中国银行 PDF 转 Excel 的 HTML 伪 `.xlsx` 可通过 Excel 导入解析，支持 `记账日期 / 记账时间 / 币别 / 金额 / 余额` 列。
 - 中原银行 `账户交易流水` 支持表格层 `交易日期 / 交易时间 / 金额 / 收支状态 / 余额` 解析。
 - 成都农村商业银行对公 `客户明细` 支持表格列内换行的 `借方金额 / 贷方金额 / 余额` 分列解析。
+- 桂林银行对公 `企业客户交易清单` 支持坐标抽取 `交易日期 / 对方账号 / 对方户名 / 收入 / 支出 / 余额`，保留负数支出冲正符号。
 
 注意：当前未重新打包 EXE；`启动GUI.bat` 通过 `python gui_v2.py` 启动源码 GUI，因此本地启动 GUI 会使用最新源码。`dist\BankFlowGUI\BankFlowGUI.exe` 不代表当前最新源码状态。
 
@@ -169,7 +171,7 @@ origin/work/2026-05-31-flow-adjustment
 最近执行：
 
 ```powershell
-python -m py_compile bankflow_v2\huaxia.py bankflow_v2\pingan.py bankflow_v2\cib.py bankflow_v2\auto_detect.py bankflow_v2\pipeline.py tools\regression.py
+python -m py_compile bankflow_v2\guilin_corp.py bankflow_v2\auto_detect.py bankflow_v2\pipeline.py tools\regression.py
 ```
 
 结果：
@@ -187,12 +189,13 @@ python tools\regression.py --all --allow-missing
 结果：
 
 ```text
-55 PASS / 0 FAIL / 13 SKIP
+56 PASS / 0 FAIL / 13 SKIP
 ```
 
 最近专项验证：
 
 - `流水0613`：交通银行对公 15 份、上海银行 4 份、华夏银行 1 份、平安银行 4 份、兴业银行 1 份均通过；排除 Excel 和图片型 OCR/PCR 后，28 个 PDF 均已识别并解析。
+- 桂林银行对公 `企业客户交易清单`：1 份样本通过，200 笔，0 异常。
 - 当前剩余排除项：`流水0613\公户_0(2).pdf` 为图片型 PDF，需要 OCR，按本阶段要求不解析。
 
 说明：13 个 SKIP 均为本机缺少桌面路径样本文件，不是解析逻辑失败。同类情况可按：
@@ -204,7 +207,7 @@ python tools\regression.py --all --allow-missing
 视为样本缺失跳过，目标结果应为：
 
 ```text
-55 PASS / 0 FAIL / 13 SKIP
+56 PASS / 0 FAIL / 13 SKIP
 ```
 
 ## 当前不支持或不作为稳定核心

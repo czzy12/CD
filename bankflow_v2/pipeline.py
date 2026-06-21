@@ -17,6 +17,7 @@ from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
 from .chengdu_rural_corp import extract_chengdu_rural_corp
+from .chongqing import extract_chongqing
 from .cib import extract_cib
 from .generic_pdf import extract_generic_pdf
 from .guilin_corp import extract_guilin_corp
@@ -49,6 +50,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_ccb_corp(pdf_path)
     if bank == "chengdu_rural_corp":
         return extract_chengdu_rural_corp(pdf_path)
+    if bank == "chongqing":
+        return extract_chongqing(pdf_path)
     if bank == "abc":
         return extract_abc(pdf_path)
     if bank == "abc_corp":

@@ -980,7 +980,7 @@ class MainWindow(QMainWindow):
         default_path = Path(default_export_path(self.results)).with_suffix(".income_proof.json")
         path = default_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_income_proof_input(path, self.results)
+        write_income_proof_input(path, self.results, adjustment_configs=self.adjustment_configs())
         opened = open_income_proof_form(path)
         if not opened:
             QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")
@@ -989,7 +989,7 @@ class MainWindow(QMainWindow):
         default_path = Path(default_export_path(self.results)).with_suffix(".salary_income_proof.json")
         path = default_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_salary_income_proof_input(path, self.results)
+        write_salary_income_proof_input(path, self.results, adjustment_configs=self.adjustment_configs())
         opened = open_income_proof_form(path)
         if not opened:
             QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")
@@ -1962,6 +1962,9 @@ def default_recent_month_range() -> tuple[QDate, QDate]:
 
 def open_income_proof_form(json_path: Path | None = None) -> bool:
     candidates = []
+    source_launcher = Path(r"D:\report workflow\启动收入佐证填表.bat")
+    if source_launcher.exists():
+        candidates.append(source_launcher)
     if getattr(sys, "frozen", False):
         app_dir = Path(sys.executable).resolve().parent
         candidates.extend([
@@ -1971,8 +1974,8 @@ def open_income_proof_form(json_path: Path | None = None) -> bool:
     else:
         app_dir = Path(__file__).resolve().parent
         candidates.extend([
+            app_dir.parent / "收入佐证" / "启动收入佐证填表.bat",
             app_dir.parent / "收入佐证" / "IncomeProofGUI.exe",
-            Path(r"D:\report workflow\启动收入佐证填表.bat"),
         ])
     launcher = next((path for path in candidates if path.exists()), None)
     if launcher is None:

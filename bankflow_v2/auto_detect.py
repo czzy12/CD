@@ -25,6 +25,7 @@ BANK_LABELS = {
     "cmb_corp": "招商银行对公",
     "citic": "中信银行个人",
     "citic_corp": "中信银行对公",
+    "customer_account_corp": "农村商业银行对公",
     "foshan_rural": "佛山农村商业银行",
     "guilin_corp": "桂林银行对公",
     "huaxia": "华夏银行",
@@ -32,6 +33,7 @@ BANK_LABELS = {
     "lanzhou": "兰州银行",
     "nanjing_corp": "南京银行对公",
     "ningbo": "宁波银行",
+    "mybank_corp": "浙江网商银行对公",
     "pingan": "平安银行",
     "cmbc": "民生银行个人",
     "cmbc_corp": "民生银行对公",
@@ -45,6 +47,7 @@ BANK_LABELS = {
     "shanghai_corp": "上海银行对公",
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
+    "tianjin_rural_corp": "天津农村商业银行对公",
     "wechat": "微信流水",
     "zhongyuan": "中原银行",
 }
@@ -180,6 +183,14 @@ def detect_bank_type(pdf_path: str) -> Detection:
     if "账务明细清单" in header_compact and "StatementOfAccount" in header_compact and "招商银行" in compact:
         return Detection("cmb_corp", BANK_LABELS["cmb_corp"], 98, "命中招商银行对公账务明细清单")
 
+    if (
+        "客户账户明细对账单" in header_compact
+        and "账号/卡号" in compact
+        and "交易日期摘要借方金额贷方金额余额币种对方账号/户名用途" in compact
+        and "借方总笔数" in compact
+    ):
+        return Detection("customer_account_corp", BANK_LABELS["customer_account_corp"], 92, "命中客户账户明细对账单，银行名由用户确认为农村商业银行")
+
     if "账户交易流水" in header_compact and "中原银行" in compact and "收支状态" in compact:
         return Detection("zhongyuan", BANK_LABELS["zhongyuan"], 98, "命中中原银行账户交易流水")
 
@@ -201,6 +212,19 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易日期对方账号对方户名收入支出余额" in compact
     ):
         return Detection("guilin_corp", BANK_LABELS["guilin_corp"], 98, "命中桂林银行企业客户交易清单")
+
+    if (
+        "浙江网商银行企业账户交易明细" in header_compact
+        and "借方金额（收）贷方金额（支）余额" in compact
+    ):
+        return Detection("mybank_corp", BANK_LABELS["mybank_corp"], 98, "命中浙江网商银行企业账户交易明细")
+
+    if (
+        "交易明细查询" in header_compact
+        and "天津农村商业银行" in compact
+        and "交易日期收入支出余额对方户名对方账号对方开户行摘要备注" in compact
+    ):
+        return Detection("tianjin_rural_corp", BANK_LABELS["tianjin_rural_corp"], 98, "命中天津农村商业银行交易明细查询")
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),

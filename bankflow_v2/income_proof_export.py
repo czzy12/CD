@@ -41,6 +41,8 @@ def flow_type(bank_id: str) -> str:
 
 
 def normalize_bank_name(label: str, bank_id: str) -> str:
+    if bank_id == "excel":
+        return ""
     text = (label or bank_id or "").strip()
     if not text or set(text) == {"?"}:
         return ""
@@ -56,7 +58,7 @@ def normalize_bank_name(label: str, bank_id: str) -> str:
         "psbc": "邮政",
     }
     text = display_names.get(text, text)
-    if text == "Excel":
+    if text.startswith("Excel"):
         return ""
     return text
 

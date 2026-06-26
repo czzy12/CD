@@ -1171,5 +1171,56 @@
       "closing_balance": "7041.70",
       "issues": 0
     }
+  },
+  {
+    "name": "公户客户账户明细-浙江瑞拓智能电气",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/幸小利/公户_0.pdf",
+    "tags": ["customer_account_corp", "corp"],
+    "expected": {
+      "count": 322,
+      "income_count": 78,
+      "income_sum": "6493129.95",
+      "expense_count": 244,
+      "expense_sum": "6102568.19",
+      "net": "390561.76",
+      "opening_balance": "2660.18",
+      "closing_balance": "393221.94",
+      "issues": 0
+    }
+  },
+  {
+    "name": "浙江网商银行对公-企业账户交易明细-张燕",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/张燕/网商.pdf",
+    "tags": ["mybank_corp", "corp"],
+    "expected": {
+      "count": 198,
+      "income_count": 85,
+      "income_sum": "9528442.33",
+      "expense_count": 113,
+      "expense_sum": "9474278.22",
+      "net": "54164.11",
+      "opening_balance": "56475.66",
+      "closing_balance": "110639.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "天津农村商业银行对公-交易明细查询-杜",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/杜/ef6816a9e9f14d99950b6f2cd12610b91782392878046.pdf",
+    "tags": ["tianjin_rural_corp", "corp"],
+    "expected": {
+      "count": 383,
+      "income_count": 109,
+      "income_sum": "10047435.39",
+      "expense_count": 274,
+      "expense_sum": "10097272.09",
+      "net": "-49836.70",
+      "opening_balance": "50079.29",
+      "closing_balance": "242.59",
+      "issues": 0
+    }
   }
 ]

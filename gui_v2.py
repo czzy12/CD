@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence
+from PyQt6.QtGui import QColor, QKeySequence, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -531,6 +531,11 @@ class MainWindow(QMainWindow):
                 color: #263243;
             }
             QPushButton:hover { background: #eef3f8; }
+            QPushButton:disabled {
+                background: #f1f4f8;
+                color: #9aa6b2;
+                border-color: #dfe6f1;
+            }
             QPushButton#primaryButton {
                 background: #1769e0;
                 color: #ffffff;
@@ -592,6 +597,10 @@ class MainWindow(QMainWindow):
             QLabel#metricValue[tone="neutral"] { color: #162033; }
             QLabel {
                 font-family: "Microsoft YaHei UI", "Segoe UI", Arial;
+                color: #162033;
+            }
+            QLabel:disabled {
+                color: #9aa6b2;
             }
             QLabel#cardTitle {
                 font-size: 16px;
@@ -614,9 +623,23 @@ class MainWindow(QMainWindow):
             QTableWidget {
                 gridline-color: #d8dde6;
                 selection-background-color: #cfe5ff;
+                selection-color: #162033;
                 background: #ffffff;
+                alternate-background-color: #f8fbff;
+                color: #162033;
                 border: 1px solid #e3e8f0;
                 border-radius: 6px;
+            }
+            QTableWidget::item {
+                color: #162033;
+                background: transparent;
+            }
+            QTableWidget::item:selected {
+                color: #162033;
+                background: #cfe5ff;
+            }
+            QTableWidget::item:disabled {
+                color: #9aa6b2;
             }
             QHeaderView::section {
                 background: #f0f3f7;
@@ -651,6 +674,37 @@ class MainWindow(QMainWindow):
                 border: 1px solid #d5dbe5;
                 border-radius: 6px;
                 background: #ffffff;
+                color: #162033;
+                selection-background-color: #cfe5ff;
+                selection-color: #162033;
+            }
+            QLineEdit:disabled, QDateEdit:disabled {
+                background: #f1f4f8;
+                color: #9aa6b2;
+                border-color: #dfe6f1;
+            }
+            QCheckBox {
+                color: #263243;
+                spacing: 8px;
+            }
+            QCheckBox:disabled {
+                color: #9aa6b2;
+            }
+            QCheckBox::indicator {
+                width: 14px;
+                height: 14px;
+                border-radius: 4px;
+                border: 1px solid #cfd7e3;
+                background: #ffffff;
+            }
+            QCheckBox::indicator:checked {
+                background: #4cc2ff;
+                border-color: #4cc2ff;
+                image: url(assets/check.svg);
+            }
+            QCheckBox::indicator:disabled {
+                background: #e1e5ea;
+                border-color: #d5dbe5;
             }
             QDateEdit::drop-down {
                 width: 24px;
@@ -1954,10 +2008,36 @@ def money_wan(value: Decimal | None) -> str:
 def default_recent_month_range() -> tuple[QDate, QDate]:
     today = QDate.currentDate()
     month_start = QDate(today.year(), today.month(), 1)
-    end_month = month_start.addMonths(-1)
+    end_month = month_start if today.day() >= 15 else month_start.addMonths(-1)
     start = end_month.addMonths(-5)
     end = QDate(end_month.year(), end_month.month(), end_month.daysInMonth())
     return start, end
+
+
+def apply_light_palette(app: QApplication) -> None:
+    app.setStyle("Fusion")
+    palette = QPalette()
+    roles = QPalette.ColorRole
+    groups = QPalette.ColorGroup
+
+    palette.setColor(roles.Window, QColor("#f5f7fb"))
+    palette.setColor(roles.WindowText, QColor("#162033"))
+    palette.setColor(roles.Base, QColor("#ffffff"))
+    palette.setColor(roles.AlternateBase, QColor("#f8fbff"))
+    palette.setColor(roles.ToolTipBase, QColor("#ffffff"))
+    palette.setColor(roles.ToolTipText, QColor("#162033"))
+    palette.setColor(roles.Text, QColor("#162033"))
+    palette.setColor(roles.Button, QColor("#ffffff"))
+    palette.setColor(roles.ButtonText, QColor("#263243"))
+    palette.setColor(roles.BrightText, QColor("#ffffff"))
+    palette.setColor(roles.Highlight, QColor("#cfe5ff"))
+    palette.setColor(roles.HighlightedText, QColor("#162033"))
+    palette.setColor(groups.Disabled, roles.WindowText, QColor("#9aa6b2"))
+    palette.setColor(groups.Disabled, roles.Text, QColor("#9aa6b2"))
+    palette.setColor(groups.Disabled, roles.ButtonText, QColor("#9aa6b2"))
+    palette.setColor(groups.Disabled, roles.Highlight, QColor("#e7edf5"))
+    palette.setColor(groups.Disabled, roles.HighlightedText, QColor("#8c99a8"))
+    app.setPalette(palette)
 
 
 def open_income_proof_form(json_path: Path | None = None) -> bool:
@@ -1989,6 +2069,7 @@ def open_income_proof_form(json_path: Path | None = None) -> bool:
 
 def main():
     app = QApplication(sys.argv)
+    apply_light_palette(app)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

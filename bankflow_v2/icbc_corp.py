@@ -63,7 +63,7 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         expense = Decimal("0.00")
         issues.append("借贷方向无法解析")
 
-    return Transaction(
+    tx = Transaction(
         transaction_time=tx_time,
         income=income,
         expense=expense,
@@ -77,6 +77,8 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         status="ok" if not issues else "review",
         issues=issues,
     )
+    tx.preserve_signed_columns = True
+    return tx
 
 
 def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
@@ -111,7 +113,7 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
     if balance is None:
         issues.append("余额无法解析")
 
-    return Transaction(
+    tx = Transaction(
         transaction_time=tx_time,
         income=income,
         expense=expense,
@@ -125,6 +127,8 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
         status="ok" if not issues else "review",
         issues=issues,
     )
+    tx.preserve_signed_columns = True
+    return tx
 
 
 def _parse_format_c(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
@@ -179,6 +183,35 @@ def _looks_like_header(row: list) -> bool:
     )
 
 
+def _balance_chain_score(items: list[Transaction]) -> int:
+    score = 0
+    for previous, current in zip(items, items[1:]):
+        if previous.balance is None or current.balance is None:
+            continue
+        expected = (previous.balance + current.income - current.expense).quantize(Decimal("0.01"))
+        if expected == current.balance.quantize(Decimal("0.01")):
+            score += 1
+    return score
+
+
+def _restore_same_time_order(transactions: list[Transaction]) -> list[Transaction]:
+    grouped: dict[datetime, list[Transaction]] = {}
+    for tx in transactions:
+        grouped.setdefault(tx.transaction_time, []).append(tx)
+
+    for tx_time, items in grouped.items():
+        if len(items) < 2:
+            continue
+
+        forward = sorted(items, key=lambda tx: (tx.page_no, tx.row_no))
+        reverse = list(reversed(forward))
+        ordered = reverse if _balance_chain_score(reverse) > _balance_chain_score(forward) else forward
+        for index, tx in enumerate(ordered):
+            tx.transaction_time = tx_time.replace(microsecond=index)
+
+    return transactions
+
+
 def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
 
@@ -207,4 +240,4 @@ def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
                     if tx is not None:
                         transactions.append(tx)
 
-    return transactions
+    return _restore_same_time_order(transactions)

@@ -151,7 +151,13 @@ def collect_issues(transactions: list[Transaction], source: str = "") -> list[Is
         if tx.balance is None and not getattr(tx, "balance_optional", False):
             issues.append(Issue("需复核", where, time_text, "余额缺失", tx.raw_amount, tx.raw_balance))
 
-        if previous is not None and previous.balance is not None and tx.balance is not None:
+        if (
+            previous is not None
+            and previous.balance is not None
+            and tx.balance is not None
+            and not getattr(previous, "balance_optional", False)
+            and not getattr(tx, "balance_optional", False)
+        ):
             expected = (previous.balance + tx.income - tx.expense).quantize(CENT)
             actual = tx.balance.quantize(CENT)
             if expected != actual:

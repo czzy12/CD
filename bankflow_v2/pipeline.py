@@ -19,11 +19,13 @@ from .ccb_corp import extract_ccb_corp
 from .chengdu_rural_corp import extract_chengdu_rural_corp
 from .chongqing import extract_chongqing
 from .cib import extract_cib
+from .customer_account_corp import extract_customer_account_corp
 from .generic_pdf import extract_generic_pdf
 from .guilin_corp import extract_guilin_corp
 from .huaxia import extract_huaxia
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
+from .mybank_corp import extract_mybank_corp
 from .models import Transaction
 from .pingan import extract_pingan
 from .psbc import extract_psbc
@@ -31,6 +33,7 @@ from .qilu_corp import extract_qilu_corp
 from .rural_credit import extract_rural_credit
 from .shanghai import extract_shanghai, extract_shanghai_corp
 from .spdb import extract_spdb, extract_spdb_corp
+from .tianjin_rural_corp import extract_tianjin_rural_corp
 from .wechat import extract_wechat
 from .zhongyuan import extract_zhongyuan
 
@@ -52,6 +55,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_chengdu_rural_corp(pdf_path)
     if bank == "chongqing":
         return extract_chongqing(pdf_path)
+    if bank == "customer_account_corp":
+        return extract_customer_account_corp(pdf_path)
     if bank == "abc":
         return extract_abc(pdf_path)
     if bank == "abc_corp":
@@ -92,12 +97,16 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_lanzhou(pdf_path)
     if bank == "ningbo":
         return extract_ningbo(pdf_path)
+    if bank == "mybank_corp":
+        return extract_mybank_corp(pdf_path)
     if bank == "nanjing_corp":
         return extract_nanjing_corp(pdf_path)
     if bank == "spdb":
         return extract_spdb(pdf_path)
     if bank == "spdb_corp":
         return extract_spdb_corp(pdf_path)
+    if bank == "tianjin_rural_corp":
+        return extract_tianjin_rural_corp(pdf_path)
     if bank == "cmbc":
         return extract_generic_pdf(pdf_path, "民生银行个人")
     if bank == "cib":

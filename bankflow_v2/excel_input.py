@@ -251,6 +251,79 @@ def _is_boc_converted_sheet(rows: list[tuple[Any, ...]]) -> bool:
     return False
 
 
+def _label_money(text: str, label: str) -> Decimal | None:
+    position = text.find(label)
+    if position == -1:
+        return None
+    return _parse_money(text[position + len(label) : position + len(label) + 40])
+
+
+def _boc_filter_direction(rows: list[tuple[Any, ...]]) -> str | None:
+    sample = "\n".join(" ".join(_cell_text(cell) for cell in row) for row in rows[:120])
+    compact = _norm(sample)
+    if "按收支筛选" not in compact:
+        return None
+    if "按收支筛选:收入" in compact or "按收支筛选：收入" in compact:
+        return "income"
+    if "按收支筛选:支出" in compact or "按收支筛选：支出" in compact:
+        return "expense"
+    return None
+
+
+def _boc_page_credit_totals(rows: list[tuple[Any, ...]]) -> list[tuple[int, Decimal]]:
+    totals: list[tuple[int, Decimal]] = []
+    for row_index, row in enumerate(rows, start=1):
+        row_text = " ".join(_cell_text(cell) for cell in row)
+        total = _label_money(row_text, "贷方发生数")
+        if total is not None:
+            totals.append((row_index, total))
+    return totals
+
+
+def _boc_page_for_row(row_no: int, page_totals: list[tuple[int, Decimal]]) -> tuple[int, Decimal] | None:
+    current: tuple[int, Decimal] | None = None
+    for page_index, (start_row, total) in enumerate(page_totals, start=1):
+        if row_no < start_row:
+            break
+        current = (page_index, total)
+    return current
+
+
+def _repair_boc_filtered_income_amounts(transactions: list[Transaction]) -> None:
+    grouped: dict[int, list[Transaction]] = {}
+    page_totals: dict[int, Decimal] = {}
+    for tx in transactions:
+        page_index = getattr(tx, "statement_page_no", None)
+        page_total = getattr(tx, "statement_page_credit_total", None)
+        if page_index is None or page_total is None:
+            continue
+        grouped.setdefault(page_index, []).append(tx)
+        page_totals[page_index] = page_total
+
+    for page_index, items in grouped.items():
+        page_total = page_totals[page_index]
+        page_sum = sum((tx.income for tx in items), Decimal("0.00")).quantize(CENT)
+        diff = (page_total - page_sum).quantize(CENT)
+        if diff == Decimal("0.00"):
+            continue
+
+        matches: list[tuple[Transaction, Decimal]] = []
+        for tx in items:
+            expected = (tx.income + diff).quantize(CENT)
+            if expected <= Decimal("0.00"):
+                continue
+            raw_amount = tx.raw_amount
+            candidates = [_parse_money(raw_amount)] if _parse_money(raw_amount) is not None else []
+            if _expected_supported_by_raw(expected, raw_amount, candidates):
+                matches.append((tx, expected))
+
+        if len(matches) == 1:
+            tx, expected = matches[0]
+            tx.income = expected
+            tx.raw_amount = f"{tx.raw_amount} -> {expected:.2f}"
+            tx.raw_text = f"{tx.raw_text} | 金额按页贷方发生数校正"
+
+
 def _extract_boc_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
     header_mapping = None
     for row_index, row in enumerate(rows[:30]):
@@ -267,6 +340,8 @@ def _extract_boc_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) 
         return []
 
     header_row, headers, date_col, time_col, currency_col, amount_col, balance_col = header_mapping
+    filter_direction = _boc_filter_direction(rows)
+    page_totals = _boc_page_credit_totals(rows)
     transactions: list[Transaction] = []
     for excel_row_index, row in enumerate(rows[header_row + 1 :], start=header_row + 2):
         currency = _norm(row[currency_col] if currency_col < len(row) else "")
@@ -282,8 +357,15 @@ def _extract_boc_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) 
         if tx_time is None or amount is None or balance is None:
             continue
 
-        income = amount if amount >= 0 else Decimal("0.00")
-        expense = -amount if amount < 0 else Decimal("0.00")
+        if filter_direction == "income":
+            income = abs(amount)
+            expense = Decimal("0.00")
+        elif filter_direction == "expense":
+            income = Decimal("0.00")
+            expense = abs(amount)
+        else:
+            income = amount if amount >= 0 else Decimal("0.00")
+            expense = -amount if amount < 0 else Decimal("0.00")
         raw_fields = [_cell_text(cell) for cell in row]
         tx = Transaction(
             # BOC converted sheets are printed newest-first. When two rows have
@@ -303,9 +385,17 @@ def _extract_boc_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) 
             raw_headers=headers,
         )
         tx.preserve_signed_columns = True
+        if filter_direction in {"income", "expense"}:
+            tx.balance_optional = True
+        page_info = _boc_page_for_row(excel_row_index, page_totals)
+        if page_info is not None:
+            tx.statement_page_no, tx.statement_page_credit_total = page_info
         transactions.append(tx)
 
-    _resolve_boc_converted_balances(transactions)
+    if filter_direction == "income":
+        _repair_boc_filtered_income_amounts(transactions)
+    if filter_direction is None:
+        _resolve_boc_converted_balances(transactions)
     return transactions
 
 

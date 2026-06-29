@@ -84,17 +84,27 @@ def _parse_row(row: list, index: dict[str, int], page_no: int, row_no: int) -> T
         credit = Decimal("0.00")
     if balance is None:
         issues.append("余额无法解析")
-    if debit and credit:
+    if debit > 0 and credit > 0:
         issues.append("借贷金额同时存在")
     if not debit and not credit:
         issues.append("借贷金额均为空")
+
+    if debit < 0:
+        income = -debit
+        expense = Decimal("0.00")
+    elif credit < 0:
+        income = Decimal("0.00")
+        expense = -credit
+    else:
+        income = credit
+        expense = debit
 
     raw_amount = _cell(row, index, "贷方发生额") if credit else _cell(row, index, "借方发生额")
     raw_fields = [_clean_cell(cell) for cell in row]
     return Transaction(
         transaction_time=tx_time,
-        income=credit,
-        expense=debit,
+        income=income,
+        expense=expense,
         balance=balance,
         bank=BANK_NAME,
         page_no=page_no,

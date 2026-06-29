@@ -150,7 +150,24 @@ def detect_bank_type(pdf_path: str) -> Detection:
         return Detection("psbc", BANK_LABELS["psbc"], 98, "命中邮储对公账户交易明细专用回单特征")
 
     if (
+        "中国工商银行账户明细清单" in header_compact
+        and "本方账号户名" in compact
+        and "转入金额" in compact
+        and "转出金额" in compact
+        and "余额" in compact
+    ):
+        return Detection("icbc_corp", BANK_LABELS["icbc_corp"], 98, "命中工商银行对公账户明细清单")
+
+    if (
         "交通银行四川省分行明细对账单" in header_compact
+        and "会计日期交易日期交易名称" in compact
+        and "借方发生额贷方发生额余额" in compact
+    ):
+        return Detection("bocom_corp", BANK_LABELS["bocom_corp"], 98, "命中交通银行对公明细对账单")
+
+    if (
+        "交通银行" in header_compact
+        and "明细对账单" in header_compact
         and "会计日期交易日期交易名称" in compact
         and "借方发生额贷方发生额余额" in compact
     ):
@@ -262,6 +279,7 @@ def detect_bank_type(pdf_path: str) -> Detection:
         ("wechat", "微信支付账单", 95),
         ("wechat", "交易时间交易类型交易对方商品收/支金额", 95),
         ("abc_corp", "交易时间收入金额支出金额账户余额", 98),
+        ("abc", "对私客户账户明细", 98),
         ("abc", "交易日期交易时间交易摘要交易金额本次余额", 98),
         ("icbc", "中国工商银行借记账户历史明细", 98),
         ("icbc", "交易日期账号储种序号币种钞汇摘要地区收入/支出金额余额", 95),

@@ -176,10 +176,51 @@ def _parse_format_c(row: list, index: dict[str, int], page_no: int, row_no: int)
     )
 
 
+def _parse_format_d(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
+    tx_time = _parse_time(_cell(row, index, "交易时间"))
+    if tx_time is None:
+        return None
+
+    income = money_to_decimal(_cell(row, index, "转入金额")) or Decimal("0.00")
+    expense = money_to_decimal(_cell(row, index, "转出金额")) or Decimal("0.00")
+    balance = money_to_decimal(_cell(row, index, "余额"))
+    issues: list[str] = []
+
+    if income != Decimal("0.00") and expense != Decimal("0.00"):
+        issues.append("转入和转出金额同时存在")
+    if income == Decimal("0.00") and expense == Decimal("0.00"):
+        issues.append("转入和转出金额均为空")
+    if balance is None:
+        issues.append("余额无法解析")
+
+    tx = Transaction(
+        transaction_time=tx_time,
+        income=income,
+        expense=expense,
+        balance=balance,
+        bank=BANK_NAME,
+        page_no=page_no,
+        row_no=row_no,
+        raw_time=_cell(row, index, "交易时间"),
+        raw_amount=f"{_cell(row, index, '转入金额')}|{_cell(row, index, '转出金额')}",
+        raw_balance=_cell(row, index, "余额"),
+        raw_text=" | ".join(_clean_cell(cell) for cell in row),
+        raw_fields=[_clean_cell(cell) for cell in row],
+        raw_headers=[name for name, _ in sorted(index.items(), key=lambda item: item[1])],
+        status="ok" if not issues else "review",
+        issues=issues,
+    )
+    tx.preserve_signed_columns = True
+    return tx
+
+
 def _looks_like_header(row: list) -> bool:
     text = "|".join(_clean_cell(cell) for cell in row or [])
     return bool(re.search(r"交易时间.*余额", text)) and (
-        "借贷标志" in text or "借/贷" in text or ("借方发生额" in text and "贷方发生额" in text)
+        "借贷标志" in text
+        or "借/贷" in text
+        or ("借方发生额" in text and "贷方发生额" in text)
+        or ("转入金额" in text and "转出金额" in text)
     )
 
 
@@ -230,6 +271,8 @@ def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
                             parser = _parse_format_b
                         elif "借方发生额" in index and "贷方发生额" in index:
                             parser = _parse_format_c
+                        elif "转入金额" in index and "转出金额" in index:
+                            parser = _parse_format_d
                         else:
                             parser = _parse_format_a
                         continue

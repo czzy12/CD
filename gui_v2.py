@@ -32,6 +32,7 @@ from bankflow_v2.adjustment import AdjustmentConfig, AdjustmentResult, apply_adj
 from bankflow_v2.income_proof_export import (
     balance_wechat_summaries,
     flow_type as income_flow_type,
+    looks_corporate_account_name,
     write_income_proof_input,
     write_salary_income_proof_input,
 )
@@ -240,12 +241,15 @@ class Worker(QThread):
                 transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
                 account_name = extract_account_name(path)
                 account_no = extract_account_no(path)
+                detected_flow_type = income_flow_type(detection.bank_id)
+                if detected_flow_type == "个人" and looks_corporate_account_name(account_name):
+                    detected_flow_type = "对公"
                 original_count = len(transactions)
                 transactions = self._filter_transactions(transactions)
                 for tx in transactions:
                     tx.source_file = path.name
                     tx.bank_label = bank_label
-                    tx.flow_type = income_flow_type(detection.bank_id)
+                    tx.flow_type = detected_flow_type
                 file_summary = summarize(transactions, path.name)
                 all_issues.extend(file_summary.issues)
                 review_issues = [issue for issue in file_summary.issues if issue.level == "需复核"]
@@ -1359,7 +1363,10 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
 
 
 def result_flow_type(result: FileResult) -> str:
-    return income_flow_type(result.bank_id)
+    detected_flow_type = income_flow_type(result.bank_id)
+    if detected_flow_type == "个人" and looks_corporate_account_name(result.account_name):
+        return "对公"
+    return detected_flow_type
 
 
 def result_bank_label(result: FileResult) -> str:

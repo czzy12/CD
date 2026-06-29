@@ -25,6 +25,21 @@ CORP_BANK_IDS = {
     "spdb_corp",
 }
 
+CORP_ACCOUNT_NAME_KEYWORDS = (
+    "公司",
+    "有限",
+    "企业",
+    "个体工商户",
+    "经营部",
+    "商行",
+    "店",
+    "厂",
+    "合作社",
+    "工作室",
+    "事务所",
+    "中心",
+)
+
 
 def to_wan(value: Decimal | None) -> float | None:
     if value is None:
@@ -38,6 +53,18 @@ def flow_type(bank_id: str) -> str:
     if bank_id == "wechat":
         return "微信"
     return "个人"
+
+
+def looks_corporate_account_name(value: str) -> bool:
+    text = (value or "").strip()
+    return bool(text and any(keyword in text for keyword in CORP_ACCOUNT_NAME_KEYWORDS))
+
+
+def result_flow_type(result) -> str:
+    detected = flow_type(getattr(result, "bank_id", ""))
+    if detected == "个人" and looks_corporate_account_name(getattr(result, "account_name", "")):
+        return "对公"
+    return detected
 
 
 def normalize_bank_name(label: str, bank_id: str) -> str:
@@ -85,7 +112,7 @@ def account_from_result(result) -> dict:
         "account_no": account_no,
         "account_no_source": account_no_source,
         "account_no_review_required": bool(account_no),
-        "flow_type": flow_type(getattr(result, "bank_id", "")),
+        "flow_type": result_flow_type(result),
         "source_file": source_path,
     }
 
@@ -117,9 +144,9 @@ def result_latest_time(result) -> datetime:
 def balance_group_key(result) -> tuple[str, str]:
     account_no = getattr(result, "account_no", "") or ""
     if account_no:
-        return (flow_type(getattr(result, "bank_id", "")), account_no)
+        return (result_flow_type(result), account_no)
     source_path = getattr(getattr(result, "path", None), "name", "")
-    return (flow_type(getattr(result, "bank_id", "")), source_path)
+    return (result_flow_type(result), source_path)
 
 
 def latest_balance_wan(results: Iterable) -> float | None:
@@ -246,7 +273,7 @@ def combined_month_summaries(results: list, selected_months: set[str]) -> list[t
     normal_transactions = []
     wechat_transactions = []
     for result in results:
-        target = wechat_transactions if flow_type(getattr(result, "bank_id", "")) == "微信" else normal_transactions
+        target = wechat_transactions if result_flow_type(result) == "微信" else normal_transactions
         target.extend(getattr(result, "transactions", []) or [])
 
     normal_by_month = {month: summary for month, summary in monthly_summaries(normal_transactions) if month in selected_months}
@@ -272,9 +299,9 @@ def combined_month_summaries(results: list, selected_months: set[str]) -> list[t
 
 def flow_month_pairs(results: list, target_flow_type: str | None = None) -> list[tuple[str, Summary]]:
     if target_flow_type == "对公":
-        target_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) == "对公"]
+        target_results = [result for result in results if result_flow_type(result) == "对公"]
     elif target_flow_type == "个人":
-        target_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
+        target_results = [result for result in results if result_flow_type(result) != "对公"]
     else:
         target_results = list(results)
     transactions = [tx for result in target_results for tx in getattr(result, "transactions", [])]
@@ -424,9 +451,9 @@ def flow_block(
     adjustment_allocations: dict[str, dict[str, tuple[Decimal, Decimal]]] | None = None,
 ) -> dict:
     if target_flow_type == "对公":
-        results = [result for result in results if flow_type(getattr(result, "bank_id", "")) == "对公"]
+        results = [result for result in results if result_flow_type(result) == "对公"]
     elif target_flow_type == "个人":
-        results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
+        results = [result for result in results if result_flow_type(result) != "对公"]
     month_pairs = flow_month_pairs(results)
     if target_flow_type in ("个人", "对公") and adjustment_allocations:
         month_pairs = apply_flow_adjustments(month_pairs, adjustment_allocations.get(target_flow_type))
@@ -470,8 +497,8 @@ def build_income_proof_input(
     output_path: str = "",
     adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
-    personal_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
-    corporate_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) == "对公"]
+    personal_results = [result for result in results if result_flow_type(result) != "对公"]
+    corporate_results = [result for result in results if result_flow_type(result) == "对公"]
     adjustment_allocations = allocate_adjustments_by_flow(results, adjustment_configs)
 
     return {
@@ -541,7 +568,7 @@ def build_salary_income_proof_input(
     output_path: str = "",
     adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
-    personal_results = [result for result in results if flow_type(getattr(result, "bank_id", "")) != "对公"]
+    personal_results = [result for result in results if result_flow_type(result) != "对公"]
     adjustment_allocations = allocate_adjustments_by_flow(results, adjustment_configs)
     return {
         "schema_version": "1.0",

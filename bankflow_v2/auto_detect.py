@@ -14,6 +14,7 @@ class Detection:
 BANK_LABELS = {
     "abc": "农业银行个人",
     "abc_corp": "农业银行对公",
+    "boc": "中国银行个人",
     "boc_corp": "中国银行对公",
     "bocom": "交通银行",
     "bocom_corp": "交通银行对公",
@@ -27,6 +28,7 @@ BANK_LABELS = {
     "citic_corp": "中信银行对公",
     "customer_account_corp": "农村商业银行对公",
     "foshan_rural": "佛山农村商业银行",
+    "guilin": "桂林银行个人",
     "guilin_corp": "桂林银行对公",
     "huaxia": "华夏银行",
     "jiujiang": "九江银行",
@@ -48,6 +50,7 @@ BANK_LABELS = {
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
     "tianjin_rural_corp": "天津农村商业银行对公",
+    "generic_pdf": "通用PDF识别",
     "wechat": "微信流水",
     "zhongyuan": "中原银行",
 }
@@ -110,6 +113,18 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     header_text = "\n".join(text.splitlines()[:80])
     header_compact = header_text.replace(" ", "").replace("\n", "")
+    if (
+        "明细账查询" in compact
+        and "交易日期" in compact
+        and "支出金额" in compact
+        and "收入金额" in compact
+        and "账户余额" in compact
+        and "交易名称" in compact
+        and "对方账号" in compact
+        and "对方户名" in compact
+    ):
+        return Detection("generic_pdf", BANK_LABELS["generic_pdf"], 92, "命中明细账查询通用表格")
+
     if _has_ordered_chars(header_compact, "兴业银行交易流水"):
         return Detection("cib", BANK_LABELS["cib"], 95, "页眉命中银行名称: 兴业银行交易流水")
     if (
@@ -120,6 +135,13 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "承前页余额" in compact
     ):
         return Detection("boc_corp", BANK_LABELS["boc_corp"], 98, "命中中国银行对公活期明细特征")
+
+    if (
+        "中国银行交易流水明细清单" in header_compact
+        and "记账日期记账时间币别金额余额交易名称" in compact
+        and "借记卡号" in compact
+    ):
+        return Detection("boc", BANK_LABELS["boc"], 98, "命中中国银行个人交易流水明细清单")
 
     if (
         "中国邮政储蓄银行账户交易明细专用回单" in header_compact
@@ -212,6 +234,12 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易日期对方账号对方户名收入支出余额" in compact
     ):
         return Detection("guilin_corp", BANK_LABELS["guilin_corp"], 98, "命中桂林银行企业客户交易清单")
+
+    if (
+        "桂林银行" in header_compact
+        and "交易日期对方账号对方户名收入（元）支出（元）账户余额（元）备注" in compact
+    ):
+        return Detection("guilin", BANK_LABELS["guilin"], 96, "命中桂林银行个人收支明细表格")
 
     if (
         "浙江网商银行企业账户交易明细" in header_compact

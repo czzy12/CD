@@ -1,5 +1,6 @@
 from .abc import extract_abc
 from .abc_corp import extract_abc_corp
+from .boc import extract_boc
 from .boc_corp import extract_boc_corp
 from .bocom import extract_bocom
 from .bocom_corp import extract_bocom_corp
@@ -21,7 +22,7 @@ from .chongqing import extract_chongqing
 from .cib import extract_cib
 from .customer_account_corp import extract_customer_account_corp
 from .generic_pdf import extract_generic_pdf
-from .guilin_corp import extract_guilin_corp
+from .guilin_corp import extract_guilin, extract_guilin_corp
 from .huaxia import extract_huaxia
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
@@ -43,6 +44,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_icbc(pdf_path)
     if bank == "huaxia":
         return extract_huaxia(pdf_path)
+    if bank == "guilin":
+        return extract_guilin(pdf_path)
     if bank == "guilin_corp":
         return extract_guilin_corp(pdf_path)
     if bank == "icbc_corp":
@@ -61,6 +64,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_abc(pdf_path)
     if bank == "abc_corp":
         return extract_abc_corp(pdf_path)
+    if bank == "boc":
+        return extract_boc(pdf_path)
     if bank == "boc_corp":
         return extract_boc_corp(pdf_path)
     if bank == "bocom":

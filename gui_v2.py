@@ -1,5 +1,6 @@
 import sys
 import re
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, time
@@ -59,6 +60,29 @@ ACCOUNT_NO_PATTERNS = (
     r"银行卡号\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
     r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
 )
+
+
+def is_packaged_app() -> bool:
+    return getattr(sys, "frozen", False) or "__compiled__" in globals()
+
+
+def runtime_dir() -> Path:
+    if is_packaged_app():
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def child_env() -> dict[str, str]:
+    env = os.environ.copy()
+    for key in (
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "QT_PLUGIN_PATH",
+        "QT_QPA_PLATFORM_PLUGIN_PATH",
+        "QTWEBENGINEPROCESS_PATH",
+    ):
+        env.pop(key, None)
+    return env
 
 
 @dataclass
@@ -1115,11 +1139,7 @@ def default_export_path(results: list[FileResult]) -> str:
 
 
 def default_export_dir() -> Path | None:
-    if getattr(sys, "frozen", False):
-        base = Path(sys.executable).resolve().parent
-    else:
-        base = Path(__file__).resolve().parent
-    return base / "银行流水解析结果"
+    return runtime_dir() / "银行流水解析结果"
 
 
 def safe_filename_part(value: str) -> str:
@@ -2052,14 +2072,14 @@ def open_income_proof_form(json_path: Path | None = None) -> bool:
     source_launcher = Path(r"D:\report workflow\启动收入佐证填表.bat")
     if source_launcher.exists():
         candidates.append(source_launcher)
-    if getattr(sys, "frozen", False):
-        app_dir = Path(sys.executable).resolve().parent
+    if is_packaged_app():
+        app_dir = runtime_dir()
         candidates.extend([
             app_dir.parent / "收入佐证" / "IncomeProofGUI.exe",
             app_dir / "IncomeProofGUI.exe",
         ])
     else:
-        app_dir = Path(__file__).resolve().parent
+        app_dir = runtime_dir()
         candidates.extend([
             app_dir.parent / "收入佐证" / "启动收入佐证填表.bat",
             app_dir.parent / "收入佐证" / "IncomeProofGUI.exe",
@@ -2070,8 +2090,19 @@ def open_income_proof_form(json_path: Path | None = None) -> bool:
     command = [str(launcher)]
     if json_path is not None:
         command.append(str(json_path))
-    subprocess.Popen(command, cwd=str(launcher.parent))
-    return True
+    try:
+        subprocess.Popen(
+            command,
+            cwd=str(launcher.parent),
+            env=child_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+        return True
+    except Exception:
+        return False
 
 
 def main():

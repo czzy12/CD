@@ -42,9 +42,9 @@ def parse_abc_amount_and_balance(
     if balance_delta == amount:
         return amount, balance, issues
 
-    # 农行“自动抹账”明细常显示原交易方向，但余额按冲正方向变化。
+    # 农行“抹账/自动抹账”明细常显示原交易方向，但余额按冲正方向变化。
     # 这种场景按余额差统计，避免把后续清晰余额截断成后缀值。
-    if transaction_type == "自动抹账" and balance_delta == -amount:
+    if transaction_type in {"抹账", "自动抹账"} and balance_delta == -amount:
         return balance_delta, balance, issues
 
     issues.append(f"余额不连续: 期望 {(previous_balance + amount).quantize(Decimal('0.01'))}, 解析 {balance}")

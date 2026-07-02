@@ -222,7 +222,7 @@ def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, list[str], dict[s
         amount_col = _find_col(headers, ("交易金额", "发生额", "本次金额", "交易额", "金额"))
         income_col = _find_col(headers, ("收入金额", "收入", "贷方发生额", "贷方", "贷"))
         expense_col = _find_col(headers, ("支出金额", "支出", "借方发生额", "借方", "借"))
-        direction_col = _find_col(headers, ("收入/支出", "收入支出", "收支", "借贷标志", "借贷状态", "借贷方向", "方向"))
+        direction_col = _find_col(headers, ("收入/支出", "支出/收入", "收/支", "支/收", "收入支出", "支出收入", "收支", "借贷标志", "借贷状态", "借贷方向", "方向"))
 
         exclude = {col for col in (amount_col, income_col, expense_col) if col is not None}
         balance_col = _find_col(headers, ("账户余额", "本次余额", "交易余额", "余额", "金额"), exclude)
@@ -502,11 +502,11 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
             raw_direction = _cell_text(row[cols["direction"]]) if cols["direction"] is not None and cols["direction"] < len(row) else ""
             direction = _direction(raw_direction)
             if direction == "income":
-                income = amount
+                income = abs(amount)
                 expense = Decimal("0.00")
             elif direction == "expense":
                 income = Decimal("0.00")
-                expense = amount
+                expense = abs(amount)
             elif amount < 0:
                 income = Decimal("0.00")
                 expense = abs(amount)

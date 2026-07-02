@@ -27,6 +27,8 @@ BANK_LABELS = {
     "citic": "中信银行个人",
     "citic_corp": "中信银行对公",
     "customer_account_corp": "农村商业银行对公",
+    "everbright": "中国光大银行个人",
+    "everbright_corp": "中国光大银行对公",
     "foshan_rural": "佛山农村商业银行",
     "guilin": "桂林银行个人",
     "guilin_corp": "桂林银行对公",
@@ -125,8 +127,39 @@ def detect_bank_type(pdf_path: str) -> Detection:
     ):
         return Detection("generic_pdf", BANK_LABELS["generic_pdf"], 92, "命中明细账查询通用表格")
 
+    if (
+        "用户所属公司" in header_compact
+        and "记录数" in header_compact
+        and "交易日期借方(出账)贷方(入账)余额摘要" in compact
+        and "收(付)方名称" in compact
+        and "收(付)方账号" in compact
+        and "交易类型" in compact
+    ):
+        return Detection("cmb_corp", BANK_LABELS["cmb_corp"], 98, "命中招商银行对公借贷余额明细")
+
+    if (
+        "TransactionStatementofChinaEverbrightBank" in compact
+        and "TransAmtDr" in compact
+        and "TransAmtCr" in compact
+        and "AccountBalance" in compact
+    ):
+        return Detection("everbright", BANK_LABELS["everbright"], 98, "命中中国光大银行个人账户明细查询清单")
+
+    if (
+        "光大" in compact
+        and "对公" in compact
+        and "借方发生额" in compact
+        and "贷方发生额" in compact
+        and "借方笔数" in compact
+        and "贷方笔数" in compact
+        and "序号交易日期时间借/贷交易金额账户余额" in compact
+    ):
+        return Detection("everbright_corp", BANK_LABELS["everbright_corp"], 98, "命中中国光大银行对公账户对账单")
+
     if _has_ordered_chars(header_compact, "兴业银行交易流水"):
         return Detection("cib", BANK_LABELS["cib"], 95, "页眉命中银行名称: 兴业银行交易流水")
+    if "BankTransactionDetails" in compact and "兴业" in compact and "支出" in compact and "收入" in compact:
+        return Detection("cib", BANK_LABELS["cib"], 92, "命中兴业银行交易明细强水印格式")
     if (
         "中国银行" in header_compact
         and "单位人民币活期" in header_compact

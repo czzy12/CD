@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pdfplumber
 
@@ -15,6 +16,11 @@ ROW_RE = re.compile(
     rf"(?P<body>.*?)\s+(?P<amount>{MONEY})\s+"
     rf"(?P<balance>[\d,]+\.\d{{2}})(?P<counterparty>.*)$"
 )
+COORD_MONEY_RE = re.compile(r"^\d{1,3}(?:,\d{3})*\.\d{2}$|^\d+\.\d{2}$")
+COORD_BALANCE_RE = re.compile(r"^(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})")
+COORD_DATE_RE = re.compile(r"^20\d{2}-\d{2}-\d{2}$")
+COORD_TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+COORD_HEADERS = ["交易日期", "借方(出账)", "贷方(入账)", "余额", "摘要", "收(付)方名称", "收(付)方账号", "交易类型"]
 
 
 def _parse_date(raw: str) -> datetime | None:
@@ -33,7 +39,107 @@ def _append_continuation(transactions: list[Transaction], line: str) -> None:
         tx.raw_fields[-1] = f"{tx.raw_fields[-1]} {line}".strip()
 
 
-def extract_cmb_corp(pdf_path: str) -> list[Transaction]:
+def _coord_money(text: str) -> Decimal:
+    return Decimal(text.replace(",", "")).quantize(CENT)
+
+
+def _row_text(words: list[dict]) -> str:
+    return " ".join(word.get("text", "") for word in words).strip()
+
+
+def _extract_coord_layout(pdf_path: str) -> list[Transaction]:
+    transactions: list[Transaction] = []
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False)
+            words = sorted(words, key=lambda word: (word["top"], word["x0"]))
+            starts = [
+                word
+                for word in words
+                if COORD_DATE_RE.match(word.get("text", "")) and word["x0"] < 80
+            ]
+
+            for index, start in enumerate(starts):
+                y0 = start["top"] - 2
+                y1 = starts[index + 1]["top"] - 2 if index + 1 < len(starts) else page.height - 25
+                row_words = [word for word in words if y0 <= word["top"] < y1]
+                time_text = next(
+                    (
+                        word["text"]
+                        for word in row_words
+                        if word["x0"] < 80 and COORD_TIME_RE.match(word.get("text", ""))
+                    ),
+                    "00:00:00",
+                )
+                debit = [
+                    word["text"]
+                    for word in row_words
+                    if 85 <= word["x0"] <= 170 and COORD_MONEY_RE.match(word.get("text", ""))
+                ]
+                credit = [
+                    word["text"]
+                    for word in row_words
+                    if 175 <= word["x0"] <= 255 and COORD_MONEY_RE.match(word.get("text", ""))
+                ]
+                balances = []
+                for word in row_words:
+                    if 260 <= word["x0"] <= 350:
+                        match = COORD_BALANCE_RE.match(word.get("text", ""))
+                        if match:
+                            balances.append(match.group(1))
+
+                raw_text = _row_text(row_words)
+                raw_time = f"{start['text']} {time_text}"
+                tx_time = datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
+                if len(debit) + len(credit) != 1 or not balances:
+                    transactions.append(
+                        Transaction(
+                            transaction_time=tx_time,
+                            bank=BANK_NAME,
+                            page_no=page_no,
+                            row_no=len(transactions) + 1,
+                            raw_time=raw_time,
+                            raw_text=raw_text,
+                            raw_headers=COORD_HEADERS,
+                            status="review",
+                            issues=["借方/贷方/余额列无法唯一定位"],
+                        )
+                    )
+                    continue
+
+                if debit:
+                    income = Decimal("0.00")
+                    expense = _coord_money(debit[0])
+                    raw_amount = f"借方:{debit[0]}"
+                else:
+                    income = _coord_money(credit[0])
+                    expense = Decimal("0.00")
+                    raw_amount = f"贷方:{credit[0]}"
+
+                transactions.append(
+                    Transaction(
+                        transaction_time=tx_time,
+                        income=income,
+                        expense=expense,
+                        balance=_coord_money(balances[0]),
+                        bank=BANK_NAME,
+                        page_no=page_no,
+                        row_no=len(transactions) + 1,
+                        raw_time=raw_time,
+                        raw_amount=raw_amount,
+                        raw_balance=balances[0],
+                        raw_text=raw_text,
+                        raw_headers=COORD_HEADERS,
+                    )
+                )
+
+    for tx in transactions:
+        tx.source_file = Path(pdf_path).name
+    return transactions
+
+
+def _extract_statement_of_account(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
     previous_balance: Decimal | None = None
 
@@ -95,3 +201,10 @@ def extract_cmb_corp(pdf_path: str) -> list[Transaction]:
                     previous_balance = balance
 
     return transactions
+
+
+def extract_cmb_corp(pdf_path: str) -> list[Transaction]:
+    transactions = _extract_statement_of_account(pdf_path)
+    if transactions:
+        return transactions
+    return _extract_coord_layout(pdf_path)

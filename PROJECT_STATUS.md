@@ -341,3 +341,35 @@ Excel 导出保持不变。
   - `python tools\regression.py --all --allow-missing`：pass=54, fail=0, skip=18。
 - 注意：`公户_0(2).pdf` 是杭州银行纯图片 PDF，无文字层；当前未接 OCR，保持图片 PDF 忽略口径。
 
+## 2026-06-30 农业银行个人抹账补充
+
+- 样本：`ca456ce48f8c45599de15e51b92cc1231782713074441.pdf`。
+- 问题：`抹账` 行金额显示为负数，但余额链实际回增；旧逻辑只覆盖 `自动抹账`，导致该行误计支出并触发余额不连续。
+- 修复：`bankflow_v2/abc.py` 将农业银行个人冲正方向修正扩展到 `抹账/自动抹账`。
+- 验证：
+  - 目标 PDF：753 笔，异常 0，收支净额与期初/期末余额闭合。
+  - `python -m py_compile gui_v2.py tools\regression.py bankflow_v2\abc.py`：通过。
+  - `python tools\regression.py --tag abc --allow-missing`：pass=1, fail=0, skip=0。
+  - `python tools\regression.py --all --allow-missing`：两次运行分别在 120 秒和 300 秒超时，未返回失败结果。
+
+## 2026-06-30 光大银行个人/对公适配
+
+- 样本目录：`C:\Users\lenovo\Desktop\王晓晨`。
+- 新增解析器：`bankflow_v2/everbright.py`。
+- 新增 bank id：
+  - `everbright`：中国光大银行个人账户明细查询清单。
+  - `everbright_corp`：中国光大银行对公账户对账单。
+- 验证：
+  - `流水.pdf`：252 笔，收入 35,047,481.94，支出 35,497,036.26，异常 0。
+  - `流水2.pdf`：51 笔，收入 2,700,211.68，支出 2,601,712.00，异常 0。
+  - 导出文件：`C:\Users\lenovo\Desktop\王晓晨\王晓晨_光大流水解析结果.xlsx`。
+  - `python -m py_compile gui_v2.py tools\regression.py bankflow_v2\everbright.py bankflow_v2\auto_detect.py bankflow_v2\pipeline.py`：通过。
+
+## 2026-06-30 兴业强水印 PDF 与手工 Excel 明细
+
+- PDF 样本：`C:\Users\lenovo\Desktop\芦桂春\eb1ce44defde40518cbe409a52da74d31782805563325.pdf`。
+- PDF 自动识别：新增兴业银行强水印交易明细识别规则；受水印污染影响，PDF 直解析仍需复核。
+- 手工明细：`C:\Users\lenovo\Desktop\芦桂春\eb1ce44defde40518cbe409a52da74d31782805563325.xlsx`。
+- Excel 导入修正：支持 `支/收`、`收/支` 表头；方向列明确时交易金额按绝对值拆收入/支出。
+- 手工明细验证：286 笔，收入 618,653.80（136 笔），支出 609,423.87（150 笔），净额 9,229.93，期初 0.00，期末 9,229.93，异常 0。
+- 导出文件：`C:\Users\lenovo\Desktop\芦桂春\芦桂春_兴业流水解析结果_手工明细通过.xlsx`。

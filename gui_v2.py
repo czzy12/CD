@@ -118,7 +118,11 @@ class DropTable(QTableWidget):
         self.viewport().setAcceptDrops(True)
         self.setAlternatingRowColors(True)
         self.setSortingEnabled(True)
+        self.setShowGrid(False)
         self.verticalHeader().setVisible(False)
+        self.horizontalHeader().setStretchLastSection(False)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -359,6 +363,8 @@ class MainWindow(QMainWindow):
         run.setObjectName("primaryButton")
         export_income_json.setObjectName("exportButton")
         export_salary_json.setObjectName("exportButton")
+        for button in [run, add_folder, clear, export_salary_json, export_income_json]:
+            button.setFixedSize(112, 40)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
@@ -393,11 +399,10 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(run)
         toolbar.addWidget(add_folder)
         toolbar.addWidget(clear)
-        toolbar.addSpacing(14)
-        toolbar.addWidget(date_filter_panel)
-        toolbar.addStretch(1)
         toolbar.addWidget(export_salary_json)
         toolbar.addWidget(export_income_json)
+        toolbar.addStretch(1)
+        toolbar.addWidget(date_filter_panel)
 
         self.income_adjust = QCheckBox("启用收入调整（微信）")
         self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
@@ -448,15 +453,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(10)
         layout.addLayout(toolbar)
 
-        file_card = QFrame()
-        file_card.setObjectName("card")
-        file_layout = QVBoxLayout(file_card)
-        file_layout.setSpacing(10)
-        file_title = QLabel("文件导入")
-        file_title.setObjectName("cardTitle")
-        file_layout.addWidget(file_title)
-        file_layout.addWidget(self.drop_hint_label)
-
         main_panel = QFrame()
         main_panel.setObjectName("card")
         main_layout = QVBoxLayout(main_panel)
@@ -479,7 +475,6 @@ class MainWindow(QMainWindow):
 
         left_area = QVBoxLayout()
         left_area.setSpacing(12)
-        left_area.addWidget(file_card)
         left_area.addWidget(main_panel, 1)
 
         adjustment_panel = QFrame()
@@ -599,7 +594,7 @@ class MainWindow(QMainWindow):
                 min-height: 34px;
                 padding: 0 14px;
                 border: 1px solid #d5dbe5;
-                border-radius: 7px;
+                border-radius: 12px;
                 background: #ffffff;
                 color: #263243;
             }
@@ -627,7 +622,7 @@ class MainWindow(QMainWindow):
             QFrame#card, QFrame#sidePanel {
                 background: #ffffff;
                 border: 1px solid #e3e8f0;
-                border-radius: 8px;
+                border-radius: 12px;
             }
             QFrame#sidePanel { background: #fbfcfe; }
             QScrollArea#sideScroll {
@@ -640,13 +635,13 @@ class MainWindow(QMainWindow):
             QFrame#inlineFilterPanel {
                 background: #ffffff;
                 border: 1px solid #dfe6f1;
-                border-radius: 8px;
+                border-radius: 12px;
                 min-height: 36px;
             }
             QFrame#metricsBar {
                 background: #ffffff;
                 border: 1px solid #dfe6f1;
-                border-radius: 8px;
+                border-radius: 12px;
             }
             QFrame#metricItem { border: 0; background: transparent; }
             QFrame#metricDivider {
@@ -695,20 +690,20 @@ class MainWindow(QMainWindow):
                 min-height: 64px;
                 color: #4b5b6d;
                 border: 1px dashed #9bbff2;
-                border-radius: 8px;
+                border-radius: 12px;
                 background: #f8fbff;
                 font-size: 14px;
                 font-weight: 400;
             }
             QTableWidget {
-                gridline-color: #d8dde6;
+                gridline-color: transparent;
                 selection-background-color: #cfe5ff;
                 selection-color: #162033;
                 background: #ffffff;
                 alternate-background-color: #f8fbff;
                 color: #162033;
-                border: 1px solid #e3e8f0;
-                border-radius: 6px;
+                border: 0;
+                border-radius: 0;
             }
             QTableWidget::item {
                 color: #162033;
@@ -725,8 +720,6 @@ class MainWindow(QMainWindow):
                 background: #f0f3f7;
                 padding: 7px;
                 border: 0;
-                border-right: 1px solid #d8dde6;
-                border-bottom: 1px solid #d8dde6;
                 font-family: "Microsoft YaHei UI", "Segoe UI", Arial;
                 font-size: 13px;
                 font-weight: 500;
@@ -752,7 +745,7 @@ class MainWindow(QMainWindow):
                 min-height: 28px;
                 padding: 0 8px;
                 border: 1px solid #d5dbe5;
-                border-radius: 6px;
+                border-radius: 10px;
                 background: #ffffff;
                 color: #162033;
                 selection-background-color: #cfe5ff;
@@ -803,7 +796,7 @@ class MainWindow(QMainWindow):
                 padding: 10px 12px;
                 background: #f8fbff;
                 border: 1px solid #dbe8fb;
-                border-radius: 6px;
+                border-radius: 12px;
                 color: #1f2d3d;
             }
             QLabel#adjustPreviewLabel {
@@ -813,16 +806,16 @@ class MainWindow(QMainWindow):
                 padding: 8px;
                 background: #f8fbff;
                 border: 1px solid #dbe8fb;
-                border-radius: 8px;
+                border-radius: 12px;
             }
             QLabel#adjustResultValue {
                 color: #1f9d55;
-                font-size: 20px;
+                font-size: 16px;
                 font-weight: 600;
             }
             QLabel#profitResultValue {
                 color: #162033;
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: 600;
             }
             QLabel#profitResultValue[tone="ok"] { color: #138a4b; }
@@ -1156,12 +1149,12 @@ class MainWindow(QMainWindow):
             is_warning = any(str(value) == "需复核" for value in row)
             for col_index, value in enumerate(row):
                 item = QTableWidgetItem(str(value))
-                if isinstance(value, (int, Decimal)):
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if is_warning:
                     item.setBackground(Qt.GlobalColor.yellow)
                 table.setItem(row_index, col_index, item)
         table.resizeColumnsToContents()
+        table.resizeRowsToContents()
         table.setSortingEnabled(True)
 
     def export_excel(self):

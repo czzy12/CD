@@ -11,6 +11,7 @@ from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QKeySequence, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
+    QAbstractItemView,
     QCheckBox,
     QDateEdit,
     QFileDialog,
@@ -123,6 +124,33 @@ class DropTable(QTableWidget):
         self.horizontalHeader().setStretchLastSection(False)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.horizontalScrollBar().setStyleSheet(
+            """
+            QScrollBar:horizontal {
+                background: #ffffff;
+                border: 0;
+                height: 10px;
+                margin: 0;
+            }
+            QScrollBar::handle:horizontal {
+                background: #cfd7e3;
+                border-radius: 5px;
+                min-width: 42px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #9aa6b2;
+            }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal,
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: transparent;
+                border: 0;
+                width: 0;
+            }
+            """
+        )
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -337,7 +365,7 @@ class MainWindow(QMainWindow):
             "confidence": self.create_metric("可信度", "-", "neutral"),
         }
         self.adjust_preview_label = QLabel("启用调整后显示预览")
-        self.adjust_preview_label.setObjectName("adjustPreviewLabel")
+        self.adjust_preview_label.setObjectName("adjustmentStatusLabel")
         self.adjust_net_value = QLabel("0.00")
         self.adjust_net_value.setObjectName("adjustResultValue")
         self.adjust_check_value = QLabel("未启用")
@@ -350,7 +378,7 @@ class MainWindow(QMainWindow):
         self.profit_check_value.setObjectName("profitResultValue")
         self.profit_check_value.setProperty("tone", "neutral")
         self.profit_hint_label = QLabel("处理流水后显示利润率校验")
-        self.profit_hint_label.setObjectName("adjustPreviewLabel")
+        self.profit_hint_label.setObjectName("profitHintLabel")
         self.drop_hint_label = QLabel("拖入 PDF/Excel 文件，或点击选择文件夹\n支持多文件同时导入")
         self.drop_hint_label.setObjectName("dropHint")
         self.drop_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -376,11 +404,11 @@ class MainWindow(QMainWindow):
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDisplayFormat("yyyy-MM-dd")
-        self.start_date.setFixedWidth(118)
+        self.start_date.setFixedWidth(100)
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDisplayFormat("yyyy-MM-dd")
-        self.end_date.setFixedWidth(118)
+        self.end_date.setFixedWidth(100)
         start_date, end_date = default_recent_month_range()
         self.start_date.setDate(start_date)
         self.end_date.setDate(end_date)
@@ -388,8 +416,8 @@ class MainWindow(QMainWindow):
         date_filter_panel = QFrame()
         date_filter_panel.setObjectName("inlineFilterPanel")
         date_filter_layout = QHBoxLayout(date_filter_panel)
-        date_filter_layout.setContentsMargins(10, 6, 10, 6)
-        date_filter_layout.setSpacing(6)
+        date_filter_layout.setContentsMargins(8, 5, 8, 5)
+        date_filter_layout.setSpacing(4)
         date_filter_layout.addWidget(self.date_filter)
         date_filter_layout.addWidget(self.start_date)
         date_filter_layout.addWidget(self.end_date)
@@ -402,7 +430,6 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(export_salary_json)
         toolbar.addWidget(export_income_json)
         toolbar.addStretch(1)
-        toolbar.addWidget(date_filter_panel)
 
         self.income_adjust = QCheckBox("启用收入调整（微信）")
         self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
@@ -470,7 +497,7 @@ class MainWindow(QMainWindow):
                 divider.setFrameShape(QFrame.Shape.VLine)
                 metrics_layout.addWidget(divider)
         main_layout.addWidget(metrics_bar)
-        main_layout.addWidget(self.summary_label)
+        self.summary_label.setVisible(False)
         main_layout.addWidget(self.tabs)
 
         left_area = QVBoxLayout()
@@ -483,6 +510,7 @@ class MainWindow(QMainWindow):
         adjustment_layout = QVBoxLayout(adjustment_panel)
         adjustment_layout.setContentsMargins(12, 12, 12, 12)
         adjustment_layout.setSpacing(8)
+        adjustment_layout.addWidget(date_filter_panel)
         adjustment_title = QLabel("流水调整")
         adjustment_title.setObjectName("cardTitle")
         adjustment_layout.addWidget(adjustment_title)
@@ -520,7 +548,7 @@ class MainWindow(QMainWindow):
         profit_title = QLabel("月均利润测算")
         profit_title.setObjectName("cardTitle")
         declared_label = QLabel("开具月收入（万元）")
-        declared_label.setObjectName("fieldLabel")
+        declared_label.setObjectName("declaredIncomeLabel")
         rate_label = QLabel("利润率（%）")
         rate_label.setObjectName("fieldLabel")
         profit_card = QFrame()
@@ -705,6 +733,12 @@ class MainWindow(QMainWindow):
                 border: 0;
                 border-radius: 0;
             }
+            QTableWidget::viewport,
+            QAbstractScrollArea::corner,
+            QTableCornerButton::section {
+                background: #ffffff;
+                border: 0;
+            }
             QTableWidget::item {
                 color: #162033;
                 background: transparent;
@@ -724,6 +758,10 @@ class MainWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: 500;
                 color: #1f2d3d;
+            }
+            QHeaderView {
+                background: #f0f3f7;
+                border: 0;
             }
             QTabWidget::pane { border: 0; top: -1px; }
             QTabBar::tab {
@@ -802,6 +840,17 @@ class MainWindow(QMainWindow):
             QLabel#adjustPreviewLabel {
                 color: #5f6b7a;
             }
+            QLabel#adjustmentStatusLabel,
+            QLabel#profitHintLabel {
+                color: #5f6b7a;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QLabel#declaredIncomeLabel {
+                color: #5f6b7a;
+                font-size: 13px;
+                font-weight: 600;
+            }
             QFrame#adjustResultCard {
                 padding: 8px;
                 background: #f8fbff;
@@ -810,7 +859,7 @@ class MainWindow(QMainWindow):
             }
             QLabel#adjustResultValue {
                 color: #1f9d55;
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: 600;
             }
             QLabel#profitResultValue {

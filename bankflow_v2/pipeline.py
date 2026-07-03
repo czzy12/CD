@@ -21,6 +21,7 @@ from .chengdu_rural_corp import extract_chengdu_rural_corp
 from .chongqing import extract_chongqing
 from .cib import extract_cib
 from .customer_account_corp import extract_customer_account_corp
+from .customer_detail_corp import extract_customer_detail_corp
 from .everbright import extract_everbright, extract_everbright_corp
 from .generic_pdf import extract_generic_pdf
 from .guilin_corp import extract_guilin, extract_guilin_corp
@@ -61,6 +62,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_chongqing(pdf_path)
     if bank == "customer_account_corp":
         return extract_customer_account_corp(pdf_path)
+    if bank == "customer_detail_corp":
+        return extract_customer_detail_corp(pdf_path)
     if bank == "everbright":
         return extract_everbright(pdf_path)
     if bank == "everbright_corp":

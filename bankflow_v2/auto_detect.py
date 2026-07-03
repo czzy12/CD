@@ -27,6 +27,7 @@ BANK_LABELS = {
     "citic": "中信银行个人",
     "citic_corp": "中信银行对公",
     "customer_account_corp": "农村商业银行对公",
+    "customer_detail_corp": "对公客户账户明细",
     "everbright": "中国光大银行个人",
     "everbright_corp": "中国光大银行对公",
     "foshan_rural": "佛山农村商业银行",
@@ -136,6 +137,15 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易类型" in compact
     ):
         return Detection("cmb_corp", BANK_LABELS["cmb_corp"], 98, "命中招商银行对公借贷余额明细")
+
+    if (
+        "对公客户账户明细" in header_compact
+        and "客户名称" in header_compact
+        and "交易日期交易发生金额账户余额对方账号对方户名摘要备注" in compact
+        and "借方合计笔数" in compact
+        and "贷方合计笔数" in compact
+    ):
+        return Detection("customer_detail_corp", BANK_LABELS["customer_detail_corp"], 96, "命中对公客户账户明细")
 
     if (
         "TransactionStatementofChinaEverbrightBank" in compact

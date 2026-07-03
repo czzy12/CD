@@ -198,9 +198,38 @@ def _direction(text: str) -> str | None:
 
 def _resolve_missing_directions(transactions: list[Transaction]) -> None:
     previous: Transaction | None = None
-    for tx in sorted(transactions, key=lambda item: (item.transaction_time, item.row_no)):
+    ordered = sorted(transactions, key=lambda item: (item.transaction_time, item.row_no))
+
+    for tx in ordered:
         if previous is not None and previous.balance is not None and tx.balance is not None:
             amount = _parse_money(tx.raw_amount)
+            if amount is not None:
+                possible_deltas = [amount]
+                if amount > 0:
+                    possible_deltas.append(-amount)
+                for delta in possible_deltas:
+                    expected = (previous.balance + delta).quantize(CENT)
+                    if _expected_supported_by_raw(expected, tx.raw_balance, _boc_balance_candidates(tx.raw_balance)):
+                        tx.balance = expected
+                        break
+        previous = tx if tx.balance is not None else previous
+
+    previous = None
+    for tx in ordered:
+        if previous is not None and previous.balance is not None and tx.balance is not None:
+            amount = _parse_money(tx.raw_amount)
+            balance_delta = (tx.balance - previous.balance).quantize(CENT)
+            current_amount = (tx.income - tx.expense).quantize(CENT)
+            if amount is not None and current_amount != balance_delta:
+                if balance_delta >= Decimal("0.00"):
+                    tx.income = balance_delta
+                    tx.expense = Decimal("0.00")
+                else:
+                    tx.income = Decimal("0.00")
+                    tx.expense = -balance_delta
+                tx.issues = [issue for issue in tx.issues if issue != "收支方向无法解析"]
+                if not tx.issues:
+                    tx.status = "ok"
             if amount is not None and tx.income == 0 and tx.expense == 0:
                 if (previous.balance + amount).quantize(CENT) == tx.balance.quantize(CENT):
                     tx.income = amount

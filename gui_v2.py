@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QLineEdit,
+    QScrollArea,
     QStatusBar,
     QTabWidget,
     QTableWidget,
@@ -337,11 +338,19 @@ class MainWindow(QMainWindow):
         self.adjust_net_value.setObjectName("adjustResultValue")
         self.adjust_check_value = QLabel("未启用")
         self.adjust_check_value.setObjectName("adjustResultValue")
-        self.drop_hint_label = QLabel("拖入 PDF/Excel 文件，或点击选择文件\n支持多文件同时导入")
+        self.profit_base_value = QLabel("0.00")
+        self.profit_base_value.setObjectName("profitResultValue")
+        self.profit_generated_value = QLabel("0.00")
+        self.profit_generated_value.setObjectName("profitResultValue")
+        self.profit_check_value = QLabel("待处理")
+        self.profit_check_value.setObjectName("profitResultValue")
+        self.profit_check_value.setProperty("tone", "neutral")
+        self.profit_hint_label = QLabel("处理流水后显示利润率校验")
+        self.profit_hint_label.setObjectName("adjustPreviewLabel")
+        self.drop_hint_label = QLabel("拖入 PDF/Excel 文件，或点击选择文件夹\n支持多文件同时导入")
         self.drop_hint_label.setObjectName("dropHint")
         self.drop_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        add_files = QPushButton("选择文件")
         add_folder = QPushButton("选择文件夹")
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
@@ -350,14 +359,13 @@ class MainWindow(QMainWindow):
         run.setObjectName("primaryButton")
         export_income_json.setObjectName("exportButton")
         export_salary_json.setObjectName("exportButton")
-        add_files.clicked.connect(self.add_files)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
         export_income_json.clicked.connect(self.export_income_proof_json)
         export_salary_json.clicked.connect(self.export_salary_income_proof_json)
 
-        self.date_filter = QCheckBox("筛选日期")
+        self.date_filter = QCheckBox("筛选")
         self.date_filter.setChecked(True)
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
@@ -377,15 +385,12 @@ class MainWindow(QMainWindow):
         date_filter_layout.setContentsMargins(10, 6, 10, 6)
         date_filter_layout.setSpacing(6)
         date_filter_layout.addWidget(self.date_filter)
-        date_filter_layout.addWidget(QLabel("从"))
         date_filter_layout.addWidget(self.start_date)
-        date_filter_layout.addWidget(QLabel("到"))
         date_filter_layout.addWidget(self.end_date)
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
         toolbar.addWidget(run)
-        toolbar.addWidget(add_files)
         toolbar.addWidget(add_folder)
         toolbar.addWidget(clear)
         toolbar.addSpacing(14)
@@ -398,6 +403,11 @@ class MainWindow(QMainWindow):
         self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
         self.adjust_amount = QLineEdit()
         self.adjust_amount.setPlaceholderText("万元")
+        self.declared_month_income = QLineEdit()
+        self.declared_month_income.setPlaceholderText("万元")
+        self.profit_rate = QLineEdit()
+        self.profit_rate.setPlaceholderText("%")
+        self.profit_rate.setText("5")
         self.adjust_start_month = QDateEdit()
         self.adjust_start_month.setCalendarPopup(True)
         self.adjust_start_month.setDisplayFormat("yyyy-MM")
@@ -416,6 +426,8 @@ class MainWindow(QMainWindow):
         self.adjust_amount.textChanged.connect(self.refresh_adjustment)
         self.adjust_start_month.dateChanged.connect(self.refresh_adjustment)
         self.adjust_end_month.dateChanged.connect(self.refresh_adjustment)
+        self.declared_month_income.textChanged.connect(self.update_profit_preview)
+        self.profit_rate.textChanged.connect(self.update_profit_preview)
 
         self.overview = DropTable()
         self.monthly = DropTable()
@@ -472,7 +484,7 @@ class MainWindow(QMainWindow):
 
         adjustment_panel = QFrame()
         adjustment_panel.setObjectName("sidePanel")
-        adjustment_panel.setFixedWidth(250)
+        adjustment_panel.setFixedWidth(280)
         adjustment_layout = QVBoxLayout(adjustment_panel)
         adjustment_layout.setContentsMargins(12, 12, 12, 12)
         adjustment_layout.setSpacing(8)
@@ -485,19 +497,11 @@ class MainWindow(QMainWindow):
         amount_label.setObjectName("fieldLabel")
         adjustment_layout.addWidget(amount_label)
         adjustment_layout.addWidget(self.adjust_amount)
-        month_row = QHBoxLayout()
-        month_row.addWidget(self.adjust_start_month)
-        month_row.addWidget(QLabel("至"))
-        month_row.addWidget(self.adjust_end_month)
-        adjustment_layout.addLayout(month_row)
-        adjustment_layout.addWidget(self.random_adjust)
         preview_card = QFrame()
         preview_card.setObjectName("adjustResultCard")
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(10, 8, 10, 8)
-        preview_layout.setSpacing(7)
-        preview_title = QLabel("调整预览（所选期间）")
-        preview_title.setObjectName("fieldLabel")
+        preview_layout.setContentsMargins(10, 6, 10, 6)
+        preview_layout.setSpacing(4)
         result_row = QHBoxLayout()
         net_box = QVBoxLayout()
         net_label = QLabel("调整后净额(万元)")
@@ -515,17 +519,58 @@ class MainWindow(QMainWindow):
         divider.setFrameShape(QFrame.Shape.VLine)
         result_row.addWidget(divider)
         result_row.addLayout(check_box)
-        preview_layout.addWidget(preview_title)
         preview_layout.addLayout(result_row)
         adjustment_layout.addWidget(preview_card)
         adjustment_layout.addWidget(self.adjust_preview_label)
+        profit_title = QLabel("月均利润测算")
+        profit_title.setObjectName("cardTitle")
+        declared_label = QLabel("开具月收入（万元）")
+        declared_label.setObjectName("fieldLabel")
+        rate_label = QLabel("利润率（%）")
+        rate_label.setObjectName("fieldLabel")
+        profit_card = QFrame()
+        profit_card.setObjectName("adjustResultCard")
+        profit_layout = QVBoxLayout(profit_card)
+        profit_layout.setContentsMargins(10, 8, 10, 8)
+        profit_layout.setSpacing(6)
+        base_label = QLabel("流水月均收入(万元)")
+        base_label.setObjectName("fieldLabel")
+        generated_label = QLabel("利润率后收入(万元)")
+        generated_label.setObjectName("fieldLabel")
+        status_label = QLabel("校验")
+        status_label.setObjectName("fieldLabel")
+        self.profit_base_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.profit_generated_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.profit_check_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        for label, value in (
+            (base_label, self.profit_base_value),
+            (generated_label, self.profit_generated_value),
+            (status_label, self.profit_check_value),
+        ):
+            row = QHBoxLayout()
+            row.addWidget(label, 1)
+            row.addWidget(value, 0)
+            profit_layout.addLayout(row)
+        adjustment_layout.addSpacing(8)
+        adjustment_layout.addWidget(profit_title)
+        adjustment_layout.addWidget(declared_label)
+        adjustment_layout.addWidget(self.declared_month_income)
+        adjustment_layout.addWidget(rate_label)
+        adjustment_layout.addWidget(self.profit_rate)
+        adjustment_layout.addWidget(profit_card)
+        adjustment_layout.addWidget(self.profit_hint_label)
 
         content = QHBoxLayout()
         content.setSpacing(10)
         content.addLayout(left_area, 1)
+        side_scroll = QScrollArea()
+        side_scroll.setObjectName("sideScroll")
+        side_scroll.setWidgetResizable(True)
+        side_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        side_scroll.setWidget(adjustment_panel)
+        side_scroll.setFixedWidth(294)
         side_column = QVBoxLayout()
-        side_column.addWidget(adjustment_panel, 0, Qt.AlignmentFlag.AlignTop)
-        side_column.addStretch(1)
+        side_column.addWidget(side_scroll)
         content.addLayout(side_column)
         layout.addLayout(content, 1)
         self.setCentralWidget(central)
@@ -585,6 +630,13 @@ class MainWindow(QMainWindow):
                 border-radius: 8px;
             }
             QFrame#sidePanel { background: #fbfcfe; }
+            QScrollArea#sideScroll {
+                background: transparent;
+                border: 0;
+            }
+            QScrollArea#sideScroll > QWidget > QWidget {
+                background: transparent;
+            }
             QFrame#inlineFilterPanel {
                 background: #ffffff;
                 border: 1px solid #dfe6f1;
@@ -768,6 +820,14 @@ class MainWindow(QMainWindow):
                 font-size: 20px;
                 font-weight: 600;
             }
+            QLabel#profitResultValue {
+                color: #162033;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            QLabel#profitResultValue[tone="ok"] { color: #138a4b; }
+            QLabel#profitResultValue[tone="warning"] { color: #d93f2f; }
+            QLabel#profitResultValue[tone="neutral"] { color: #162033; }
             QFrame#adjustResultCard QLabel#fieldLabel {
                 font-size: 12px;
                 font-weight: 500;
@@ -890,12 +950,14 @@ class MainWindow(QMainWindow):
             self.adjust_net_value.setText("0.00")
             self.adjust_check_value.setText("未启用")
             self.adjust_preview_label.setText("原始统计保持不变")
+            self.update_profit_preview()
             return
         total_row = next((row for row in self.adjustment_result.rows if row.month == "总计"), None)
         if total_row is None:
             self.adjust_net_value.setText("0.00")
             self.adjust_check_value.setText("需复核")
             self.adjust_preview_label.setText("暂无可调整月份")
+            self.update_profit_preview()
             return
         check = balance_check(total_row, self.adjustment_result)
         self.adjust_net_value.setText(f"{money_wan(total_row.adjusted_net)}")
@@ -904,6 +966,69 @@ class MainWindow(QMainWindow):
             f"收入调整 {money_wan(total_row.income_adjustment)} 万元  "
             f"支出调整 {money_wan(total_row.expense_adjustment)} 万元"
         )
+        self.update_profit_preview()
+
+    def update_profit_preview(self):
+        transactions = self.current_transactions()
+        monthly_income, month_count = self.current_monthly_income_average(transactions)
+        profit_rate = self.safe_percent(self.profit_rate.text())
+        declared_income = self.safe_amount_wan(self.declared_month_income.text()) * Decimal("10000")
+        generated_income = (monthly_income * profit_rate / Decimal("100")).quantize(Decimal("0.01"))
+
+        self.profit_base_value.setText(money_wan(monthly_income))
+        self.profit_generated_value.setText(money_wan(generated_income))
+        if not transactions or month_count == 0:
+            self.set_profit_check("待处理", "neutral")
+            self.set_profit_value_tone("neutral")
+            self.profit_hint_label.setText("处理流水后显示利润率校验")
+            return
+        if declared_income <= Decimal("0.00"):
+            self.set_profit_check("请输入", "neutral")
+            self.set_profit_value_tone("neutral")
+            self.profit_hint_label.setText(f"按 {month_count} 个月月均收入 × {profit_rate}% 计算")
+            return
+        diff = (generated_income - declared_income).quantize(Decimal("0.01"))
+        if diff >= Decimal("0.00"):
+            self.set_profit_check("通过", "ok")
+            self.set_profit_value_tone("ok")
+            self.profit_hint_label.setText(f"可支撑开具月收入，余量 {money_wan(diff)} 万元")
+        else:
+            self.set_profit_check("不足", "warning")
+            self.set_profit_value_tone("warning")
+            self.profit_hint_label.setText(f"低于开具月收入 {money_wan(abs(diff))} 万元")
+
+    def set_profit_check(self, text: str, tone: str):
+        self.profit_check_value.setText(text)
+        self.profit_check_value.setProperty("tone", tone)
+        self.profit_check_value.style().unpolish(self.profit_check_value)
+        self.profit_check_value.style().polish(self.profit_check_value)
+
+    def set_profit_value_tone(self, tone: str):
+        self.profit_generated_value.setProperty("tone", tone)
+        self.profit_generated_value.style().unpolish(self.profit_generated_value)
+        self.profit_generated_value.style().polish(self.profit_generated_value)
+
+    def current_transactions(self) -> list:
+        transactions = [tx for result in self.results for tx in result.transactions]
+        deduped, _duplicate_issues = dedupe_transactions(transactions)
+        return deduped
+
+    def current_monthly_income_average(self, transactions: list) -> tuple[Decimal, int]:
+        if not transactions:
+            return Decimal("0.00"), 0
+        if self.adjustment_result.enabled:
+            total_row = next((row for row in self.adjustment_result.rows if row.month == "总计"), None)
+            month_count = len([row for row in self.adjustment_result.rows if row.month != "总计"])
+            if total_row is not None and month_count > 0:
+                average = (total_row.adjusted_income_sum / Decimal(month_count)).quantize(Decimal("0.01"))
+                return average, month_count
+        month_pairs = monthly_summaries(transactions)
+        month_count = len(month_pairs)
+        if month_count == 0:
+            return Decimal("0.00"), 0
+        total = summarize(transactions, "全部文件")
+        average = (total.income_sum / Decimal(month_count)).quantize(Decimal("0.01"))
+        return average, month_count
 
     def render_empty(self):
         self.update_monthly_tab_label(False)
@@ -1077,12 +1202,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "未打开填表", f"已导出: {path}\n未找到收入佐证程序，请确认工具包目录完整。")
 
     def adjustment_configs(self) -> list[AdjustmentConfig]:
+        start_month, end_month = self.adjustment_month_range()
         return [
             AdjustmentConfig(
                 enabled=self.income_adjust.isChecked(),
                 amount_wan=self.safe_amount_wan(self.adjust_amount.text()),
-                start_month=self.adjust_start_month.date().toString("yyyy-MM"),
-                end_month=self.adjust_end_month.date().toString("yyyy-MM"),
+                start_month=start_month,
+                end_month=end_month,
                 balanced=False,
                 label="收入调整（微信）",
                 randomized=not self.random_adjust.isChecked(),
@@ -1090,19 +1216,31 @@ class MainWindow(QMainWindow):
             AdjustmentConfig(
                 enabled=self.balance_adjust.isChecked(),
                 amount_wan=self.safe_amount_wan(self.adjust_amount.text()),
-                start_month=self.adjust_start_month.date().toString("yyyy-MM"),
-                end_month=self.adjust_end_month.date().toString("yyyy-MM"),
+                start_month=start_month,
+                end_month=end_month,
                 balanced=True,
                 label="收支平衡调整（个/公）",
                 randomized=not self.random_adjust.isChecked(),
             ),
         ]
 
+    def adjustment_month_range(self) -> tuple[str, str]:
+        if not self.date_filter.isChecked():
+            return "", ""
+        return self.start_date.date().toString("yyyy-MM"), self.end_date.date().toString("yyyy-MM")
+
     def safe_amount_wan(self, text: str) -> Decimal:
         try:
             return parse_amount_wan(text)
         except Exception:
             return Decimal("0.00")
+
+    def safe_percent(self, text: str) -> Decimal:
+        try:
+            value = Decimal((text or "").replace("%", "").strip() or "0")
+        except Exception:
+            return Decimal("0.00")
+        return max(value, Decimal("0.00"))
 
 
 def write_sheet(ws, headers: list[str], rows: list[list]):

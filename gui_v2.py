@@ -404,17 +404,18 @@ class MainWindow(QMainWindow):
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDisplayFormat("yyyy-MM-dd")
-        self.start_date.setFixedWidth(100)
+        self.start_date.setFixedWidth(156)
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDisplayFormat("yyyy-MM-dd")
-        self.end_date.setFixedWidth(100)
+        self.end_date.setFixedWidth(156)
         start_date, end_date = default_recent_month_range()
         self.start_date.setDate(start_date)
         self.end_date.setDate(end_date)
 
         date_filter_panel = QFrame()
         date_filter_panel.setObjectName("inlineFilterPanel")
+        date_filter_panel.setMinimumWidth(410)
         date_filter_layout = QHBoxLayout(date_filter_panel)
         date_filter_layout.setContentsMargins(8, 5, 8, 5)
         date_filter_layout.setSpacing(4)
@@ -506,7 +507,7 @@ class MainWindow(QMainWindow):
 
         adjustment_panel = QFrame()
         adjustment_panel.setObjectName("sidePanel")
-        adjustment_panel.setFixedWidth(280)
+        adjustment_panel.setFixedWidth(430)
         adjustment_layout = QVBoxLayout(adjustment_panel)
         adjustment_layout.setContentsMargins(12, 12, 12, 12)
         adjustment_layout.setSpacing(8)
@@ -557,11 +558,11 @@ class MainWindow(QMainWindow):
         profit_layout.setContentsMargins(10, 8, 10, 8)
         profit_layout.setSpacing(6)
         base_label = QLabel("流水月均收入(万元)")
-        base_label.setObjectName("fieldLabel")
+        base_label.setObjectName("profitCardLabel")
         generated_label = QLabel("利润率后收入(万元)")
-        generated_label.setObjectName("fieldLabel")
+        generated_label.setObjectName("profitCardLabel")
         status_label = QLabel("校验")
-        status_label.setObjectName("fieldLabel")
+        status_label.setObjectName("profitCardLabel")
         self.profit_base_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.profit_generated_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.profit_check_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -576,10 +577,20 @@ class MainWindow(QMainWindow):
             profit_layout.addLayout(row)
         adjustment_layout.addSpacing(8)
         adjustment_layout.addWidget(profit_title)
-        adjustment_layout.addWidget(declared_label)
-        adjustment_layout.addWidget(self.declared_month_income)
-        adjustment_layout.addWidget(rate_label)
-        adjustment_layout.addWidget(self.profit_rate)
+        profit_inputs_row = QHBoxLayout()
+        profit_inputs_row.setSpacing(10)
+        declared_box = QVBoxLayout()
+        declared_box.setSpacing(5)
+        declared_box.addWidget(declared_label)
+        declared_box.addWidget(self.declared_month_income)
+        rate_box = QVBoxLayout()
+        rate_box.setSpacing(5)
+        rate_box.addWidget(rate_label)
+        rate_box.addWidget(self.profit_rate)
+        self.profit_rate.setFixedWidth(92)
+        profit_inputs_row.addLayout(declared_box, 1)
+        profit_inputs_row.addLayout(rate_box, 0)
+        adjustment_layout.addLayout(profit_inputs_row)
         adjustment_layout.addWidget(profit_card)
         adjustment_layout.addWidget(self.profit_hint_label)
 
@@ -591,7 +602,7 @@ class MainWindow(QMainWindow):
         side_scroll.setWidgetResizable(True)
         side_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         side_scroll.setWidget(adjustment_panel)
-        side_scroll.setFixedWidth(294)
+        side_scroll.setFixedWidth(444)
         side_column = QVBoxLayout()
         side_column.addWidget(side_scroll)
         content.addLayout(side_column)
@@ -794,6 +805,10 @@ class MainWindow(QMainWindow):
                 color: #9aa6b2;
                 border-color: #dfe6f1;
             }
+            QDateEdit {
+                padding: 0 20px 0 8px;
+                font-size: 12px;
+            }
             QCheckBox {
                 color: #263243;
                 spacing: 8px;
@@ -818,7 +833,7 @@ class MainWindow(QMainWindow):
                 border-color: #d5dbe5;
             }
             QDateEdit::drop-down {
-                width: 24px;
+                width: 14px;
                 border: 0;
                 background: transparent;
                 subcontrol-origin: padding;
@@ -826,9 +841,9 @@ class MainWindow(QMainWindow):
             }
             QDateEdit::down-arrow {
                 image: url(assets/down_arrow.svg);
-                width: 10px;
-                height: 10px;
-                margin-right: 7px;
+                width: 8px;
+                height: 8px;
+                margin-right: 4px;
             }
             QLabel#summaryLabel {
                 padding: 10px 12px;
@@ -850,6 +865,11 @@ class MainWindow(QMainWindow):
                 color: #5f6b7a;
                 font-size: 13px;
                 font-weight: 600;
+            }
+            QLabel#profitCardLabel {
+                color: #5f6b7a;
+                font-size: 12px;
+                font-weight: 400;
             }
             QFrame#adjustResultCard {
                 padding: 8px;

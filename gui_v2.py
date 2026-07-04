@@ -386,18 +386,18 @@ class MainWindow(QMainWindow):
         add_folder = QPushButton("选择文件夹")
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
-        export_income_json = QPushButton("经营佐证")
-        export_salary_json = QPushButton("工资佐证")
+        self.export_income_json_button = QPushButton("经营佐证")
+        self.export_salary_json_button = QPushButton("工资佐证")
         run.setObjectName("primaryButton")
-        export_income_json.setObjectName("exportButton")
-        export_salary_json.setObjectName("exportButton")
-        for button in [run, add_folder, clear, export_salary_json, export_income_json]:
+        self.export_income_json_button.setObjectName("exportButton")
+        self.export_salary_json_button.setObjectName("exportButton")
+        for button in [run, add_folder, clear, self.export_salary_json_button, self.export_income_json_button]:
             button.setFixedSize(112, 40)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
-        export_income_json.clicked.connect(self.export_income_proof_json)
-        export_salary_json.clicked.connect(self.export_salary_income_proof_json)
+        self.export_income_json_button.clicked.connect(self.export_income_proof_json)
+        self.export_salary_json_button.clicked.connect(self.export_salary_income_proof_json)
 
         self.date_filter = QCheckBox("筛选")
         self.date_filter.setChecked(True)
@@ -416,9 +416,10 @@ class MainWindow(QMainWindow):
         date_filter_panel = QFrame()
         date_filter_panel.setObjectName("inlineFilterPanel")
         date_filter_panel.setMinimumWidth(410)
+        date_filter_panel.setMinimumHeight(44)
         date_filter_layout = QHBoxLayout(date_filter_panel)
-        date_filter_layout.setContentsMargins(8, 5, 8, 5)
-        date_filter_layout.setSpacing(4)
+        date_filter_layout.setContentsMargins(10, 6, 10, 6)
+        date_filter_layout.setSpacing(8)
         date_filter_layout.addWidget(self.date_filter)
         date_filter_layout.addWidget(self.start_date)
         date_filter_layout.addWidget(self.end_date)
@@ -428,16 +429,16 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(run)
         toolbar.addWidget(add_folder)
         toolbar.addWidget(clear)
-        toolbar.addWidget(export_salary_json)
-        toolbar.addWidget(export_income_json)
+        toolbar.addWidget(self.export_salary_json_button)
+        toolbar.addWidget(self.export_income_json_button)
         toolbar.addStretch(1)
 
-        self.income_adjust = QCheckBox("启用收入调整（微信）")
-        self.balance_adjust = QCheckBox("启用收支平衡调整（个/公）")
+        self.income_adjust = QCheckBox("收入调整（微信）")
+        self.balance_adjust = QCheckBox("收支平衡调整（个/公）")
         self.adjust_amount = QLineEdit()
-        self.adjust_amount.setPlaceholderText("万元")
+        self.adjust_amount.setPlaceholderText("调整金额（万元）")
         self.declared_month_income = QLineEdit()
-        self.declared_month_income.setPlaceholderText("万元")
+        self.declared_month_income.setPlaceholderText("开具月收入（万元）")
         self.profit_rate = QLineEdit()
         self.profit_rate.setPlaceholderText("%")
         self.profit_rate.setText("5")
@@ -505,21 +506,29 @@ class MainWindow(QMainWindow):
         left_area.setSpacing(12)
         left_area.addWidget(main_panel, 1)
 
+        side_content = QWidget()
+        side_content.setFixedWidth(430)
+        side_layout = QVBoxLayout(side_content)
+        side_layout.setContentsMargins(0, 0, 0, 0)
+        side_layout.setSpacing(14)
+        side_layout.addWidget(date_filter_panel)
+
         adjustment_panel = QFrame()
-        adjustment_panel.setObjectName("sidePanel")
-        adjustment_panel.setFixedWidth(430)
+        adjustment_panel.setObjectName("sideSection")
         adjustment_layout = QVBoxLayout(adjustment_panel)
-        adjustment_layout.setContentsMargins(12, 12, 12, 12)
-        adjustment_layout.setSpacing(8)
-        adjustment_layout.addWidget(date_filter_panel)
+        adjustment_layout.setContentsMargins(14, 14, 14, 14)
+        adjustment_layout.setSpacing(9)
+        self.side_panel = adjustment_panel
+        self.side_panel_layout = side_layout
         adjustment_title = QLabel("流水调整")
         adjustment_title.setObjectName("cardTitle")
         adjustment_layout.addWidget(adjustment_title)
-        adjustment_layout.addWidget(self.income_adjust)
-        adjustment_layout.addWidget(self.balance_adjust)
-        amount_label = QLabel("调整金额（万元）")
-        amount_label.setObjectName("fieldLabel")
-        adjustment_layout.addWidget(amount_label)
+        adjust_option_row = QHBoxLayout()
+        adjust_option_row.setContentsMargins(0, 0, 0, 0)
+        adjust_option_row.setSpacing(8)
+        adjust_option_row.addWidget(self.income_adjust, 1)
+        adjust_option_row.addWidget(self.balance_adjust, 1)
+        adjustment_layout.addLayout(adjust_option_row)
         adjustment_layout.addWidget(self.adjust_amount)
         preview_card = QFrame()
         preview_card.setObjectName("adjustResultCard")
@@ -544,12 +553,16 @@ class MainWindow(QMainWindow):
         result_row.addWidget(divider)
         result_row.addLayout(check_box)
         preview_layout.addLayout(result_row)
+        preview_layout.addWidget(self.adjust_preview_label)
         adjustment_layout.addWidget(preview_card)
-        adjustment_layout.addWidget(self.adjust_preview_label)
+
+        profit_panel = QFrame()
+        profit_panel.setObjectName("sideSection")
+        profit_panel_layout = QVBoxLayout(profit_panel)
+        profit_panel_layout.setContentsMargins(14, 14, 14, 14)
+        profit_panel_layout.setSpacing(9)
         profit_title = QLabel("月均利润测算")
         profit_title.setObjectName("cardTitle")
-        declared_label = QLabel("开具月收入（万元）")
-        declared_label.setObjectName("declaredIncomeLabel")
         rate_label = QLabel("利润率（%）")
         rate_label.setObjectName("fieldLabel")
         profit_card = QFrame()
@@ -575,13 +588,11 @@ class MainWindow(QMainWindow):
             row.addWidget(label, 1)
             row.addWidget(value, 0)
             profit_layout.addLayout(row)
-        adjustment_layout.addSpacing(8)
-        adjustment_layout.addWidget(profit_title)
+        profit_panel_layout.addWidget(profit_title)
         profit_inputs_row = QHBoxLayout()
         profit_inputs_row.setSpacing(10)
         declared_box = QVBoxLayout()
         declared_box.setSpacing(5)
-        declared_box.addWidget(declared_label)
         declared_box.addWidget(self.declared_month_income)
         rate_box = QVBoxLayout()
         rate_box.setSpacing(5)
@@ -590,9 +601,11 @@ class MainWindow(QMainWindow):
         self.profit_rate.setFixedWidth(92)
         profit_inputs_row.addLayout(declared_box, 1)
         profit_inputs_row.addLayout(rate_box, 0)
-        adjustment_layout.addLayout(profit_inputs_row)
-        adjustment_layout.addWidget(profit_card)
-        adjustment_layout.addWidget(self.profit_hint_label)
+        profit_panel_layout.addLayout(profit_inputs_row)
+        profit_layout.addWidget(self.profit_hint_label)
+        profit_panel_layout.addWidget(profit_card)
+        side_layout.addWidget(adjustment_panel)
+        side_layout.addWidget(profit_panel)
 
         content = QHBoxLayout()
         content.setSpacing(10)
@@ -601,7 +614,7 @@ class MainWindow(QMainWindow):
         side_scroll.setObjectName("sideScroll")
         side_scroll.setWidgetResizable(True)
         side_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        side_scroll.setWidget(adjustment_panel)
+        side_scroll.setWidget(side_content)
         side_scroll.setFixedWidth(444)
         side_column = QVBoxLayout()
         side_column.addWidget(side_scroll)
@@ -658,12 +671,12 @@ class MainWindow(QMainWindow):
                 font-size: 14px;
                 font-weight: 500;
             }
-            QFrame#card, QFrame#sidePanel {
+            QFrame#card, QFrame#sidePanel, QFrame#sideSection {
                 background: #ffffff;
                 border: 1px solid #e3e8f0;
                 border-radius: 12px;
             }
-            QFrame#sidePanel { background: #fbfcfe; }
+            QFrame#sidePanel, QFrame#sideSection { background: #fbfcfe; }
             QScrollArea#sideScroll {
                 background: transparent;
                 border: 0;
@@ -675,7 +688,7 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
                 border: 1px solid #dfe6f1;
                 border-radius: 12px;
-                min-height: 36px;
+                min-height: 42px;
             }
             QFrame#metricsBar {
                 background: #ffffff;
@@ -812,6 +825,13 @@ class MainWindow(QMainWindow):
             QCheckBox {
                 color: #263243;
                 spacing: 8px;
+                background: transparent;
+            }
+            QFrame#inlineFilterPanel QCheckBox {
+                background: transparent;
+                border: 0;
+                padding: 0;
+                font-weight: 400;
             }
             QCheckBox:disabled {
                 color: #9aa6b2;
@@ -860,6 +880,7 @@ class MainWindow(QMainWindow):
                 color: #5f6b7a;
                 font-size: 12px;
                 font-weight: 400;
+                padding-top: 4px;
             }
             QLabel#declaredIncomeLabel {
                 color: #5f6b7a;

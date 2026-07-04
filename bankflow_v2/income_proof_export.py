@@ -1,4 +1,5 @@
 import json
+from copy import copy
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -61,10 +62,36 @@ def looks_corporate_account_name(value: str) -> bool:
 
 
 def result_flow_type(result) -> str:
+    override = getattr(result, "_income_proof_flow_type_override", "")
+    if override:
+        return override
     detected = flow_type(getattr(result, "bank_id", ""))
     if detected == "个人" and looks_corporate_account_name(getattr(result, "account_name", "")):
         return "对公"
     return detected
+
+
+def transaction_flow_type(tx, result=None) -> str:
+    value = getattr(tx, "flow_type", "")
+    if value in {"个人", "微信", "对公"}:
+        return value
+    return result_flow_type(result) if result is not None else "个人"
+
+
+def split_results_by_flow(results: list, target_flow_type: str) -> list:
+    split_results = []
+    for result in results:
+        transactions = [
+            tx for tx in getattr(result, "transactions", []) or []
+            if transaction_flow_type(tx, result) == target_flow_type
+        ]
+        if not transactions:
+            continue
+        cloned = copy(result)
+        cloned.transactions = transactions
+        cloned._income_proof_flow_type_override = target_flow_type
+        split_results.append(cloned)
+    return split_results
 
 
 def normalize_bank_name(label: str, bank_id: str) -> str:
@@ -273,8 +300,9 @@ def combined_month_summaries(results: list, selected_months: set[str]) -> list[t
     normal_transactions = []
     wechat_transactions = []
     for result in results:
-        target = wechat_transactions if result_flow_type(result) == "微信" else normal_transactions
-        target.extend(getattr(result, "transactions", []) or [])
+        for tx in getattr(result, "transactions", []) or []:
+            target = wechat_transactions if transaction_flow_type(tx, result) == "微信" else normal_transactions
+            target.append(tx)
 
     normal_by_month = {month: summary for month, summary in monthly_summaries(normal_transactions) if month in selected_months}
     wechat_pairs = [(month, summary) for month, summary in monthly_summaries(wechat_transactions) if month in selected_months]
@@ -299,9 +327,9 @@ def combined_month_summaries(results: list, selected_months: set[str]) -> list[t
 
 def flow_month_pairs(results: list, target_flow_type: str | None = None) -> list[tuple[str, Summary]]:
     if target_flow_type == "对公":
-        target_results = [result for result in results if result_flow_type(result) == "对公"]
+        target_results = split_results_by_flow(results, "对公")
     elif target_flow_type == "个人":
-        target_results = [result for result in results if result_flow_type(result) != "对公"]
+        target_results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
     else:
         target_results = list(results)
     transactions = [tx for result in target_results for tx in getattr(result, "transactions", [])]
@@ -451,9 +479,9 @@ def flow_block(
     adjustment_allocations: dict[str, dict[str, tuple[Decimal, Decimal]]] | None = None,
 ) -> dict:
     if target_flow_type == "对公":
-        results = [result for result in results if result_flow_type(result) == "对公"]
+        results = split_results_by_flow(results, "对公")
     elif target_flow_type == "个人":
-        results = [result for result in results if result_flow_type(result) != "对公"]
+        results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
     month_pairs = flow_month_pairs(results)
     if target_flow_type in ("个人", "对公") and adjustment_allocations:
         month_pairs = apply_flow_adjustments(month_pairs, adjustment_allocations.get(target_flow_type))
@@ -497,8 +525,8 @@ def build_income_proof_input(
     output_path: str = "",
     adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
-    personal_results = [result for result in results if result_flow_type(result) != "对公"]
-    corporate_results = [result for result in results if result_flow_type(result) == "对公"]
+    personal_results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
+    corporate_results = split_results_by_flow(results, "对公")
     adjustment_allocations = allocate_adjustments_by_flow(results, adjustment_configs)
 
     return {
@@ -568,7 +596,7 @@ def build_salary_income_proof_input(
     output_path: str = "",
     adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
-    personal_results = [result for result in results if result_flow_type(result) != "对公"]
+    personal_results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
     adjustment_allocations = allocate_adjustments_by_flow(results, adjustment_configs)
     return {
         "schema_version": "1.0",

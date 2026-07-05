@@ -1222,5 +1222,22 @@
       "closing_balance": "242.59",
       "issues": 0
     }
+  },
+  {
+    "name": "建设银行个人-活期账户交易明细筛选流水-李红梅",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李红梅/3a08cdc3597c48bc8560cd8d218a6f6e1783050410937.pdf",
+    "tags": ["ccb", "personal", "filtered"],
+    "expected": {
+      "count": 244,
+      "income_count": 103,
+      "income_sum": "13393755.82",
+      "expense_count": 141,
+      "expense_sum": "11263623.25",
+      "net": "2130132.57",
+      "opening_balance": "80238.68",
+      "closing_balance": "1510064.59",
+      "issues": 0
+    }
   }
 ]

@@ -14,6 +14,7 @@ class Detection:
 BANK_LABELS = {
     "abc": "农业银行个人",
     "abc_corp": "农业银行对公",
+    "alipay": "支付宝交易流水",
     "boc": "中国银行个人",
     "boc_corp": "中国银行对公",
     "bocom": "交通银行",
@@ -50,11 +51,13 @@ BANK_LABELS = {
     "rural_credit": "农村信用社",
     "shanghai": "上海银行个人",
     "shanghai_corp": "上海银行对公",
+    "shengjing": "盛京银行",
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
     "tianjin_rural_corp": "天津农村商业银行对公",
     "generic_pdf": "通用PDF识别",
     "wechat": "微信流水",
+    "xingtai": "邢台银行",
     "zhongyuan": "中原银行",
 }
 
@@ -230,6 +233,21 @@ def detect_bank_type(pdf_path: str) -> Detection:
     if "上海银行交易明细" in header_compact and "TransactionDetails" in compact and "交易金额期末金额" in compact:
         return Detection("shanghai", BANK_LABELS["shanghai"], 98, "命中上海银行个人交易明细")
 
+    if "支付宝支付科技有限公司交易流水证明" in compact and "收/支交易对方商品说明收/付款方式金额" in compact:
+        return Detection("alipay", BANK_LABELS["alipay"], 98, "命中支付宝交易流水证明")
+
+    if "盛京银行交易流水" in header_compact and "TransactionStatementofShengjingBank" in compact:
+        return Detection("shengjing", BANK_LABELS["shengjing"], 98, "命中盛京银行交易流水")
+
+    if "邢台银行账户交易明细" in header_compact and "收入/支出交易金额（元）余额（元）" in compact:
+        return Detection("xingtai", BANK_LABELS["xingtai"], 98, "命中邢台银行账户交易明细")
+
+    if "中国建设银行账户明细信息" in header_compact and "借方发生额(支取)贷方发生额(收入)余额" in compact:
+        return Detection("ccb_corp", BANK_LABELS["ccb_corp"], 98, "命中建设银行账户明细信息对公表格")
+
+    if "兴业银行交易明细" in compact and "IndustrialBankTransactionDetails" in compact:
+        return Detection("cib", BANK_LABELS["cib"], 96, "命中兴业银行交易明细强水印格式")
+
     if (
         "华夏银行个人账户交易流水" in header_compact
         and "HuaxiaBankPersonalTransactionStatement" in compact
@@ -251,6 +269,12 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "CounterpartyInformation" in compact
     ):
         return Detection("pingan", BANK_LABELS["pingan"], 92, "命中平安银行个人账户交易明细清单续页")
+
+    if "平安银行" in compact and "清单编号" in compact and "交易金额余额交易地点摘要备注" in compact:
+        return Detection("pingan", BANK_LABELS["pingan"], 90, "命中平安银行交易明细清单表格")
+
+    if "兴业银行交易明细" in compact and "交易金额" in compact and "账户余额" in compact:
+        return Detection("cib", BANK_LABELS["cib"], 92, "命中兴业银行交易明细表格")
 
     if (
         "账户交易明细" in header_compact

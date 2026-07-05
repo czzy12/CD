@@ -145,6 +145,7 @@ def _parse_datetime(date_value: Any, time_value: Any | None = None) -> datetime 
 
     text = _normalize_ocr_date_text(date_value).replace("：", ":").replace("/", "-")
     text = text.replace("年", "-").replace("月", "-").replace("日", " ")
+    text = re.sub(r"(\d{4}-\d{1,2}-)\s*(\d{1,2})(\d{1,2}:\d{1,2}(?::\d{1,2})?)", r"\1\2 \3", text)
     match = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", text)
     if not match:
         return None
@@ -530,7 +531,10 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
         elif amount is not None:
             raw_direction = _cell_text(row[cols["direction"]]) if cols["direction"] is not None and cols["direction"] < len(row) else ""
             direction = _direction(raw_direction)
-            if direction == "income":
+            if cols["direction"] is not None and not raw_direction.strip():
+                income = Decimal("0.00")
+                expense = Decimal("0.00")
+            elif direction == "income":
                 income = abs(amount)
                 expense = Decimal("0.00")
             elif direction == "expense":
@@ -570,9 +574,12 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
         )
         tx.preserve_signed_columns = True
         tx.balance_tolerance = Decimal("0.99")
+        if cols["balance"] is None:
+            tx.balance_optional = True
         transactions.append(tx)
 
-    _resolve_missing_directions(transactions)
+    if cols["income"] is None and cols["expense"] is None:
+        _resolve_missing_directions(transactions)
     return transactions
 
 

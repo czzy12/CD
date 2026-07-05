@@ -107,6 +107,8 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
     previous_balance: Decimal | None = None
 
     with pdfplumber.open(pdf_path) as pdf:
+        sample_text = "\n".join((page.extract_text() or "") for page in pdf.pages[:2])
+        strong_watermark = "兴业银行交易明细" in sample_text and "核验" in sample_text
         for page_no, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
                 for row in table[1:]:
@@ -132,7 +134,7 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
                         transaction_time=tx_time,
                         income=amount if amount >= ZERO else ZERO,
                         expense=-amount if amount < ZERO else ZERO,
-                        balance=balance,
+                        balance=None if strong_watermark else balance,
                         bank=BANK_NAME,
                         page_no=page_no,
                         row_no=row_no,
@@ -142,6 +144,9 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
                         raw_text=" ".join(field for field in fields if field),
                         raw_fields=fields,
                     )
+                    if strong_watermark:
+                        tx.balance_optional = True
+                        tx.raw_balance = f"参考余额:{tx.raw_balance}"
                     tx.merge_key = "|".join([str(row_no), tx.raw_time, tx.raw_amount, tx.raw_balance])
                     rows.append(tx)
 

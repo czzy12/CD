@@ -1239,5 +1239,137 @@
       "closing_balance": "1510064.59",
       "issues": 0
     }
+  },
+  {
+    "name": "支付宝-交易流水证明-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/支付宝交易明细(20251226-20260626)(1).pdf",
+    "tags": ["alipay", "personal", "problem0701"],
+    "expected": {
+      "count": 855,
+      "income_count": 30,
+      "income_sum": "1101734.00",
+      "expense_count": 825,
+      "expense_sum": "611223.97",
+      "net": "490510.03",
+      "issues": 0
+    }
+  },
+  {
+    "name": "盛京银行-个人交易流水-问题流水0701-王武驰",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_0(4).pdf",
+    "tags": ["shengjing", "personal", "problem0701"],
+    "expected": {
+      "count": 31,
+      "income_count": 17,
+      "income_sum": "373219.23",
+      "expense_count": 14,
+      "expense_sum": "210000.00",
+      "net": "163219.23",
+      "opening_balance": "97518.61",
+      "closing_balance": "260737.84",
+      "issues": 0
+    }
+  },
+  {
+    "name": "盛京银行-个人交易流水-问题流水0701-刘丹",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_1(5).pdf",
+    "tags": ["shengjing", "personal", "problem0701"],
+    "expected": {
+      "count": 231,
+      "income_count": 208,
+      "income_sum": "766765.01",
+      "expense_count": 23,
+      "expense_sum": "776521.02",
+      "net": "-9756.01",
+      "opening_balance": "11983.89",
+      "closing_balance": "2227.88",
+      "issues": 0
+    }
+  },
+  {
+    "name": "邢台银行-账户交易明细-问题流水0701-前段",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_3(1).pdf",
+    "tags": ["xingtai", "corp", "problem0701"],
+    "expected": {
+      "count": 38,
+      "income_count": 25,
+      "income_sum": "513700.45",
+      "expense_count": 13,
+      "expense_sum": "556583.13",
+      "net": "-42882.68",
+      "opening_balance": "161623.18",
+      "closing_balance": "118740.50",
+      "issues": 0
+    }
+  },
+  {
+    "name": "邢台银行-账户交易明细-问题流水0701-后段",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_4(1).pdf",
+    "tags": ["xingtai", "corp", "problem0701"],
+    "expected": {
+      "count": 43,
+      "income_count": 38,
+      "income_sum": "951254.97",
+      "expense_count": 5,
+      "expense_sum": "298960.00",
+      "net": "652294.97",
+      "opening_balance": "118740.50",
+      "closing_balance": "771035.47",
+      "issues": 0
+    }
+  },
+  {
+    "name": "兴业银行-强水印交易明细-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_1(2).pdf",
+    "tags": ["cib", "personal", "watermark", "problem0701"],
+    "expected": {
+      "count": 864,
+      "income_count": 171,
+      "income_sum": "8005956.16",
+      "expense_count": 693,
+      "expense_sum": "8024370.99",
+      "net": "-18414.83",
+      "issues": 0
+    }
+  },
+  {
+    "name": "建设银行对公-账户明细信息-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/公户_0(1).pdf",
+    "tags": ["ccb_corp", "corp", "problem0701"],
+    "expected": {
+      "count": 200,
+      "income_count": 73,
+      "income_sum": "6033708.05",
+      "expense_count": 127,
+      "expense_sum": "5981575.66",
+      "net": "52132.39",
+      "opening_balance": "1110.77",
+      "closing_balance": "53243.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行-个人流水无摘要行-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_0(5).pdf",
+    "tags": ["cmb", "personal", "problem0701"],
+    "expected": {
+      "count": 519,
+      "income_count": 316,
+      "income_sum": "40855678.35",
+      "expense_count": 203,
+      "expense_sum": "40858068.22",
+      "net": "-2389.87",
+      "opening_balance": "31464.83",
+      "closing_balance": "29074.96",
+      "issues": 0
+    }
   }
 ]

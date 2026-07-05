@@ -12,8 +12,8 @@ BANK_NAME = "招商银行"
 LINE_RE = re.compile(
     r"^(?P<date>\d{4}-\d{2}-\d{2})\s+CNY\s+"
     r"(?P<amount>[+-]?\d[\d,]*\.?\d{0,2})\s+"
-    r"(?P<balance>\d[\d,]*\.?\d{0,2})\s+"
-    r"(?P<type>\S+)(?:\s+.*)?$"
+    r"(?P<balance>\d[\d,]*\.?\d{0,2})(?:\s+"
+    r"(?P<type>\S+)(?:\s+.*)?)?$"
 )
 
 

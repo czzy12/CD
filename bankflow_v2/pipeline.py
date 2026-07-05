@@ -1,5 +1,6 @@
 from .abc import extract_abc
 from .abc_corp import extract_abc_corp
+from .alipay import extract_alipay
 from .boc import extract_boc
 from .boc_corp import extract_boc_corp
 from .bocom import extract_bocom
@@ -35,13 +36,17 @@ from .psbc import extract_psbc
 from .qilu_corp import extract_qilu_corp
 from .rural_credit import extract_rural_credit
 from .shanghai import extract_shanghai, extract_shanghai_corp
+from .shengjing import extract_shengjing
 from .spdb import extract_spdb, extract_spdb_corp
 from .tianjin_rural_corp import extract_tianjin_rural_corp
 from .wechat import extract_wechat
+from .xingtai import extract_xingtai
 from .zhongyuan import extract_zhongyuan
 
 
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
+    if bank == "alipay":
+        return extract_alipay(pdf_path)
     if bank == "icbc":
         return extract_icbc(pdf_path)
     if bank == "huaxia":
@@ -88,6 +93,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_qilu_corp(pdf_path)
     if bank == "rural_credit":
         return extract_rural_credit(pdf_path)
+    if bank == "shengjing":
+        return extract_shengjing(pdf_path)
     if bank == "shanghai":
         return extract_shanghai(pdf_path)
     if bank == "shanghai_corp":
@@ -128,6 +135,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_generic_pdf(pdf_path)
     if bank == "wechat":
         return extract_wechat(pdf_path)
+    if bank == "xingtai":
+        return extract_xingtai(pdf_path)
     if bank == "zhongyuan":
         return extract_zhongyuan(pdf_path)
     raise ValueError(f"v2 暂未适配该银行: {bank}")

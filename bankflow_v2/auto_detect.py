@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 
 import pdfplumber
 
@@ -49,6 +50,7 @@ BANK_LABELS = {
     "psbc": "邮储银行",
     "qilu_corp": "齐鲁银行对公",
     "rural_credit": "农村信用社",
+    "rural_commercial": "农村商业银行个人",
     "shanghai": "上海银行个人",
     "shanghai_corp": "上海银行对公",
     "shengjing": "盛京银行",
@@ -103,6 +105,13 @@ def _has_ordered_chars(text: str, phrase: str, max_gap: int = 80) -> bool:
             return False
         position = next_position
     return True
+
+
+def _rural_commercial_label(text: str) -> str:
+    match = re.search(r"([\u4e00-\u9fa5]{2,20}农村商业银行)", text)
+    if match:
+        return f"{match.group(1)}个人"
+    return BANK_LABELS["rural_commercial"]
 
 
 def detect_bank_type(pdf_path: str) -> Detection:
@@ -337,6 +346,15 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易日期收入支出余额对方户名对方账号对方开户行摘要备注" in compact
     ):
         return Detection("tianjin_rural_corp", BANK_LABELS["tianjin_rural_corp"], 98, "命中天津农村商业银行交易明细查询")
+
+    if (
+        "卡号/账号" in header_compact
+        and "客户名称" in header_compact
+        and "总收入" in header_compact
+        and "总支出" in header_compact
+        and "序号摘要币别钞汇交易日期交易金额账户余额" in compact
+    ):
+        return Detection("rural_commercial", _rural_commercial_label(text), 96, "命中农村商业银行个人交易明细")
 
     rules = [
         ("icbc_corp", "借/贷借方发生额贷方发生额", 98),

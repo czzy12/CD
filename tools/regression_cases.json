@@ -1371,5 +1371,22 @@
       "closing_balance": "29074.96",
       "issues": 0
     }
+  },
+  {
+    "name": "农村商业银行个人-交易明细缺页提示-李骏军",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/银行流水_0(8).pdf",
+    "tags": ["rural_commercial", "personal", "partial"],
+    "expected": {
+      "count": 570,
+      "income_count": 168,
+      "income_sum": "33285438.91",
+      "expense_count": 402,
+      "expense_sum": "33101395.33",
+      "net": "184043.58",
+      "opening_balance": "238308.72",
+      "closing_balance": "422352.30",
+      "issues": 5
+    }
   }
 ]

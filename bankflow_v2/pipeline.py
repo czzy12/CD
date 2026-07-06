@@ -93,6 +93,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_qilu_corp(pdf_path)
     if bank == "rural_credit":
         return extract_rural_credit(pdf_path)
+    if bank == "rural_commercial":
+        return extract_rural_credit(pdf_path)
     if bank == "shengjing":
         return extract_shengjing(pdf_path)
     if bank == "shanghai":

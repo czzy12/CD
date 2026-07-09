@@ -10,6 +10,7 @@ from .number_parser import money_to_decimal
 BANK_NAME = "中国银行个人"
 DATE_COL = 0
 TIME_COL = 1
+CURRENCY_COL = 2
 AMOUNT_COL = 3
 BALANCE_COL = 4
 RAW_HEADERS = [
@@ -84,32 +85,38 @@ def extract_boc(pdf_path: str) -> list[Transaction]:
 
                     raw_amount = _clean_cell(row[AMOUNT_COL])
                     raw_balance = _clean_cell(row[BALANCE_COL])
+                    currency = _clean_cell(row[CURRENCY_COL]) if len(row) > CURRENCY_COL else ""
                     transaction_name = _clean_cell(row[5]) if len(row) > 5 else ""
-                    income, expense, issues = _amounts(raw_amount, transaction_name)
+                    if currency and currency != "人民币":
+                        income, expense, issues = Decimal("0.00"), Decimal("0.00"), []
+                    else:
+                        income, expense, issues = _amounts(raw_amount, transaction_name)
                     balance = money_to_decimal(raw_balance)
                     if balance is None:
                         issues.append("余额无法解析")
 
                     fields = [_clean_cell(cell) for cell in row]
-                    transactions.append(
-                        Transaction(
-                            transaction_time=_parse_time(row[DATE_COL], row[TIME_COL]),
-                            income=income,
-                            expense=expense,
-                            balance=balance,
-                            bank=BANK_NAME,
-                            page_no=page_index,
-                            row_no=row_index,
-                            raw_time=f"{fields[DATE_COL]} {fields[TIME_COL]}",
-                            raw_amount=raw_amount,
-                            raw_balance=raw_balance,
-                            raw_text=" | ".join(fields),
-                            raw_fields=fields,
-                            raw_headers=RAW_HEADERS,
-                            status="ok" if not issues else "review",
-                            issues=issues,
-                        )
+                    tx = Transaction(
+                        transaction_time=_parse_time(row[DATE_COL], row[TIME_COL]),
+                        income=income,
+                        expense=expense,
+                        balance=balance,
+                        bank=BANK_NAME,
+                        page_no=page_index,
+                        row_no=row_index,
+                        raw_time=f"{fields[DATE_COL]} {fields[TIME_COL]}",
+                        raw_amount=raw_amount,
+                        raw_balance=raw_balance,
+                        raw_text=" | ".join(fields),
+                        raw_fields=fields,
+                        raw_headers=RAW_HEADERS,
+                        status="ok" if not issues else "review",
+                        issues=issues,
                     )
+                    if currency and currency != "人民币":
+                        tx.neutral = True
+                        tx.balance_optional = True
+                    transactions.append(tx)
 
     _restore_duplicate_order(transactions)
     return transactions

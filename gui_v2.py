@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -210,11 +211,18 @@ class Worker(QThread):
     finished = pyqtSignal(list, list)
     progress = pyqtSignal(str)
 
-    def __init__(self, paths: list[Path], start_date: datetime | None = None, end_date: datetime | None = None):
+    def __init__(
+        self,
+        paths: list[Path],
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        pdf_passwords: dict[Path, str] | None = None,
+    ):
         super().__init__()
         self.paths = paths
         self.start_date = start_date
         self.end_date = end_date
+        self.pdf_passwords = pdf_passwords or {}
 
     def _filter_transactions(self, transactions: list) -> list:
         if self.start_date is None and self.end_date is None:
@@ -277,6 +285,11 @@ class Worker(QThread):
         return transactions, detection.label, "未解析到流水", False
 
     def run(self):
+        from bankflow_v2.pdf_password import install_pdf_password_support, register_pdf_passwords
+
+        install_pdf_password_support()
+        register_pdf_passwords(self.pdf_passwords)
+
         results: list[FileResult] = []
         all_issues: list[Issue] = []
 
@@ -566,13 +579,15 @@ class MainWindow(QMainWindow):
         result_row = QHBoxLayout()
         net_box = QVBoxLayout()
         net_label = QLabel("调整后收支差额")
-        net_label.setObjectName("fieldLabel")
+        net_label.setObjectName("compactResultLabel")
         net_box.addWidget(net_label)
+        self.adjust_net_value.setObjectName("compactResultValue")
         net_box.addWidget(self.adjust_net_value)
         check_box = QVBoxLayout()
         check_label = QLabel("平衡校验")
-        check_label.setObjectName("fieldLabel")
+        check_label.setObjectName("compactResultLabel")
         check_box.addWidget(check_label)
+        self.adjust_check_value.setObjectName("compactResultValue")
         check_box.addWidget(self.adjust_check_value)
         result_row.addLayout(net_box)
         divider = QFrame()
@@ -794,7 +809,7 @@ class MainWindow(QMainWindow):
             QFrame#FlowTableShell {
                 background: #ffffff;
                 border: 1px solid #dbe8fb;
-                border-radius: 12px;
+                border-radius: 0;
             }
             QTableWidget {
                 gridline-color: transparent;
@@ -995,6 +1010,16 @@ class MainWindow(QMainWindow):
                 color: #1f9d55;
                 font-size: 18px;
                 font-weight: 600;
+            }
+            QLabel#compactResultLabel {
+                color: #5f6b7a;
+                font-size: 11px;
+                font-weight: 400;
+            }
+            QLabel#compactResultValue {
+                color: #1f9d55;
+                font-size: 13px;
+                font-weight: 400;
             }
             QLabel#profitResultValue {
                 color: #162033;
@@ -1237,7 +1262,7 @@ class MainWindow(QMainWindow):
         QFrame#FlowTableShell {{
             background: {colors["table_base"]};
             border: 1px solid {colors["border"]};
-            border-radius: 12px;
+            border-radius: 0;
         }}
         QTableWidget {{
             gridline-color: transparent;
@@ -1310,7 +1335,7 @@ class MainWindow(QMainWindow):
             padding: 0 8px;
             background: {colors["status_bg"]};
             color: {colors["muted"]};
-            border-top: 1px solid {colors["status_border"]};
+            border: 0;
             font-size: 12px;
         }}
         QStatusBar::item {{
@@ -1560,6 +1585,16 @@ class MainWindow(QMainWindow):
             color: {colors["text"]};
             font-size: 13px;
         }}
+        QLabel#compactResultLabel {{
+            color: {colors["muted"]};
+            font-size: 11px;
+            font-weight: 400;
+        }}
+        QLabel#compactResultValue {{
+            color: {colors["good"]};
+            font-size: 13px;
+            font-weight: 400;
+        }}
         """
 
     def add_files(self):
@@ -1636,10 +1671,67 @@ class MainWindow(QMainWindow):
         if start_date is not None and end_date is not None and start_date > end_date:
             QMessageBox.warning(self, "日期范围错误", "开始日期不能晚于结束日期。")
             return
-        self.worker = Worker(self.paths, start_date, end_date)
+        pdf_passwords = self.collect_pdf_passwords()
+        if pdf_passwords is None:
+            return
+        self.worker = Worker(self.paths, start_date, end_date, pdf_passwords)
         self.worker.progress.connect(self.statusBar().showMessage)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
+
+    def collect_pdf_passwords(self) -> dict[Path, str] | None:
+        from bankflow_v2.pdf_password import pdf_requires_password, validate_pdf_password
+
+        passwords: dict[Path, str] = {}
+        last_password = ""
+        for path in self.paths:
+            if path.suffix.lower() != ".pdf":
+                continue
+            try:
+                needs_password = pdf_requires_password(path)
+            except Exception:
+                needs_password = False
+            if not needs_password:
+                if not self.should_try_pdf_password_for_unrecognized(path):
+                    continue
+            if last_password and validate_pdf_password(path, last_password):
+                passwords[path] = last_password
+                continue
+            while True:
+                password, ok = QInputDialog.getText(
+                    self,
+                    "PDF密码",
+                    f"{path.name} 需要密码，请输入后继续解析。",
+                    QLineEdit.EchoMode.Password,
+                    last_password,
+                )
+                if not ok:
+                    self.statusBar().showMessage("已取消处理加密 PDF")
+                    return None
+                if validate_pdf_password(path, password):
+                    passwords[path] = password
+                    last_password = password
+                    break
+                QMessageBox.warning(self, "密码错误", f"{path.name} 密码不正确，请重新输入。")
+        return passwords
+
+    def should_try_pdf_password_for_unrecognized(self, path: Path) -> bool:
+        try:
+            from bankflow_v2.auto_detect import detect_bank_type
+
+            detection = detect_bank_type(str(path))
+        except Exception:
+            detection = None
+        if detection is not None and getattr(detection, "bank_id", ""):
+            return False
+        reply = QMessageBox.question(
+            self,
+            "尝试PDF密码",
+            f"{path.name} 当前无法识别银行。\n如果这是带密码的 PDF，是否输入密码后重试解析？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return reply == QMessageBox.StandardButton.Yes
 
     def selected_date_range(self) -> tuple[datetime | None, datetime | None]:
         if not self.date_filter.isChecked():

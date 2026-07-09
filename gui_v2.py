@@ -383,6 +383,7 @@ class MainWindow(QMainWindow):
         self.profit_check_value.setProperty("tone", "neutral")
         self.profit_hint_label = QLabel("处理流水后显示利润率校验")
         self.profit_hint_label.setObjectName("profitHintLabel")
+        self.profit_hint_label.setWordWrap(True)
         self.drop_hint_label = QLabel("拖入 PDF/Excel 文件，或点击选择文件夹\n支持多文件同时导入")
         self.drop_hint_label.setObjectName("dropHint")
         self.drop_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -482,10 +483,10 @@ class MainWindow(QMainWindow):
             table.filesDropped.connect(self.add_paths)
 
         self.tabs = QTabWidget()
-        self.monthly_tab_index = self.tabs.addTab(self.monthly, "月度统计")
-        self.tabs.addTab(self.overview, "文件汇总")
-        self.tabs.addTab(self.details, "流水明细")
-        self.tabs.addTab(self.issue_table, "异常提示")
+        self.monthly_tab_index = self.tabs.addTab(self.table_shell(self.monthly), "月度统计")
+        self.tabs.addTab(self.table_shell(self.overview), "文件汇总")
+        self.tabs.addTab(self.table_shell(self.details), "流水明细")
+        self.tabs.addTab(self.table_shell(self.issue_table), "异常提示")
 
         central = DropWidget()
         central.filesDropped.connect(self.add_paths)
@@ -564,7 +565,7 @@ class MainWindow(QMainWindow):
         preview_layout.setSpacing(4)
         result_row = QHBoxLayout()
         net_box = QVBoxLayout()
-        net_label = QLabel("调整后净额")
+        net_label = QLabel("调整后收支差额")
         net_label.setObjectName("fieldLabel")
         net_box.addWidget(net_label)
         net_box.addWidget(self.adjust_net_value)
@@ -659,6 +660,15 @@ class MainWindow(QMainWindow):
 
         self._apply_style()
         self.render_empty()
+
+    def table_shell(self, table: QTableWidget) -> QFrame:
+        shell = QFrame()
+        shell.setObjectName("FlowTableShell")
+        layout = QVBoxLayout(shell)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
+        layout.addWidget(table)
+        return shell
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -781,21 +791,32 @@ class MainWindow(QMainWindow):
                 font-size: 14px;
                 font-weight: 400;
             }
+            QFrame#FlowTableShell {
+                background: #ffffff;
+                border: 1px solid #dbe8fb;
+                border-radius: 12px;
+            }
             QTableWidget {
                 gridline-color: transparent;
                 selection-background-color: #cfe5ff;
                 selection-color: #162033;
-                background: #ffffff;
+                background: transparent;
                 alternate-background-color: #f8fbff;
                 color: #162033;
                 border: 0;
                 border-radius: 0;
+                padding: 0;
             }
-            QTableWidget::viewport,
-            QAbstractScrollArea::corner,
-            QTableCornerButton::section {
+            QTableWidget::viewport {
                 background: #ffffff;
                 border: 0;
+                border-radius: 0;
+            }
+            QAbstractScrollArea::corner,
+            QTableCornerButton::section {
+                background: #f0f3f7;
+                border: 0;
+                border-radius: 0;
             }
             QTableWidget::item {
                 color: #162033;
@@ -820,6 +841,7 @@ class MainWindow(QMainWindow):
             QHeaderView {
                 background: #f0f3f7;
                 border: 0;
+                border-radius: 0;
             }
             QTabWidget::pane { border: 0; top: -1px; }
             QTabBar::tab {
@@ -1171,7 +1193,8 @@ class MainWindow(QMainWindow):
         else:
             self.set_profit_check("不足", "warning")
             self.set_profit_value_tone("warning")
-            self.profit_hint_label.setText(f"{formula_hint}，低于 {money_wan(abs(diff))}")
+            adjustment_hint = self.required_income_adjustment_hint(abs(diff), month_count, share_ratio, profit_rate)
+            self.profit_hint_label.setText(f"{formula_hint}，低于 {money_wan(abs(diff))}{adjustment_hint}")
 
     def set_profit_check(self, text: str, tone: str):
         self.profit_check_value.setText(text)
@@ -1190,6 +1213,23 @@ class MainWindow(QMainWindow):
         if share_ratio == Decimal("100"):
             return f"按 {month_count} 个月月均收入 × {profit_text} 计算"
         return f"按 {month_count} 个月月均收入 × 占股{share_text} × {profit_text} 计算"
+
+    def required_income_adjustment_hint(
+        self,
+        shortage: Decimal,
+        month_count: int,
+        share_ratio: Decimal,
+        profit_rate: Decimal,
+    ) -> str:
+        factor = share_ratio / Decimal("100") * profit_rate / Decimal("100")
+        if shortage <= Decimal("0.00") or month_count <= 0 or factor <= Decimal("0.00"):
+            return ""
+        monthly_income_needed = (shortage / factor).quantize(Decimal("0.01"))
+        total_adjustment_needed = (monthly_income_needed * Decimal(month_count)).quantize(Decimal("0.01"))
+        return (
+            f"，需增加月均流水收入 {money_wan(monthly_income_needed)} 万元"
+            f"，调整金额约 {money_wan(total_adjustment_needed)} 万元"
+        )
 
     def format_percent(self, value: Decimal) -> str:
         normalized = value.quantize(Decimal("0.01")).normalize()

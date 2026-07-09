@@ -425,3 +425,12 @@ Excel 导出保持不变。
 
 - 新增 `rural_commercial`，支持 `卡号/账号 / 客户名称 / 总收入 / 总支出` 页眉和 `序号 / 摘要 / 币别 / 钞汇 / 交易日期 / 交易金额 / 账户余额` 文本行版式。
 - 当前样本 `银行流水_0(8).pdf` 实际 30 页，页脚显示总页数 45 页；解析现有 570 笔余额连续，但保留缺页及页眉合计不一致提示 5 条。
+
+## 2026-07-09 GUI 收入测算提示和表格外壳
+
+- `月均利润` 不足提示增强：当占股/利润率后收入低于系统月收入时，除显示低于金额外，额外提示需增加的月均流水收入和建议填写的调整金额。
+- `调整后净额` 文案改为 `调整后收支差额`，更贴近流水调整用途。
+- 表格四角问题确认：`QTableWidget` 内部 viewport、header、corner 等子控件不会被父级 `border-radius` 裁剪，单纯修改 stylesheet 圆角无法稳定解决四角小块。
+- GUI 已将 `月度统计 / 文件汇总 / 流水明细 / 异常提示` 四个表格包入外层 `QFrame#FlowTableShell`，由外壳负责圆角、边框、底色，内部 `QTableWidget` 取消外框和圆角，只负责表格内容。
+- 后续建议：报告工作台嵌入 PDF 流水窗口时，不应长期在 `D:\report` 内覆盖大量表格和控件细节样式；应在本项目提供统一主题入口，由报告工作台只传颜色 token。若外壳结构后仍有极小角块，再考虑 Qt mask/自绘裁剪。
+- 验证：`python -m py_compile gui_v2.py`、`git diff --check -- gui_v2.py` 通过；PyQt offscreen 冒烟确认页签内容为 `FlowTableShell`，`monthly/details` 表格 parent 均为 `FlowTableShell`。

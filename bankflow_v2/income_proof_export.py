@@ -22,6 +22,7 @@ CORP_BANK_IDS = {
     "boc_corp",
     "ccb_corp",
     "cmbc_corp",
+    "hebei_corp_detail",
     "icbc_corp",
     "spdb_corp",
 }
@@ -208,6 +209,20 @@ def copy_summary(summary: Summary) -> Summary:
     )
 
 
+def sum_summaries(summaries: Iterable[Summary]) -> Summary:
+    total = Summary()
+    for summary in summaries:
+        total.count += summary.count
+        total.income_count += summary.income_count
+        total.income_sum += summary.income_sum
+        total.expense_count += summary.expense_count
+        total.expense_sum += summary.expense_sum
+    total.income_sum = total.income_sum.quantize(CENT)
+    total.expense_sum = total.expense_sum.quantize(CENT)
+    total.net = (total.income_sum - total.expense_sum).quantize(CENT)
+    return total
+
+
 def split_by_weights(total: Decimal, weights: list[Decimal]) -> list[Decimal]:
     if not weights:
         return []
@@ -297,14 +312,25 @@ def balance_wechat_summaries(month_pairs: list[tuple[str, Summary]]) -> dict[str
 
 
 def combined_month_summaries(results: list, selected_months: set[str]) -> list[tuple[str, Summary]]:
-    normal_transactions = []
+    normal_summaries: dict[str, list[Summary]] = {}
     wechat_transactions = []
     for result in results:
-        for tx in getattr(result, "transactions", []) or []:
-            target = wechat_transactions if transaction_flow_type(tx, result) == "微信" else normal_transactions
-            target.append(tx)
+        normal_transactions = [
+            tx for tx in getattr(result, "transactions", []) or []
+            if transaction_flow_type(tx, result) != "微信"
+        ]
+        for month, summary in monthly_summaries(normal_transactions):
+            normal_summaries.setdefault(month, []).append(summary)
+        wechat_transactions.extend(
+            tx for tx in getattr(result, "transactions", []) or []
+            if transaction_flow_type(tx, result) == "微信"
+        )
 
-    normal_by_month = {month: summary for month, summary in monthly_summaries(normal_transactions) if month in selected_months}
+    normal_by_month = {
+        month: sum_summaries(summaries)
+        for month, summaries in normal_summaries.items()
+        if month in selected_months
+    }
     wechat_pairs = [(month, summary) for month, summary in monthly_summaries(wechat_transactions) if month in selected_months]
     wechat_by_month = balance_wechat_summaries(wechat_pairs)
     rows = []

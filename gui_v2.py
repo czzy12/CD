@@ -1011,6 +1011,557 @@ class MainWindow(QMainWindow):
             """
         )
 
+    def apply_embedded_theme(self, colors: dict[str, str], dark: bool = False) -> None:
+        self._embedded_theme_colors = dict(colors)
+        self._embedded_theme_dark = dark
+        self.setStyleSheet(self._embedded_theme_style(colors))
+        self._apply_table_scrollbar_theme(colors)
+
+    def _theme_asset_path(self, name: str) -> str:
+        return (runtime_dir() / "assets" / name).as_posix()
+
+    def _apply_table_scrollbar_theme(self, colors: dict[str, str]) -> None:
+        scrollbar_style = f"""
+        QScrollBar:horizontal {{
+            background: {colors["table_base"]};
+            border: 0;
+            height: 8px;
+            margin: 0;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {colors["border2"]};
+            border-radius: 4px;
+            min-width: 36px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background: {colors["muted"]};
+        }}
+        QScrollBar::add-line:horizontal,
+        QScrollBar::sub-line:horizontal,
+        QScrollBar::add-page:horizontal,
+        QScrollBar::sub-page:horizontal {{
+            background: {colors["table_base"]};
+            border: 0;
+            width: 0;
+        }}
+        """
+        for table in (self.monthly, self.overview, self.details, self.issue_table):
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+            table.horizontalScrollBar().setStyleSheet(scrollbar_style)
+
+    def _embedded_theme_style(self, colors: dict[str, str]) -> str:
+        check_icon = self._theme_asset_path("check.svg")
+        arrow_icon = self._theme_asset_path("down_arrow.svg")
+        return f"""
+        QMainWindow, QWidget {{
+            background: {colors["bg"]};
+            color: {colors["text"]};
+            font-family: "Microsoft YaHei UI";
+            font-size: 14px;
+        }}
+        QPushButton {{
+            min-height: 30px;
+            padding: 0 11px;
+            border: 1px solid {colors["border2"]};
+            border-radius: 12px;
+            background: {colors["field"]};
+            color: {colors["text"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{
+            background: {colors["soft"]};
+            border-color: {colors["muted"]};
+        }}
+        QPushButton:disabled {{
+            background: {colors["soft"]};
+            color: {colors["disabled"]};
+            border-color: {colors["border"]};
+        }}
+        QPushButton#primaryButton {{
+            min-height: 34px;
+            padding: 0 14px;
+            border-radius: 12px;
+            background: {colors["field"]};
+            border: 1px solid {colors["accent"]};
+            color: {colors["accent"]};
+            font-weight: 700;
+        }}
+        QPushButton#primaryButton:hover {{
+            background: {colors["selection"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["accent_hover"]};
+        }}
+        QPushButton#exportButton {{
+            min-height: 30px;
+            padding: 0 12px;
+            border-radius: 12px;
+            background: {colors["soft"]};
+            border-color: {colors["accent"]};
+            color: {colors["accent"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton#exportButton:hover {{
+            background: {colors["selection"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["accent"]};
+        }}
+        QFrame#card, QFrame#sidePanel, QFrame#sideSection {{
+            background: {colors["card"]};
+            border: 1px solid {colors["border"]};
+            border-radius: 12px;
+        }}
+        QFrame#sidePanel, QFrame#sideSection {{
+            background: {colors["panel"]};
+        }}
+        QScrollArea#sideScroll,
+        QScrollArea#sideScroll > QWidget > QWidget {{
+            background: transparent;
+            border: 0;
+        }}
+        QFrame#inlineFilterPanel, QFrame#metricsBar, QFrame#adjustResultCard, QFrame#incomeProofPanel {{
+            background: {colors["soft"]};
+            border: 1px solid {colors["border"]};
+            border-radius: 12px;
+        }}
+        QFrame#inlineFilterPanel {{
+            min-height: 42px;
+        }}
+        QFrame#metricItem {{
+            border: 0;
+            background: transparent;
+        }}
+        QFrame#metricDivider {{
+            color: {colors["border"]};
+            background: {colors["border"]};
+            max-width: 1px;
+        }}
+        QLabel {{
+            background: transparent;
+            color: {colors["text"]};
+        }}
+        QLabel:disabled {{
+            color: {colors["disabled"]};
+        }}
+        QLabel#cardTitle {{
+            color: {colors["text"]};
+            font-size: 16px;
+            font-weight: 600;
+        }}
+        QLabel#metricLabel, QLabel#fieldLabel, QLabel#adjustPreviewLabel {{
+            color: {colors["muted"]};
+            font-weight: 600;
+        }}
+        QLabel#adjustmentStatusLabel,
+        QLabel#profitHintLabel,
+        QLabel#IncomeProofStatus {{
+            color: {colors["muted"]};
+            font-size: 12px;
+            font-weight: 400;
+            padding-top: 4px;
+        }}
+        QLabel#FlowBindingStatus {{
+            color: {colors["muted"]};
+            font-size: 11px;
+            font-weight: 400;
+            padding: 0;
+        }}
+        QLabel#IncomeProofStatus[tone="warning"] {{
+            color: {colors["bad"]};
+        }}
+        QLabel#declaredIncomeLabel {{
+            color: {colors["muted"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QLabel#profitCardLabel {{
+            color: {colors["muted"]};
+            font-size: 12px;
+            font-weight: 400;
+        }}
+        QLabel#profitInputLabel {{
+            color: {colors["muted"]};
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        QLabel#sectionTitle {{
+            color: {colors["text"]};
+            font-size: 13px;
+            font-weight: 600;
+            padding-top: 4px;
+            padding-bottom: 2px;
+        }}
+        QLabel#sectionHintLabel {{
+            color: {colors["muted"]};
+            font-size: 11px;
+            font-weight: 400;
+        }}
+        QLabel#metricValue {{
+            color: {colors["text"]};
+            font-size: 17px;
+            font-weight: 600;
+        }}
+        QLabel#metricValue[tone="income"],
+        QLabel#metricValue[tone="confidenceVeryHigh"],
+        QLabel#metricValue[tone="confidenceHigh"],
+        QLabel#profitResultValue[tone="ok"] {{
+            color: {colors["good"]};
+        }}
+        QLabel#metricValue[tone="expense"],
+        QLabel#metricValue[tone="confidenceLow"],
+        QLabel#profitResultValue[tone="warning"] {{
+            color: {colors["bad"]};
+        }}
+        QLabel#metricValue[tone="warning"],
+        QLabel#metricValue[tone="confidenceMedium"] {{
+            color: {colors["accent"]};
+        }}
+        QLabel#summaryLabel {{
+            padding: 8px 10px;
+            background: {colors["soft"]};
+            border: 1px solid {colors["border"]};
+            border-radius: 12px;
+            color: {colors["text"]};
+        }}
+        QLabel#dropHint {{
+            min-height: 56px;
+            color: {colors["muted"]};
+            border: 1px dashed {colors["accent"]};
+            border-radius: 12px;
+            background: {colors["drop_bg"]};
+            font-size: 13px;
+            font-weight: 400;
+        }}
+        QFrame#FlowTableShell {{
+            background: {colors["table_base"]};
+            border: 1px solid {colors["border"]};
+            border-radius: 12px;
+        }}
+        QTableWidget {{
+            gridline-color: transparent;
+            selection-background-color: {colors["selection"]};
+            selection-color: {colors["selection_text"]};
+            background: transparent;
+            alternate-background-color: {colors["table_alt"]};
+            color: {colors["text"]};
+            border: 0;
+            border-radius: 0;
+            padding: 0;
+        }}
+        QTableWidget::viewport {{
+            background: {colors["table_base"]};
+            border: 0;
+            border-radius: 0;
+        }}
+        QAbstractScrollArea::corner,
+        QTableCornerButton::section {{
+            background: {colors["soft"]};
+            border: 0;
+            border-radius: 0;
+        }}
+        QTableWidget::item {{
+            color: {colors["text"]};
+            background: transparent;
+        }}
+        QTableWidget::item:selected {{
+            color: {colors["selection_text"]};
+            background: {colors["selection"]};
+        }}
+        QHeaderView::section {{
+            background: {colors["soft"]};
+            padding: 6px 8px;
+            border: 0;
+            color: {colors["text"]};
+            font-weight: 600;
+        }}
+        QHeaderView {{
+            background: {colors["soft"]};
+            border: 0;
+            border-radius: 0;
+        }}
+        QTabWidget::pane {{
+            border: 0;
+            top: -1px;
+        }}
+        QTabBar::tab {{
+            background: transparent;
+            border: 0;
+            border-bottom: 4px solid transparent;
+            border-radius: 2px;
+            padding: 8px 13px 7px 13px;
+            margin-right: 12px;
+            color: {colors["muted"]};
+            font-size: 13px;
+            font-weight: 400;
+        }}
+        QTabBar::tab:selected {{
+            color: {colors["accent"]};
+            font-weight: 600;
+            border-bottom-color: {colors["accent"]};
+        }}
+        QWidget#FlowDetailTabNav {{
+            background: {colors["card"]};
+        }}
+        QStatusBar {{
+            min-height: 22px;
+            max-height: 22px;
+            padding: 0 8px;
+            background: {colors["status_bg"]};
+            color: {colors["muted"]};
+            border-top: 1px solid {colors["status_border"]};
+            font-size: 12px;
+        }}
+        QStatusBar::item {{
+            border: 0;
+        }}
+        QStatusBar QLabel {{
+            background: transparent;
+            color: {colors["muted"]};
+        }}
+        QWidget#FlowDetailTabIndicatorSlot {{
+            background: transparent;
+            border: 0;
+        }}
+        QPushButton#FlowDetailTabButton {{
+            min-height: 32px;
+            max-height: 32px;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: {colors["muted"]};
+            font-size: 15px;
+            font-weight: 500;
+        }}
+        QPushButton#FlowDetailTabButton:hover {{
+            background: transparent;
+            color: {colors["accent_hover"]};
+        }}
+        QPushButton#FlowDetailTabButton:checked {{
+            background: transparent;
+            color: {colors["accent"]};
+            font-weight: 700;
+        }}
+        QFrame#FlowDetailTabIndicator {{
+            background: transparent;
+            border: 0;
+            border-radius: 2px;
+        }}
+        QFrame#FlowDetailTabIndicator[active="true"] {{
+            background: {colors["accent"]};
+        }}
+        QLineEdit, QDateEdit {{
+            min-height: 28px;
+            min-width: 96px;
+            padding: 0 8px;
+            border: 1px solid {colors["border2"]};
+            border-radius: 10px;
+            background: {colors["field"]};
+            color: {colors["text"]};
+            font-size: 13px;
+            selection-background-color: {colors["selection"]};
+            selection-color: {colors["selection_text"]};
+        }}
+        QLineEdit {{
+            min-width: 0;
+        }}
+        QDateEdit {{
+            padding: 0 20px 0 8px;
+            font-size: 12px;
+        }}
+        QDateEdit::drop-down {{
+            width: 14px;
+            border: 0;
+            background: transparent;
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+        }}
+        QDateEdit::down-arrow {{
+            image: url({arrow_icon});
+            width: 8px;
+            height: 8px;
+            margin-right: 4px;
+        }}
+        QLineEdit:focus, QDateEdit:focus {{
+            border-color: {colors["accent"]};
+        }}
+        QLineEdit:disabled, QDateEdit:disabled {{
+            background: {colors["soft"]};
+            color: {colors["disabled"]};
+            border-color: {colors["border"]};
+        }}
+        QPlainTextEdit#IncomeProofReview {{
+            padding: 8px;
+            border: 1px solid {colors["border2"]};
+            border-radius: 10px;
+            background: {colors["field"]};
+            color: {colors["text"]};
+            font-size: 12px;
+            selection-background-color: {colors["selection"]};
+            selection-color: {colors["selection_text"]};
+        }}
+        QPlainTextEdit#IncomeProofReview:focus {{
+            border-color: {colors["accent"]};
+        }}
+        QPushButton#proofPrimaryButton {{
+            min-height: 30px;
+            border-radius: 10px;
+            background: {colors["field"]};
+            border: 1px solid {colors["accent"]};
+            color: {colors["accent"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton#proofPrimaryButton:hover {{
+            background: {colors["selection"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["accent_hover"]};
+        }}
+        QPushButton#proofSecondaryButton {{
+            min-height: 30px;
+            border-radius: 10px;
+            background: {colors["field"]};
+            border: 1px solid {colors["border2"]};
+            color: {colors["text"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton#proofSecondaryButton:hover {{
+            background: {colors["soft"]};
+            border-color: {colors["accent"]};
+            color: {colors["accent"]};
+        }}
+        QCheckBox {{
+            color: {colors["text"]};
+            spacing: 6px;
+            font-size: 13px;
+            background: transparent;
+        }}
+        QFrame#inlineFilterPanel QCheckBox {{
+            background: transparent;
+            border: 0;
+            padding: 0;
+            font-size: 13px;
+            font-weight: 400;
+        }}
+        QPushButton#adjustModeOption {{
+            min-height: 32px;
+            border-radius: 10px;
+            border: 1px solid {colors["accent"]};
+            background: transparent;
+            color: {colors["accent"]};
+            font-size: 13px;
+            font-weight: 600;
+            padding: 0;
+        }}
+        QPushButton#adjustModeOption:hover {{
+            background: {colors["selection"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["accent_hover"]};
+        }}
+        QPushButton#adjustModeOption:checked {{
+            background: {colors["checked_fill"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["checked_text"]};
+        }}
+        QPushButton#adjustModeOption:checked:hover {{
+            background: {colors["checked_hover"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["checked_hover_text"]};
+        }}
+        QCheckBox#proofOption {{
+            min-height: 28px;
+            padding: 0 8px;
+            border: 1px solid {colors["border"]};
+            border-radius: 10px;
+            background: {colors["field"]};
+            color: {colors["text"]};
+            font-size: 12px;
+            font-weight: 400;
+        }}
+        QCheckBox#proofOption:hover {{
+            border-color: {colors["accent"]};
+            background: {colors["soft"]};
+        }}
+        QCheckBox#proofOption:checked {{
+            border-color: {colors["accent"]};
+            background: {colors["checked_fill"]};
+            color: {colors["checked_text"]};
+        }}
+        QCheckBox#proofOption:checked:hover {{
+            border-color: {colors["accent_hover"]};
+            background: {colors["checked_hover"]};
+            color: {colors["checked_hover_text"]};
+        }}
+        QPushButton#proofConfirmOption {{
+            min-height: 30px;
+            padding: 0 10px;
+            border: 1px solid {colors["accent"]};
+            border-radius: 10px;
+            background: {colors["field"]};
+            color: {colors["text"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton#proofConfirmOption:hover {{
+            background: {colors["selection"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["text"]};
+        }}
+        QPushButton#proofConfirmOption:checked {{
+            border-color: {colors["accent"]};
+            background: {colors["checked_fill"]};
+            color: {colors["checked_text"]};
+        }}
+        QPushButton#proofConfirmOption:checked:hover {{
+            border-color: {colors["accent_hover"]};
+            background: {colors["checked_hover"]};
+            color: {colors["checked_hover_text"]};
+        }}
+        QCheckBox:disabled {{
+            color: {colors["disabled"]};
+        }}
+        QCheckBox::indicator {{
+            width: 13px;
+            height: 13px;
+            border-radius: 4px;
+            border: 1px solid {colors["border2"]};
+            background: {colors["field"]};
+        }}
+        QCheckBox::indicator:checked {{
+            background: {colors["accent"]};
+            border-color: {colors["accent"]};
+            image: url({check_icon});
+        }}
+        QCheckBox#proofOption::indicator {{
+            width: 14px;
+            height: 14px;
+            border-radius: 5px;
+            border: 1px solid {colors["border2"]};
+            background: {colors["field"]};
+        }}
+        QCheckBox#proofOption::indicator:checked {{
+            background: {colors["accent"]};
+            border-color: {colors["accent"]};
+            image: url({check_icon});
+        }}
+        QLabel#adjustResultValue,
+        QLabel#profitResultValue {{
+            color: {colors["text"]};
+            font-weight: 600;
+        }}
+        QLabel#adjustResultValue {{
+            color: {colors["good"]};
+            font-size: 15px;
+        }}
+        QLabel#profitResultValue {{
+            color: {colors["text"]};
+            font-size: 13px;
+        }}
+        """
+
     def add_files(self):
         files, _ = QFileDialog.getOpenFileNames(self, "选择银行流水文件", "", "支持的文件 (*.pdf *.xlsx *.xlsm);;PDF 文件 (*.pdf);;Excel 文件 (*.xlsx *.xlsm)")
         self.add_paths([Path(file) for file in files])
@@ -1716,7 +2267,7 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], a
 def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
     unique = []
     seen: dict[tuple, object] = {}
-    issues: list[Issue] = []
+    duplicate_groups: dict[tuple[str, str], dict[str, object]] = {}
 
     for tx in sorted(transactions, key=lambda item: (item.transaction_time, getattr(item, "source_file", ""), item.row_no)):
         key = getattr(tx, "merge_key", None)
@@ -1735,22 +2286,34 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
 
         if signature in seen and (key or getattr(seen[signature], "source_file", "") != getattr(tx, "source_file", "")):
             first = seen[signature]
-            issues.append(
-                Issue(
-                    "需复核",
-                    getattr(tx, "source_file", ""),
-                    tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    f"疑似重复流水，已在合并明细中去重；首次来源: {getattr(first, 'source_file', '')}",
-                    tx.raw_amount,
-                    tx.raw_balance,
-                )
+            group_key = (getattr(tx, "source_file", ""), getattr(first, "source_file", ""))
+            group = duplicate_groups.setdefault(
+                group_key,
+                {
+                    "count": 0,
+                    "time": tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "raw_amount": tx.raw_amount,
+                    "raw_balance": tx.raw_balance,
+                },
             )
+            group["count"] = int(group["count"]) + 1
             continue
 
         if signature not in seen:
             seen[signature] = tx
         unique.append(tx)
 
+    issues = [
+        Issue(
+            "需复核",
+            source,
+            str(group["time"]),
+            f"疑似重复流水 {group['count']} 笔，已在合并明细中去重；首次来源: {first_source}",
+            str(group["raw_amount"]),
+            str(group["raw_balance"]),
+        )
+        for (source, first_source), group in duplicate_groups.items()
+    ]
     return unique, issues
 
 
@@ -2348,11 +2911,16 @@ def build_combined_summary_rows(results: list[FileResult], transactions: list, f
             for_excel,
         ))
 
-    for month, summary in monthly_summaries(transactions):
+    month_summaries: dict[str, list[Summary]] = {}
+    for result in results:
+        for month, summary in monthly_summaries(getattr(result, "transactions", []) or []):
+            month_summaries.setdefault(month, []).append(summary)
+    for month, summaries in sorted(month_summaries.items()):
+        summary = sum_summaries(summaries)
         rows.append(_combined_summary_row("月份", month, "全部文件", summary, "", "", for_excel))
 
-    if transactions:
-        rows.append(_combined_summary_row("总计", "总计", "全部文件", summarize(transactions, "总计"), "", "", for_excel))
+    if month_summaries:
+        rows.append(_combined_summary_row("总计", "总计", "全部文件", sum_summaries([result.summary for result in results]), "", "", for_excel))
     return rows
 
 

@@ -434,3 +434,19 @@ Excel 导出保持不变。
 - GUI 已将 `月度统计 / 文件汇总 / 流水明细 / 异常提示` 四个表格包入外层 `QFrame#FlowTableShell`，由外壳负责圆角、边框、底色，内部 `QTableWidget` 取消外框和圆角，只负责表格内容。
 - 后续建议：报告工作台嵌入 PDF 流水窗口时，不应长期在 `D:\report` 内覆盖大量表格和控件细节样式；应在本项目提供统一主题入口，由报告工作台只传颜色 token。若外壳结构后仍有极小角块，再考虑 Qt mask/自绘裁剪。
 - 验证：`python -m py_compile gui_v2.py`、`git diff --check -- gui_v2.py` 通过；PyQt offscreen 冒烟确认页签内容为 `FlowTableShell`，`monthly/details` 表格 parent 均为 `FlowTableShell`。
+
+## 2026-07-09 嵌入主题入口下沉
+
+- `gui_v2.py` 新增 `MainWindow.apply_embedded_theme(colors, dark=False)`，由 PDF 流水项目统一生成嵌入态 stylesheet。
+- 嵌入主题入口覆盖表格外壳、表格内部 viewport/header/corner、横向滚动条、状态栏、收入测算卡片、可选按钮，以及报告工作台嵌入到流水窗口侧栏中的收入佐证控件样式。
+- 报告工作台不再直接覆盖 PDF 流水窗口的大段子控件 stylesheet；只传浅色/深色和颜色 token。
+- 影响范围仅为 GUI 主题职责迁移，不修改流水解析、调整计算、收入佐证 JSON 或 Excel/Word 输出。
+- 验证：`python -m py_compile gui_v2.py`、`git diff --check -- gui_v2.py` 通过；PyQt offscreen 冒烟确认 `apply_embedded_theme` 可调用，主题 token 写入窗口，`monthly` 表格仍由 `FlowTableShell` 包裹。
+
+## 2026-07-09 刘振红样本月度类型和重复提示修正
+
+- 问题：`hebei_corp_detail` 不以 `_corp` 结尾且未写入 `CORP_BANK_IDS`，导致河北银行对公 `其他资料_*.pdf` 在 GUI 月度统计中被归为个人流水。
+- 修复：`bankflow_v2/income_proof_export.py` 将 `hebei_corp_detail` 加入对公 bank id 映射；报告工作台和收入佐证导出均按对公处理。
+- 问题：`其他资料_1.pdf` 是 `其他资料_0.pdf` 的重复子集，GUI 合并明细逐笔提示 397 条 `疑似重复流水`，导致异常数量虚高。
+- 修复：`gui_v2.py` 保留逐笔去重，但按 `当前文件 + 首次来源` 聚合重复提示；该样本从 397 条压缩为 1 条 `疑似重复流水 397 笔`。
+- 验证：`C:\Users\lenovo\Desktop\刘振红20260709105503\基础资料` 17 个 PDF 批量验证全部通过；月度统计直接构造确认出现 `个人 / 微信 / 对公 / 全部`，其中对公总计 458 笔；`python -m py_compile gui_v2.py bankflow_v2\income_proof_export.py` 通过。

@@ -20,6 +20,7 @@ BANK_LABELS = {
     "boc_corp": "中国银行对公",
     "bocom": "交通银行",
     "bocom_corp": "交通银行对公",
+    "bazhou_shunfeng_corp": "霸州舜丰村镇银行对公",
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
     "chengdu_rural_corp": "成都农村商业银行对公",
@@ -35,6 +36,8 @@ BANK_LABELS = {
     "foshan_rural": "佛山农村商业银行",
     "guilin": "桂林银行个人",
     "guilin_corp": "桂林银行对公",
+    "hebei_corp_detail": "河北银行对公",
+    "hebei_personal": "河北银行个人",
     "huaxia": "华夏银行",
     "jiujiang": "九江银行",
     "lanzhou": "兰州银行",
@@ -128,6 +131,29 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     header_text = "\n".join(text.splitlines()[:80])
     header_compact = header_text.replace(" ", "").replace("\n", "")
+    if (
+        "霸州舜丰村镇银行企业账户交易明细" in header_compact
+        and "汇出金额汇入金额余额摘要用途" in compact
+    ):
+        return Detection("bazhou_shunfeng_corp", BANK_LABELS["bazhou_shunfeng_corp"], 98, "命中霸州舜丰村镇银行企业账户交易明细")
+
+    if (
+        "交易明细记录" in header_compact
+        and "收支标识" in header_compact
+        and "交易日期交易金额借贷标志交易后余额" in compact
+        and "交易对手账号交易对手名称交易对手开户行摘要备注" in compact
+    ):
+        return Detection("hebei_corp_detail", BANK_LABELS["hebei_corp_detail"], 98, "命中河北银行对公交易明细记录")
+
+    if (
+        "账户历史交易明细清单" in header_compact
+        and "客户账号" in compact
+        and "账户名称" in compact
+        and "交易日期借贷交易金额账户余额" in compact
+        and "对方账户对方户名流水号摘要备注" in compact
+    ):
+        return Detection("hebei_personal", BANK_LABELS["hebei_personal"], 96, "命中河北银行个人账户历史交易明细清单")
+
     if (
         "明细账查询" in compact
         and "交易日期" in compact

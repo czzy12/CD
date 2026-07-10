@@ -1210,6 +1210,9 @@ class MainWindow(QMainWindow):
             border: 1px solid {colors["border"]};
             border-radius: 12px;
         }}
+        QFrame#card:hover, QFrame#sidePanel:hover, QFrame#sideSection:hover {{
+            border-color: {colors["accent"]};
+        }}
         QFrame#sidePanel, QFrame#sideSection {{
             background: {colors["panel"]};
         }}
@@ -1222,6 +1225,10 @@ class MainWindow(QMainWindow):
             background: {colors["soft"]};
             border: 1px solid {colors["border"]};
             border-radius: 12px;
+        }}
+        QFrame#inlineFilterPanel:hover, QFrame#metricsBar:hover,
+        QFrame#adjustResultCard:hover, QFrame#incomeProofPanel:hover {{
+            border-color: {colors["accent"]};
         }}
         QFrame#inlineFilterPanel {{
             min-height: 42px;
@@ -1597,14 +1604,14 @@ class MainWindow(QMainWindow):
             color: {colors["accent_hover"]};
         }}
         QPushButton#adjustModeOption:checked {{
-            background: {colors["checked_fill"]};
-            border-color: {colors["accent_hover"]};
-            color: {colors["checked_text"]};
+            background: {colors["accent"]};
+            border-color: {colors["accent"]};
+            color: {colors["accent_text"]};
         }}
         QPushButton#adjustModeOption:checked:hover {{
-            background: {colors["checked_hover"]};
+            background: {colors["accent_hover"]};
             border-color: {colors["accent_hover"]};
-            color: {colors["checked_hover_text"]};
+            color: {colors["accent_text"]};
         }}
         QCheckBox#proofOption {{
             min-height: 28px;

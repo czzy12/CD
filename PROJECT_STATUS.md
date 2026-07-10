@@ -482,3 +482,8 @@ Excel 导出保持不变。
 - 流水调整控件、月均利润三个输入框、收入佐证三个操作按钮统一为 34px 高。
 - 影响范围仅为 `gui_v2.py` GUI 绘制和控件几何；不改解析、去重、闭合校验、收入佐证数据或导出逻辑，未同步 `D:\report workflow`。
 - 验证：`python -m py_compile gui_v2.py`、`git diff --check -- gui_v2.py`、报告项目编译和 26 项测试通过；Windows 150% DPI 浅色/深色真实渲染四角均为外层卡片色，顶边命中各主题边框色；offscreen 下四个 `FlowTableShell` 层级、覆盖层几何和三组 34px 控件高度检查通过。
+
+## 2026-07-10 嵌入主题交互收口
+
+- GUI 概述：嵌入工作台的流水调整选中态、卡片悬停描边和收入佐证主按钮统一使用浅色/深色主题 token。
+- 仅修改 `gui_v2.py` 样式，不改解析、调整计算或导出逻辑；`py_compile` 和 `git diff --check` 通过。

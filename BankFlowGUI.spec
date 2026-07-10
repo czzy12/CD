@@ -1,11 +1,42 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from datetime import datetime
+from pathlib import Path
+import subprocess
+
+
+root = Path.cwd()
+version_dir = root / 'build'
+version_dir.mkdir(parents=True, exist_ok=True)
+version_file = version_dir / 'BankFlowGUI_版本信息.txt'
+
+
+def git_output(*args):
+    try:
+        return subprocess.check_output(['git', '-C', str(root), *args], text=True, encoding='utf-8').strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ''
+
+
+version_file.write_text(
+    '\n'.join([
+        '包名称：银行流水识别',
+        '包用途：独立流水识别和收入佐证 JSON 草稿导出',
+        f'打包时间：{datetime.now():%Y-%m-%d %H:%M:%S}',
+        f'Git提交：{git_output("rev-parse", "--short", "HEAD") or "unknown"}',
+        f'包含未提交改动：{"是" if git_output("status", "--porcelain") else "否"}',
+        '说明：不生成车贷调查报告或收入佐证 Word，详见 RELEASE_MANIFEST.md。',
+    ]) + '\n',
+    encoding='utf-8',
+)
 
 a = Analysis(
     ['gui_v2.py'],
     pathex=[],
     binaries=[],
     datas=[
+        ('RELEASE_MANIFEST.md', '.'),
+        (str(version_file), '.'),
         ('assets', 'assets'),
         ('configs', 'configs'),
     ],

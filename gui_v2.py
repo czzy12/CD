@@ -436,6 +436,8 @@ class MainWindow(QMainWindow):
         self.adjust_check_value.setObjectName("adjustResultValue")
         self.profit_base_value = QLabel("0.00")
         self.profit_base_value.setObjectName("profitResultValue")
+        self.profit_proof_base_value = QLabel("0.00")
+        self.profit_proof_base_value.setObjectName("profitResultValue")
         self.profit_generated_value = QLabel("0.00")
         self.profit_generated_value.setObjectName("profitResultValue")
         self.profit_check_value = QLabel("待处理")
@@ -659,17 +661,21 @@ class MainWindow(QMainWindow):
         profit_layout = QVBoxLayout(profit_card)
         profit_layout.setContentsMargins(10, 8, 10, 8)
         profit_layout.setSpacing(6)
-        base_label = QLabel("流水月均收入")
+        base_label = QLabel("识别月份月均收入")
         base_label.setObjectName("profitCardLabel")
-        generated_label = QLabel("占股与利润率后收入")
+        proof_base_label = QLabel("佐证六个月月均收入")
+        proof_base_label.setObjectName("profitCardLabel")
+        generated_label = QLabel("占股与利润率后佐证收入")
         generated_label.setObjectName("profitCardLabel")
         status_label = QLabel("校验")
         status_label.setObjectName("profitCardLabel")
         self.profit_base_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.profit_proof_base_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.profit_generated_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.profit_check_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         for label, value in (
             (base_label, self.profit_base_value),
+            (proof_base_label, self.profit_proof_base_value),
             (generated_label, self.profit_generated_value),
             (status_label, self.profit_check_value),
         ):
@@ -1912,13 +1918,19 @@ class MainWindow(QMainWindow):
     def update_profit_preview(self):
         transactions = self.current_transactions()
         monthly_income, month_count = self.current_monthly_income_average(transactions)
+        proof_monthly_income = (
+            monthly_income * Decimal(month_count) / Decimal("6") if month_count else Decimal("0.00")
+        ).quantize(Decimal("0.01"))
         share_ratio = self.safe_percent(self.share_ratio.text() or "100")
         profit_rate = self.safe_percent(self.profit_rate.text())
         declared_income = self.safe_amount_wan(self.declared_month_income.text()) * Decimal("10000")
-        generated_income = (monthly_income * share_ratio / Decimal("100") * profit_rate / Decimal("100")).quantize(Decimal("0.01"))
+        generated_income = (
+            proof_monthly_income * share_ratio / Decimal("100") * profit_rate / Decimal("100")
+        ).quantize(Decimal("0.01"))
         formula_hint = self.profit_formula_hint(month_count, share_ratio, profit_rate)
 
         self.profit_base_value.setText(money_wan(monthly_income))
+        self.profit_proof_base_value.setText(money_wan(proof_monthly_income))
         self.profit_generated_value.setText(money_wan(generated_income))
         if not transactions or month_count == 0:
             self.set_profit_check("待处理", "neutral")
@@ -1938,7 +1950,7 @@ class MainWindow(QMainWindow):
         else:
             self.set_profit_check("不足", "warning")
             self.set_profit_value_tone("warning")
-            adjustment_hint = self.required_income_adjustment_hint(abs(diff), month_count, share_ratio, profit_rate)
+            adjustment_hint = self.required_income_adjustment_hint(abs(diff), 6, share_ratio, profit_rate)
             self.profit_hint_label.setText(f"{formula_hint}，低于 {money_wan(abs(diff))}{adjustment_hint}")
 
     def set_profit_check(self, text: str, tone: str):
@@ -1956,8 +1968,8 @@ class MainWindow(QMainWindow):
         share_text = self.format_percent(share_ratio)
         profit_text = self.format_percent(profit_rate)
         if share_ratio == Decimal("100"):
-            return f"按 {month_count} 个月月均收入 × {profit_text} 计算"
-        return f"按 {month_count} 个月月均收入 × 占股{share_text} × {profit_text} 计算"
+            return f"识别到 {month_count} 个月；佐证按流水收入合计 ÷ 6 × {profit_text} 计算"
+        return f"识别到 {month_count} 个月；佐证按流水收入合计 ÷ 6 × 占股{share_text} × {profit_text} 计算"
 
     def required_income_adjustment_hint(
         self,

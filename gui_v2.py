@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from PyQt6.QtCore import QDate, QRectF, QThread, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QKeySequence, QPainterPath, QPalette, QRegion
+from PyQt6.QtGui import QColor, QKeySequence, QPainter, QPainterPath, QPalette, QPen
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -187,12 +187,51 @@ class DropTable(QTableWidget):
         QApplication.clipboard().setText("\n".join(lines))
 
 
+class RoundedCornerOverlay(QWidget):
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._outside_color = QColor("#ffffff")
+        self._border_color = QColor("#dbe8fb")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def set_colors(self, outside_color: str, border_color: str) -> None:
+        self._outside_color = QColor(outside_color)
+        self._border_color = QColor(border_color)
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rounded_rect = QRectF(self.rect()).adjusted(0.5, 1.5, -0.5, -0.5)
+        rounded_path = QPainterPath()
+        rounded_path.addRoundedRect(rounded_rect, 12, 12)
+        outside_path = QPainterPath()
+        outside_path.addRect(QRectF(self.rect()))
+        painter.fillPath(outside_path.subtracted(rounded_path), self._outside_color)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(self._border_color, 1))
+        painter.drawPath(rounded_path)
+
+
 class RoundedTableShell(QFrame):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._corner_overlay: RoundedCornerOverlay | None = None
+
+    def set_corner_colors(self, outside_color: str, border_color: str) -> None:
+        if self._corner_overlay is None:
+            self._corner_overlay = RoundedCornerOverlay(self)
+        self._corner_overlay.set_colors(outside_color, border_color)
+        self._corner_overlay.setGeometry(self.rect())
+        self._corner_overlay.show()
+        self._corner_overlay.raise_()
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        if self._corner_overlay is not None:
+            self._corner_overlay.setGeometry(self.rect())
+            self._corner_overlay.raise_()
 
 
 class DropWidget(QWidget):
@@ -691,6 +730,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
         layout.addWidget(table)
+        shell.set_corner_colors("#ffffff", "#dbe8fb")
         return shell
 
     def dragEnterEvent(self, event):
@@ -1043,12 +1083,30 @@ class MainWindow(QMainWindow):
             }
             """
         )
+        self._normalize_compact_control_heights()
 
     def apply_embedded_theme(self, colors: dict[str, str], dark: bool = False) -> None:
         self._embedded_theme_colors = dict(colors)
         self._embedded_theme_dark = dark
         self.setStyleSheet(self._embedded_theme_style(colors))
+        for shell in self.findChildren(RoundedTableShell):
+            shell.set_corner_colors(colors["card"], colors["border"])
         self._apply_table_scrollbar_theme(colors)
+        self._normalize_compact_control_heights()
+
+    def _normalize_compact_control_heights(self) -> None:
+        for widget in (
+            self.adjust_amount,
+            self.income_adjust,
+            self.balance_adjust,
+            self.declared_month_income,
+            self.share_ratio,
+            self.profit_rate,
+        ):
+            widget.setFixedHeight(34)
+        for button in self.findChildren(QPushButton):
+            if button.objectName() in {"proofActionButton", "proofPrimaryActionButton"}:
+                button.setFixedHeight(34)
 
     def _theme_asset_path(self, name: str) -> str:
         return (runtime_dir() / "assets" / name).as_posix()

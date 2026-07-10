@@ -472,3 +472,13 @@ Excel 导出保持不变。
 - 最终新增 `RoundedTableShell`，在 resize 时通过 `QRegion` mask 裁切整个表格容器；`FlowTableShell` 使用 12px 主题圆角边框，viewport 改为透明背景。PyQt offscreen 实际渲染确认四角均正常。
 - 本轮只改 `gui_v2.py` 的 GUI 与主题样式，不改解析、去重、闭合校验、收入佐证数据或导出逻辑；未同步 `D:\report workflow` 副本。
 - 验证：`python -m py_compile gui_v2.py`、`git diff --check` 通过；报告工作台侧 26 项单元测试及编译通过。
+
+## 2026-07-10 Windows 真实窗口圆角最终修正
+
+- 上一版 `RoundedTableShell` 使用 `QRegion` mask。该方案在 offscreen 渲染中四角正常，但报告工作台真实 Windows 窗口、150% DPI 下仍会出现表头直角底色。
+- 根因不是 mask 路径或半径算错：控件层级检查确认外壳 mask 存在且 `(0, 0)` 不在 mask 区域，但 `QHeaderView` 等 `QTableWidget` 子控件在 Windows 实际合成时仍可能越过父级 mask 绘制。只检查 stylesheet、mask 属性或 offscreen 截图会得到假阳性；直接继续给 table/header/viewport 叠 mask 也不能稳定消除泄漏。
+- 最终方案：移除无效的父级 mask，新增鼠标穿透的 `RoundedCornerOverlay`，置于 `FlowTableShell` 最上层。覆盖层仅用父卡片主题色填充圆角路径外的四个角，并用主题边框色重画 1px 抗锯齿圆角边框；表格主体、表头、viewport、滚动条和交互均不改。
+- 浅色使用 `card=#fffdf8 / border=#dccfc1`，深色使用 `card=#1c1c1c / border=#333333`。顶边路径向内收至 1.5px，解决最外沿边线在高 DPI 下看似缺失的问题。
+- 流水调整控件、月均利润三个输入框、收入佐证三个操作按钮统一为 34px 高。
+- 影响范围仅为 `gui_v2.py` GUI 绘制和控件几何；不改解析、去重、闭合校验、收入佐证数据或导出逻辑，未同步 `D:\report workflow`。
+- 验证：`python -m py_compile gui_v2.py`、`git diff --check -- gui_v2.py`、报告项目编译和 26 项测试通过；Windows 150% DPI 浅色/深色真实渲染四角均为外层卡片色，顶边命中各主题边框色；offscreen 下四个 `FlowTableShell` 层级、覆盖层几何和三组 34px 控件高度检查通过。

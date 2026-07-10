@@ -7,8 +7,8 @@ from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
 
-from PyQt6.QtCore import QDate, QThread, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QKeySequence, QPalette
+from PyQt6.QtCore import QDate, QRectF, QThread, QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QKeySequence, QPainterPath, QPalette, QRegion
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -185,6 +185,14 @@ class DropTable(QTableWidget):
                     values.append(item.text() if item else "")
                 lines.append("\t".join(values))
         QApplication.clipboard().setText("\n".join(lines))
+
+
+class RoundedTableShell(QFrame):
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
 
 class DropWidget(QWidget):
@@ -677,7 +685,7 @@ class MainWindow(QMainWindow):
         self.render_empty()
 
     def table_shell(self, table: QTableWidget) -> QFrame:
-        shell = QFrame()
+        shell = RoundedTableShell()
         shell.setObjectName("FlowTableShell")
         layout = QVBoxLayout(shell)
         layout.setContentsMargins(1, 1, 1, 1)
@@ -809,7 +817,7 @@ class MainWindow(QMainWindow):
             QFrame#FlowTableShell {
                 background: #ffffff;
                 border: 1px solid #dbe8fb;
-                border-radius: 0;
+                border-radius: 12px;
             }
             QTableWidget {
                 gridline-color: transparent;
@@ -823,7 +831,7 @@ class MainWindow(QMainWindow):
                 padding: 0;
             }
             QTableWidget::viewport {
-                background: #ffffff;
+                background: transparent;
                 border: 0;
                 border-radius: 0;
             }
@@ -986,7 +994,7 @@ class MainWindow(QMainWindow):
             QLabel#profitInputLabel {
                 color: #5f6b7a;
                 font-size: 12px;
-                font-weight: 600;
+                font-weight: 400;
             }
             QLabel#sectionTitle {
                 color: #263243;
@@ -1209,7 +1217,7 @@ class MainWindow(QMainWindow):
         QLabel#profitInputLabel {{
             color: {colors["muted"]};
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 400;
         }}
         QLabel#sectionTitle {{
             color: {colors["text"]};
@@ -1262,7 +1270,7 @@ class MainWindow(QMainWindow):
         QFrame#FlowTableShell {{
             background: {colors["table_base"]};
             border: 1px solid {colors["border"]};
-            border-radius: 0;
+            border-radius: 12px;
         }}
         QTableWidget {{
             gridline-color: transparent;
@@ -1276,7 +1284,7 @@ class MainWindow(QMainWindow):
             padding: 0;
         }}
         QTableWidget::viewport {{
-            background: {colors["table_base"]};
+            background: transparent;
             border: 0;
             border-radius: 0;
         }}
@@ -1458,6 +1466,44 @@ class MainWindow(QMainWindow):
             border-color: {colors["accent"]};
             color: {colors["accent"]};
         }}
+        QPushButton#proofActionButton {{
+            min-height: 30px;
+            border-radius: 10px;
+            background: {colors["field"]};
+            border: 1px solid {colors["border2"]};
+            color: {colors["text"]};
+            font-size: 13px;
+            font-weight: 400;
+        }}
+        QPushButton#proofActionButton:hover {{
+            background: {colors["soft"]};
+            border-color: {colors["accent"]};
+            color: {colors["text"]};
+        }}
+        QPushButton#proofActionButton:pressed {{
+            background: {colors["selection"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["selection_text"]};
+        }}
+        QPushButton#proofPrimaryActionButton {{
+            min-height: 30px;
+            border-radius: 10px;
+            background: {colors["accent"]};
+            border: 1px solid {colors["accent"]};
+            color: {colors["accent_text"]};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton#proofPrimaryActionButton:hover {{
+            background: {colors["accent_hover"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["accent_text"]};
+        }}
+        QPushButton#proofPrimaryActionButton:pressed {{
+            background: {colors["checked_fill"]};
+            border-color: {colors["accent_hover"]};
+            color: {colors["accent_text"]};
+        }}
         QCheckBox {{
             color: {colors["text"]};
             spacing: 6px;
@@ -1498,27 +1544,25 @@ class MainWindow(QMainWindow):
         }}
         QCheckBox#proofOption {{
             min-height: 28px;
-            padding: 0 8px;
-            border: 1px solid {colors["border"]};
-            border-radius: 10px;
-            background: {colors["field"]};
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
             color: {colors["text"]};
             font-size: 12px;
             font-weight: 400;
         }}
         QCheckBox#proofOption:hover {{
-            border-color: {colors["accent"]};
-            background: {colors["soft"]};
+            background: transparent;
+            color: {colors["text"]};
         }}
         QCheckBox#proofOption:checked {{
-            border-color: {colors["accent"]};
-            background: {colors["checked_fill"]};
-            color: {colors["checked_text"]};
+            background: transparent;
+            color: {colors["text"]};
         }}
         QCheckBox#proofOption:checked:hover {{
-            border-color: {colors["accent_hover"]};
-            background: {colors["checked_hover"]};
-            color: {colors["checked_hover_text"]};
+            background: transparent;
+            color: {colors["text"]};
         }}
         QPushButton#proofConfirmOption {{
             min-height: 30px;

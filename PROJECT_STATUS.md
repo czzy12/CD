@@ -463,3 +463,12 @@ Excel 导出保持不变。
 - 嵌入状态栏去掉 `border-top`，避免报告工作台识别页底部出现多余横线。
 - 报告页 `系统 / 企业` 粘贴区的外层布局在 `D:\report` 中处理，本项目只提供嵌入流水窗口样式能力。
 - `D:\report workflow\pdf_nuitka_src\gui_v2.py` 已撤回流水明细圆角相关更改，本轮不向该副本同步。
+
+## 2026-07-10 嵌入 GUI 控件与真圆角收口
+
+- 收入佐证勾选项改为透明底的普通复选框样式；操作按钮新增主次样式和按下反馈，`生成 Word` 使用主题强调色。
+- `系统月收入 / 占股比例 / 利润率` 标签字重由 600 调整为 400。
+- 流水表此前只依赖 QSS `border-radius`，但 `QTableWidget` 的 header、viewport、corner 子控件不会随父框裁切，因此四角仍会露出直角底色。
+- 最终新增 `RoundedTableShell`，在 resize 时通过 `QRegion` mask 裁切整个表格容器；`FlowTableShell` 使用 12px 主题圆角边框，viewport 改为透明背景。PyQt offscreen 实际渲染确认四角均正常。
+- 本轮只改 `gui_v2.py` 的 GUI 与主题样式，不改解析、去重、闭合校验、收入佐证数据或导出逻辑；未同步 `D:\report workflow` 副本。
+- 验证：`python -m py_compile gui_v2.py`、`git diff --check` 通过；报告工作台侧 26 项单元测试及编译通过。

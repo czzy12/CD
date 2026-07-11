@@ -45,6 +45,7 @@ from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_t
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
 DATE_RANGE_EMPTY_MESSAGE = "日期范围内没有流水"
+FIXED_PROOF_MONTHS = 6
 SALARY_KEYWORDS = ("工资", "代发", "薪资", "薪酬", "奖金")
 ACCOUNT_NAME_PATTERNS = (
     r"户名\s*(?:Account Name)?\s*[:：]\s*([^\s，,]+)",
@@ -436,8 +437,6 @@ class MainWindow(QMainWindow):
         self.adjust_check_value.setObjectName("adjustResultValue")
         self.profit_base_value = QLabel("0.00")
         self.profit_base_value.setObjectName("profitResultValue")
-        self.profit_proof_base_value = QLabel("0.00")
-        self.profit_proof_base_value.setObjectName("profitResultValue")
         self.profit_generated_value = QLabel("0.00")
         self.profit_generated_value.setObjectName("profitResultValue")
         self.profit_check_value = QLabel("待处理")
@@ -508,7 +507,6 @@ class MainWindow(QMainWindow):
         self.adjust_amount.setPlaceholderText("调整金额")
         self.adjust_amount.setFixedHeight(34)
         self.declared_month_income = QLineEdit()
-        self.declared_month_income.setPlaceholderText("系统月收入")
         self.share_ratio = QLineEdit()
         self.share_ratio.setPlaceholderText("占股比例（%）")
         self.share_ratio.setText("100")
@@ -596,18 +594,6 @@ class MainWindow(QMainWindow):
         self.side_panel = income_calc_panel
         self.side_panel_layout = side_layout
 
-        income_calc_title_row = QHBoxLayout()
-        income_calc_title_row.setContentsMargins(0, 0, 0, 0)
-        income_calc_title = QLabel("收入测算")
-        income_calc_title.setObjectName("cardTitle")
-        income_calc_unit_label = QLabel("单位：万元")
-        income_calc_unit_label.setObjectName("sectionHintLabel")
-        income_calc_title_row.addWidget(income_calc_title)
-        income_calc_title_row.addStretch(1)
-        income_calc_title_row.addWidget(income_calc_unit_label)
-        income_calc_layout.addLayout(income_calc_title_row)
-        income_calc_layout.addSpacing(6)
-
         adjustment_section_title = QLabel("流水调整")
         adjustment_section_title.setObjectName("sectionTitle")
         income_calc_layout.addWidget(adjustment_section_title)
@@ -648,10 +634,10 @@ class MainWindow(QMainWindow):
         preview_layout.addWidget(self.adjust_preview_label)
         income_calc_layout.addWidget(preview_card)
 
-        profit_title = QLabel("月均利润")
+        profit_title = QLabel("收入测算")
         profit_title.setObjectName("sectionTitle")
         declared_label = QLabel("系统月收入")
-        declared_label.setObjectName("profitInputLabel")
+        declared_label.setObjectName("declaredIncomeLabel")
         rate_label = QLabel("利润率（%）")
         rate_label.setObjectName("profitInputLabel")
         share_label = QLabel("占股比例（%）")
@@ -661,21 +647,17 @@ class MainWindow(QMainWindow):
         profit_layout = QVBoxLayout(profit_card)
         profit_layout.setContentsMargins(10, 8, 10, 8)
         profit_layout.setSpacing(6)
-        base_label = QLabel("识别月份月均收入")
+        base_label = QLabel("月均流水收入（固定÷6）")
         base_label.setObjectName("profitCardLabel")
-        proof_base_label = QLabel("佐证六个月月均收入")
-        proof_base_label.setObjectName("profitCardLabel")
         generated_label = QLabel("占股与利润率后佐证收入")
         generated_label.setObjectName("profitCardLabel")
         status_label = QLabel("校验")
         status_label.setObjectName("profitCardLabel")
         self.profit_base_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.profit_proof_base_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.profit_generated_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.profit_check_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         for label, value in (
             (base_label, self.profit_base_value),
-            (proof_base_label, self.profit_proof_base_value),
             (generated_label, self.profit_generated_value),
             (status_label, self.profit_check_value),
         ):
@@ -787,7 +769,7 @@ class MainWindow(QMainWindow):
             QFrame#card, QFrame#sidePanel, QFrame#sideSection {
                 background: #ffffff;
                 border: 1px solid #e3e8f0;
-                border-radius: 12px;
+                border-radius: 18px;
             }
             QFrame#sidePanel, QFrame#sideSection { background: #fbfcfe; }
             QScrollArea#sideScroll {
@@ -1029,8 +1011,9 @@ class MainWindow(QMainWindow):
             }
             QLabel#declaredIncomeLabel {
                 color: #5f6b7a;
-                font-size: 13px;
-                font-weight: 600;
+                font-size: 12px;
+                font-weight: 400;
+                margin-left: 8px;
             }
             QLabel#profitCardLabel {
                 color: #5f6b7a;
@@ -1044,7 +1027,7 @@ class MainWindow(QMainWindow):
             }
             QLabel#sectionTitle {
                 color: #263243;
-                font-size: 13px;
+                font-size: 16px;
                 font-weight: 600;
                 padding-top: 4px;
                 padding-bottom: 2px;
@@ -1208,7 +1191,7 @@ class MainWindow(QMainWindow):
         QFrame#card, QFrame#sidePanel, QFrame#sideSection {{
             background: {colors["card"]};
             border: 1px solid {colors["border"]};
-            border-radius: 12px;
+            border-radius: 18px;
         }}
         QFrame#card:hover, QFrame#sidePanel:hover, QFrame#sideSection:hover {{
             border-color: {colors["accent"]};
@@ -1225,6 +1208,9 @@ class MainWindow(QMainWindow):
             background: {colors["soft"]};
             border: 1px solid {colors["border"]};
             border-radius: 12px;
+        }}
+        QFrame#incomeProofPanel {{
+            border-radius: 18px;
         }}
         QFrame#inlineFilterPanel:hover, QFrame#metricsBar:hover,
         QFrame#adjustResultCard:hover, QFrame#incomeProofPanel:hover {{
@@ -1277,8 +1263,9 @@ class MainWindow(QMainWindow):
         }}
         QLabel#declaredIncomeLabel {{
             color: {colors["muted"]};
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 12px;
+            font-weight: 400;
+            margin-left: 8px;
         }}
         QLabel#profitCardLabel {{
             color: {colors["muted"]};
@@ -1292,7 +1279,7 @@ class MainWindow(QMainWindow):
         }}
         QLabel#sectionTitle {{
             color: {colors["text"]};
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 600;
             padding-top: 4px;
             padding-bottom: 2px;
@@ -1924,20 +1911,19 @@ class MainWindow(QMainWindow):
 
     def update_profit_preview(self):
         transactions = self.current_transactions()
-        monthly_income, month_count = self.current_monthly_income_average(transactions)
-        proof_monthly_income = (
-            monthly_income * Decimal(month_count) / Decimal("6") if month_count else Decimal("0.00")
+        income_total, month_count = self.current_income_total_and_month_count(transactions)
+        monthly_income = (
+            income_total / Decimal(FIXED_PROOF_MONTHS) if month_count else Decimal("0.00")
         ).quantize(Decimal("0.01"))
         share_ratio = self.safe_percent(self.share_ratio.text() or "100")
         profit_rate = self.safe_percent(self.profit_rate.text())
         declared_income = self.safe_amount_wan(self.declared_month_income.text()) * Decimal("10000")
         generated_income = (
-            proof_monthly_income * share_ratio / Decimal("100") * profit_rate / Decimal("100")
+            monthly_income * share_ratio / Decimal("100") * profit_rate / Decimal("100")
         ).quantize(Decimal("0.01"))
         formula_hint = self.profit_formula_hint(month_count, share_ratio, profit_rate)
 
         self.profit_base_value.setText(money_wan(monthly_income))
-        self.profit_proof_base_value.setText(money_wan(proof_monthly_income))
         self.profit_generated_value.setText(money_wan(generated_income))
         if not transactions or month_count == 0:
             self.set_profit_check("待处理", "neutral")
@@ -2008,22 +1994,20 @@ class MainWindow(QMainWindow):
         self.cached_transactions = deduped
         return deduped
 
-    def current_monthly_income_average(self, transactions: list) -> tuple[Decimal, int]:
+    def current_income_total_and_month_count(self, transactions: list) -> tuple[Decimal, int]:
         if not transactions:
             return Decimal("0.00"), 0
         if self.adjustment_result.enabled:
             total_row = next((row for row in self.adjustment_result.rows if row.month == "总计"), None)
             month_count = len([row for row in self.adjustment_result.rows if row.month != "总计"])
             if total_row is not None and month_count > 0:
-                average = (total_row.adjusted_income_sum / Decimal(month_count)).quantize(Decimal("0.01"))
-                return average, month_count
+                return total_row.adjusted_income_sum.quantize(Decimal("0.01")), month_count
         month_pairs = monthly_summaries(transactions)
         month_count = len(month_pairs)
         if month_count == 0:
             return Decimal("0.00"), 0
         total = summarize(transactions, "全部文件")
-        average = (total.income_sum / Decimal(month_count)).quantize(Decimal("0.01"))
-        return average, month_count
+        return total.income_sum.quantize(Decimal("0.01")), month_count
 
     def render_empty(self):
         self.update_monthly_tab_label(False)
@@ -3010,7 +2994,7 @@ def _adjusted_row(row, for_excel: bool, label: str | None = None, adjustment: Ad
 
 
 def _monthly_average_row(total, month_count: int, for_excel: bool, adjusted: bool) -> list:
-    divisor = Decimal(max(month_count, 1))
+    divisor = Decimal(FIXED_PROOF_MONTHS)
     income_average = (total.adjusted_income_sum if adjusted else total.income_sum) / divisor
     expense_average = (total.adjusted_expense_sum if adjusted else total.expense_sum) / divisor
     income_average = income_average.quantize(Decimal("0.01"))
@@ -3022,8 +3006,8 @@ def _monthly_average_row(total, month_count: int, for_excel: bool, adjusted: boo
         income_value = money_wan(income_average)
         expense_value = money_wan(expense_average)
     if adjusted:
-        return ["月均", "", income_value, "", expense_value, "", "", "", "", "", "", "", "", "", f"按 {month_count} 个月平均"]
-    return ["", "月均", "", income_value, "", expense_value, "", "", "", ""]
+        return ["月均(÷6)", "", income_value, "", expense_value, "", "", "", "", "", "", "", "", "", f"识别{month_count}个月，固定按6个月平均"]
+    return ["", "月均(÷6)", "", income_value, "", expense_value, "", "", "", ""]
 
 
 def balance_delta(opening: Decimal | None, closing: Decimal | None) -> Decimal | None:

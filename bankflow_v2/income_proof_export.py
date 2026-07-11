@@ -5,7 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable
 
-from .adjustment import AdjustmentConfig, split_amount
+from .adjustment import AdjustmentConfig, apply_adjustments, split_amount
 from .summary import Summary, monthly_summaries, summarize
 
 
@@ -376,6 +376,20 @@ def enabled_adjustment_configs(configs: list[AdjustmentConfig] | None) -> list[A
     return [config for config in (configs or []) if config.enabled and config.amount_wan != Decimal("0")]
 
 
+def has_wechat_income_adjustment(configs: list[AdjustmentConfig] | None) -> bool:
+    return any(config.enabled and config.amount_wan != Decimal("0") and not config.balanced for config in (configs or []))
+
+
+def all_wechat_transactions(results: list) -> bool:
+    has_transaction = False
+    for result in results:
+        for tx in getattr(result, "transactions", []) or []:
+            has_transaction = True
+            if transaction_flow_type(tx, result) != "微信":
+                return False
+    return has_transaction
+
+
 def allocate_adjustments_by_flow(results: list, configs: list[AdjustmentConfig] | None) -> dict[str, dict[str, tuple[Decimal, Decimal]]]:
     active_configs = enabled_adjustment_configs(configs)
     allocations = {"个人": {}, "对公": {}}
@@ -434,6 +448,31 @@ def apply_flow_adjustments(month_pairs: list[tuple[str, Summary]], allocations: 
         (month, add_adjustment(summary, *allocations.get(month, (Decimal("0"), Decimal("0")))))
         for month, summary in month_pairs
     ]
+
+
+def adjusted_wechat_month_pairs(results: list, adjustment_configs: list[AdjustmentConfig] | None) -> list[tuple[str, Summary]]:
+    transactions = [tx for result in results for tx in getattr(result, "transactions", [])]
+    adjustment = apply_adjustments(transactions, adjustment_configs or [])
+    pairs: list[tuple[str, Summary]] = []
+    for row in adjustment.rows:
+        if row.month == "总计":
+            continue
+        pairs.append(
+            (
+                row.month,
+                Summary(
+                    count=row.original_count,
+                    income_count=row.original_income_count,
+                    income_sum=row.adjusted_income_sum,
+                    expense_count=row.original_expense_count,
+                    expense_sum=row.adjusted_expense_sum,
+                    net=row.adjusted_net,
+                    opening_balance=row.adjusted_opening_balance,
+                    closing_balance=row.adjusted_closing_balance,
+                ),
+            )
+        )
+    return pairs
 
 
 def salary_match_text(tx) -> str:
@@ -503,13 +542,22 @@ def flow_block(
     results: list,
     target_flow_type: str | None = None,
     adjustment_allocations: dict[str, dict[str, tuple[Decimal, Decimal]]] | None = None,
+    adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
     if target_flow_type == "对公":
         results = split_results_by_flow(results, "对公")
     elif target_flow_type == "个人":
         results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
-    month_pairs = flow_month_pairs(results)
-    if target_flow_type in ("个人", "对公") and adjustment_allocations:
+    use_adjusted_wechat = (
+        target_flow_type == "个人"
+        and has_wechat_income_adjustment(adjustment_configs)
+        and all_wechat_transactions(results)
+    )
+    if use_adjusted_wechat:
+        month_pairs = adjusted_wechat_month_pairs(results, adjustment_configs)
+    else:
+        month_pairs = flow_month_pairs(results)
+    if target_flow_type in ("个人", "对公") and adjustment_allocations and not use_adjusted_wechat:
         month_pairs = apply_flow_adjustments(month_pairs, adjustment_allocations.get(target_flow_type))
     total = Summary()
     for _month, summary in month_pairs:
@@ -580,8 +628,8 @@ def build_income_proof_input(
         "flow_policy": {
             "use_corporate_flow": False,
         },
-        "personal_flow": flow_block(results, "个人", adjustment_allocations) if personal_results else empty_flow(),
-        "corporate_flow": flow_block(results, "对公", adjustment_allocations) if corporate_results else empty_flow(),
+        "personal_flow": flow_block(results, "个人", adjustment_allocations, adjustment_configs) if personal_results else empty_flow(),
+        "corporate_flow": flow_block(results, "对公", adjustment_allocations, adjustment_configs) if corporate_results else empty_flow(),
         "notes": {
             "supplement": "",
             "export_note": "客户、单位、占股、地区等字段需人工补充或由后续系统/API填入；未识别到的账号需人工补充；对公流水必须人工确认后才启用。",
@@ -640,7 +688,7 @@ def build_salary_income_proof_input(
             "use_corporate_flow": False,
         },
         "salary_flow": salary_flow_block(personal_results, adjustment_configs) if personal_results else empty_flow(),
-        "personal_flow": flow_block(personal_results, "个人", adjustment_allocations) if personal_results else empty_flow(),
+        "personal_flow": flow_block(personal_results, "个人", adjustment_allocations, adjustment_configs) if personal_results else empty_flow(),
         "corporate_flow": empty_flow(),
         "notes": {
             "supplement": "",

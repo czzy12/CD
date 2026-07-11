@@ -572,6 +572,10 @@ class MainWindow(QMainWindow):
                 divider.setFrameShape(QFrame.Shape.VLine)
                 metrics_layout.addWidget(divider)
         main_layout.addWidget(metrics_bar)
+        self.fixed_average_note = QLabel("月均口径：收入、支出合计固定 ÷6")
+        self.fixed_average_note.setObjectName("fixedAverageNote")
+        self.fixed_average_note.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        main_layout.addWidget(self.fixed_average_note)
         self.summary_label.setVisible(False)
         main_layout.addWidget(self.tabs)
 
@@ -805,6 +809,12 @@ class MainWindow(QMainWindow):
                 color: #162033;
                 font-size: 20px;
                 font-weight: 600;
+            }
+            QLabel#fixedAverageNote {
+                color: #7a8492;
+                font-size: 12px;
+                font-weight: 400;
+                padding-right: 4px;
             }
             QLabel#metricValue[tone="income"] { color: #138a4b; }
             QLabel#metricValue[tone="expense"] { color: #d93f2f; }
@@ -1246,6 +1256,7 @@ class MainWindow(QMainWindow):
         }}
         QLabel#adjustmentStatusLabel,
         QLabel#profitHintLabel,
+        QLabel#fixedAverageNote,
         QLabel#IncomeProofStatus {{
             color: {colors["muted"]};
             font-size: 12px;
@@ -3005,9 +3016,10 @@ def _monthly_average_row(total, month_count: int, for_excel: bool, adjusted: boo
     else:
         income_value = money_wan(income_average)
         expense_value = money_wan(expense_average)
+    label = "月均(÷6)" if for_excel else "月均"
     if adjusted:
-        return ["月均(÷6)", "", income_value, "", expense_value, "", "", "", "", "", "", "", "", "", f"识别{month_count}个月，固定按6个月平均"]
-    return ["", "月均(÷6)", "", income_value, "", expense_value, "", "", "", ""]
+        return [label, "", income_value, "", expense_value, "", "", "", "", "", "", "", "", "", f"识别{month_count}个月，固定按6个月平均"]
+    return ["", label, "", income_value, "", expense_value, "", "", "", ""]
 
 
 def balance_delta(opening: Decimal | None, closing: Decimal | None) -> Decimal | None:

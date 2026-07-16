@@ -13,6 +13,10 @@ BANK_NAME = "中国农业银行"
 START_RE = re.compile(r"^(\d{4}-\d{2}-(?:\d{2})?)(?:\s+(.*))?$")
 TIME_RE = re.compile(r"^(?:(\d{2})\s+)?(\d{2}:\d{2}:\d{2})(?:\s+(.*))?$")
 AMOUNT_RE = re.compile(r"^(\d[\d,]*\.\d{2})\s+(\d[\d,]*\.\d{2})(?:\s+(.*))?$")
+DATE_PREFIX_RE = re.compile(r"20\d{2}-(?:\d{2}-)?$")
+DAY_RE = re.compile(r"\d{2}")
+MONTH_DAY_RE = re.compile(r"\d{2}-\d{2}")
+MONEY_RE = re.compile(r"\d[\d,]*\.\d{2}")
 CENT = Decimal("0.01")
 
 
@@ -192,6 +196,117 @@ def _parse_text_rows(pdf_path: str) -> list[ParsedRow]:
     return parsed_rows
 
 
+def _body_words(page) -> list[dict]:
+    return [
+        word for word in page.extract_words(x_tolerance=1, y_tolerance=3, extra_attrs=["size"])
+        if 7 <= float(word.get("size") or 0) <= 11
+    ]
+
+
+def _words_in_bounds(words: list[dict], left: float, right: float) -> list[dict]:
+    return [word for word in words if left <= float(word["x0"]) < right]
+
+
+def _joined_text(words: list[dict], left: float, right: float) -> str:
+    column_words = _words_in_bounds(words, left, right)
+    column_words.sort(key=lambda word: (round(float(word["top"]), 1), float(word["x0"])))
+    return "".join(str(word["text"]) for word in column_words).strip()
+
+
+def _first_money(text: str) -> Decimal | None:
+    match = MONEY_RE.search(text)
+    return money_to_decimal(match.group(0)) if match else None
+
+
+def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
+    parsed_rows: list[ParsedRow] = []
+    order_index = 0
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            words = _body_words(page)
+            date_words = [
+                word for word in words
+                if (
+                    80 <= float(word["top"]) <= page.height - 30
+                    and 10 <= float(word["x0"]) <= 75
+                    and DATE_PREFIX_RE.fullmatch(str(word["text"]))
+                )
+            ]
+            date_words.sort(key=lambda word: float(word["top"]))
+
+            for date_index, date_word in enumerate(date_words):
+                row_top = float(date_word["top"]) - 1
+                row_bottom = float(date_words[date_index + 1]["top"]) - 1 if date_index + 1 < len(date_words) else page.height - 20
+                row_words = [
+                    word for word in words
+                    if row_top <= float(word["top"]) < row_bottom
+                ]
+                date_prefix = str(date_word["text"])
+                if re.fullmatch(r"20\d{2}-\d{2}-", date_prefix):
+                    date_tail_words = [
+                        word for word in _words_in_bounds(row_words, 25, 60)
+                        if DAY_RE.fullmatch(str(word["text"]))
+                    ]
+                else:
+                    date_tail_words = [
+                        word for word in _words_in_bounds(row_words, 20, 70)
+                        if MONTH_DAY_RE.fullmatch(str(word["text"]))
+                    ]
+                time_words = [
+                    word for word in _words_in_bounds(row_words, 15, 75)
+                    if re.fullmatch(r"\d{2}:\d{2}:\d{2}", str(word["text"]))
+                ]
+                if not date_tail_words or not time_words:
+                    continue
+
+                raw_date = f"{date_prefix}{date_tail_words[0]['text']}"
+                raw_time = str(time_words[0]["text"])
+                try:
+                    tx_time = datetime.strptime(f"{raw_date} {raw_time}", "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    continue
+
+                income_text = _joined_text(row_words, 72, 128)
+                expense_text = _joined_text(row_words, 128, 184)
+                balance_text = _joined_text(row_words, 184, 240)
+                income = _first_money(income_text) or Decimal("0.00")
+                expense = _first_money(expense_text) or Decimal("0.00")
+                balance = _first_money(balance_text)
+                if balance is None or (income == Decimal("0.00") and expense == Decimal("0.00")):
+                    continue
+
+                order_index += 1
+                raw_text = " | ".join(
+                    [
+                        raw_date,
+                        raw_time,
+                        income_text,
+                        expense_text,
+                        balance_text,
+                        _joined_text(row_words, 240, 296),
+                        _joined_text(row_words, 296, 352),
+                        _joined_text(row_words, 416, 520),
+                    ]
+                )
+                parsed_rows.append(
+                    ParsedRow(
+                        tx_time=tx_time,
+                        amount=income if income else expense,
+                        balance=balance,
+                        raw_time=f"{raw_date} {raw_time}",
+                        raw_amount=f"{income_text}|{expense_text}",
+                        raw_text=raw_text,
+                        order_index=order_index,
+                        same_time_order=order_index,
+                        income=income,
+                        expense=expense,
+                    )
+                )
+
+    return parsed_rows
+
+
 def _direction(raw_text: str, amount: Decimal, balance: Decimal, previous_balance: Decimal | None) -> str | None:
     if previous_balance is not None:
         if (previous_balance + amount).quantize(CENT) == balance:
@@ -264,6 +379,8 @@ def extract_abc_corp(pdf_path: str) -> list[Transaction]:
     parsed_rows = _parse_table_rows(pdf_path)
     if not parsed_rows:
         parsed_rows = _parse_text_rows(pdf_path)
+    if not parsed_rows:
+        parsed_rows = _parse_coordinate_rows(pdf_path)
 
     ordered_rows = _order_rows(parsed_rows)
     transactions: list[Transaction] = []

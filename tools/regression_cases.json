@@ -126,10 +126,10 @@
     "expected": {
       "count": 216,
       "income_count": 46,
-      "income_sum": "553877.79",
+      "income_sum": "630237.79",
       "expense_count": 170,
       "expense_sum": "590241.05",
-      "net": "-36363.26",
+      "net": "39996.74",
       "opening_balance": "3.52",
       "closing_balance": "40000.26",
       "issues": 0
@@ -183,6 +183,108 @@
       "net": "34103.47",
       "opening_balance": "25999.55",
       "closing_balance": "60103.02",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-05",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_2.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 10,
+      "income_count": 1,
+      "income_sum": "16000.00",
+      "expense_count": 9,
+      "expense_sum": "62804.18",
+      "net": "-46804.18",
+      "opening_balance": "51311.95",
+      "closing_balance": "4507.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-02",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_3.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 7,
+      "income_count": 2,
+      "income_sum": "21000.00",
+      "expense_count": 5,
+      "expense_sum": "27598.60",
+      "net": "-6598.60",
+      "opening_balance": "9126.69",
+      "closing_balance": "2528.09",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-03",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_4.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 30,
+      "income_count": 11,
+      "income_sum": "119096.91",
+      "expense_count": 19,
+      "expense_sum": "121229.41",
+      "net": "-2132.50",
+      "opening_balance": "2528.09",
+      "closing_balance": "395.59",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-04",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_5.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 30,
+      "income_count": 8,
+      "income_sum": "563000.00",
+      "expense_count": 22,
+      "expense_sum": "601894.33",
+      "net": "-38894.33",
+      "opening_balance": "202546.28",
+      "closing_balance": "163651.95",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2025-12",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_6.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 12,
+      "income_count": 2,
+      "income_sum": "20005.96",
+      "expense_count": 10,
+      "expense_sum": "213659.78",
+      "net": "-193653.82",
+      "opening_balance": "198039.72",
+      "closing_balance": "4385.90",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行对公-账务明细清单-2026-01",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_7.pdf",
+    "tags": ["cmb_corp", "corp", "statement-of-account"],
+    "expected": {
+      "count": 8,
+      "income_count": 1,
+      "income_sum": "25000.00",
+      "expense_count": 7,
+      "expense_sum": "20259.21",
+      "net": "4740.79",
+      "opening_balance": "4385.90",
+      "closing_balance": "9126.69",
       "issues": 0
     }
   },
@@ -507,6 +609,784 @@
       "opening_balance": "70528.21",
       "closing_balance": "212609.44",
       "issues": 0
+    }
+  },
+  {
+    "name": "九江银行-个人交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/九江银行.pdf",
+    "tags": ["jiujiang", "personal", "city-commercial"],
+    "expected": {
+      "count": 453,
+      "income_count": 141,
+      "income_sum": "1879984.11",
+      "expense_count": 312,
+      "expense_sum": "1878705.32",
+      "net": "1278.79",
+      "opening_balance": "5977.73",
+      "closing_balance": "7256.52",
+      "issues": 0
+    }
+  },
+  {
+    "name": "佛山农村商业银行-个人交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/佛山农村商业.pdf",
+    "tags": ["foshan_rural", "personal", "city-commercial"],
+    "expected": {
+      "count": 533,
+      "income_count": 44,
+      "income_sum": "231090.38",
+      "expense_count": 489,
+      "expense_sum": "232054.96",
+      "net": "-964.58",
+      "opening_balance": "3515.00",
+      "closing_balance": "2550.42",
+      "issues": 0
+    }
+  },
+  {
+    "name": "兰州银行-对公账户对账单",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/兰州银行.pdf",
+    "tags": ["lanzhou", "corp", "city-commercial"],
+    "expected": {
+      "count": 117,
+      "income_count": 79,
+      "income_sum": "730989.59",
+      "expense_count": 38,
+      "expense_sum": "730862.28",
+      "net": "127.31",
+      "opening_balance": "0.00",
+      "closing_balance": "127.31",
+      "issues": 0
+    }
+  },
+  {
+    "name": "宁波银行-个人交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/宁波银行.pdf",
+    "tags": ["ningbo", "personal", "city-commercial"],
+    "expected": {
+      "count": 27,
+      "income_count": 9,
+      "income_sum": "59906.84",
+      "expense_count": 18,
+      "expense_sum": "56662.64",
+      "net": "3244.20",
+      "opening_balance": "0.00",
+      "closing_balance": "3244.20",
+      "issues": 0
+    }
+  },
+  {
+    "name": "南京银行对公-账户交易明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/银行流水_1(1).pdf",
+    "tags": ["nanjing_corp", "corp", "city-commercial"],
+    "expected": {
+      "count": 601,
+      "income_count": 262,
+      "income_sum": "10156770.01",
+      "expense_count": 339,
+      "expense_sum": "10156844.08",
+      "net": "-74.07",
+      "opening_balance": "173.82",
+      "closing_balance": "99.75",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中原银行-账户交易流水-石丁庚",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/石丁庚/中原银行.pdf",
+    "tags": ["zhongyuan", "personal", "table"],
+    "expected": {
+      "count": 202,
+      "income_count": 42,
+      "income_sum": "422348.09",
+      "expense_count": 160,
+      "expense_sum": "388424.90",
+      "net": "33923.19",
+      "opening_balance": "4041.37",
+      "closing_balance": "37964.56",
+      "issues": 0
+    }
+  },
+  {
+    "name": "成都农村商业银行对公-客户明细-张建蓉",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/张建蓉/张建蓉20260613131759/基础资料/公户_0.pdf",
+    "tags": ["chengdu_rural_corp", "corp", "table"],
+    "expected": {
+      "count": 103,
+      "income_count": 18,
+      "income_sum": "4542903.55",
+      "expense_count": 85,
+      "expense_sum": "4104442.61",
+      "net": "438460.94",
+      "opening_balance": "8766.01",
+      "closing_balance": "447226.95",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202512-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202512-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 0,
+      "income_sum": "0.00",
+      "expense_count": 25,
+      "expense_sum": "284984.63",
+      "net": "-284984.63",
+      "opening_balance": "365462.54",
+      "closing_balance": "80477.91",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202512-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202512-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 5,
+      "income_sum": "3650097.19",
+      "expense_count": 20,
+      "expense_sum": "3366511.94",
+      "net": "283585.25",
+      "opening_balance": "80477.91",
+      "closing_balance": "364063.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202512-3",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202512-3.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 36,
+      "income_count": 11,
+      "income_sum": "5301707.63",
+      "expense_count": 25,
+      "expense_sum": "5544847.63",
+      "net": "-243140.00",
+      "opening_balance": "364063.16",
+      "closing_balance": "120923.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202601-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202601-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 11,
+      "income_sum": "6069200.00",
+      "expense_count": 14,
+      "expense_sum": "6129653.58",
+      "net": "-60453.58",
+      "opening_balance": "120923.16",
+      "closing_balance": "60469.58",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202601-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202601-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 27,
+      "income_count": 9,
+      "income_sum": "865586.04",
+      "expense_count": 18,
+      "expense_sum": "869196.95",
+      "net": "-3610.91",
+      "opening_balance": "60469.58",
+      "closing_balance": "56858.67",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202602-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202602-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 9,
+      "income_sum": "3963767.65",
+      "expense_count": 16,
+      "expense_sum": "3410112.55",
+      "net": "553655.10",
+      "opening_balance": "56858.67",
+      "closing_balance": "610513.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202602-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202602-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 8,
+      "income_count": 1,
+      "income_sum": "86440.04",
+      "expense_count": 7,
+      "expense_sum": "295451.40",
+      "net": "-209011.36",
+      "opening_balance": "610513.77",
+      "closing_balance": "401502.41",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202603-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202603-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 11,
+      "income_sum": "438105.37",
+      "expense_count": 14,
+      "expense_sum": "385210.88",
+      "net": "52894.49",
+      "opening_balance": "401502.41",
+      "closing_balance": "454396.90",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202603-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202603-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 9,
+      "income_count": 2,
+      "income_sum": "280552.03",
+      "expense_count": 7,
+      "expense_sum": "228060.00",
+      "net": "52492.03",
+      "opening_balance": "454396.90",
+      "closing_balance": "506888.93",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 11,
+      "income_sum": "2643800.00",
+      "expense_count": 14,
+      "expense_sum": "3085555.95",
+      "net": "-441755.95",
+      "opening_balance": "506888.93",
+      "closing_balance": "65132.98",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 8,
+      "income_sum": "4090000.00",
+      "expense_count": 17,
+      "expense_sum": "3942556.59",
+      "net": "147443.41",
+      "opening_balance": "65132.98",
+      "closing_balance": "212576.39",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-3",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-3.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 50,
+      "income_count": 8,
+      "income_sum": "7777303.84",
+      "expense_count": 42,
+      "expense_sum": "1958062.08",
+      "net": "5819241.76",
+      "opening_balance": "212576.39",
+      "closing_balance": "6031818.15",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202604-4",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202604-4.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 14,
+      "income_count": 1,
+      "income_sum": "320000.00",
+      "expense_count": 13,
+      "expense_sum": "5584200.40",
+      "net": "-5264200.40",
+      "opening_balance": "6031818.15",
+      "closing_balance": "767617.75",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202605-1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202605-1.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 25,
+      "income_count": 6,
+      "income_sum": "475898.58",
+      "expense_count": 19,
+      "expense_sum": "835342.65",
+      "net": "-359444.07",
+      "opening_balance": "767617.75",
+      "closing_balance": "408173.68",
+      "issues": 0
+    }
+  },
+  {
+    "name": "交行对公-明细对账单-202605-2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/交行公户流水(1)/交行公户流水/交行7283-明细对账单202605-2.pdf",
+    "tags": ["bocom_corp", "corp", "bocom"],
+    "expected": {
+      "count": 21,
+      "income_count": 3,
+      "income_sum": "442113.94",
+      "expense_count": 18,
+      "expense_sum": "821260.32",
+      "net": "-379146.38",
+      "opening_balance": "408173.68",
+      "closing_balance": "29027.30",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行对公-账户明细对账单-集欣物流",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/公户_0(4).pdf",
+    "tags": ["shanghai_corp", "corp", "shanghai"],
+    "expected": {
+      "count": 1169,
+      "income_count": 112,
+      "income_sum": "10869904.93",
+      "expense_count": 1057,
+      "expense_sum": "10553472.22",
+      "net": "316432.71",
+      "opening_balance": "105920.91",
+      "closing_balance": "422353.62",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行对公-账户明细查询-金溪物流",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/杨丽丽(1)/杨丽丽/公户_0.pdf",
+    "tags": ["shanghai_corp", "corp", "shanghai"],
+    "expected": {
+      "count": 1381,
+      "income_count": 683,
+      "income_sum": "31574957.40",
+      "expense_count": 698,
+      "expense_sum": "30351041.40",
+      "net": "1223916.00",
+      "opening_balance": "59607.44",
+      "closing_balance": "1283523.44",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行个人-交易明细-杨丽丽-202506至202606后段",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/杨丽丽(1)/杨丽丽/银行流水_0.pdf",
+    "tags": ["shanghai", "personal"],
+    "expected": {
+      "count": 294,
+      "income_count": 27,
+      "income_sum": "86353.77",
+      "expense_count": 267,
+      "expense_sum": "88209.23",
+      "net": "-1855.46",
+      "opening_balance": "5089.77",
+      "closing_balance": "3234.31",
+      "issues": 0
+    }
+  },
+  {
+    "name": "上海银行个人-交易明细-杨丽丽-202506至202606前段",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/杨丽丽(1)/杨丽丽/银行流水_1.pdf",
+    "tags": ["shanghai", "personal"],
+    "expected": {
+      "count": 206,
+      "income_count": 29,
+      "income_sum": "57856.97",
+      "expense_count": 177,
+      "expense_sum": "83353.98",
+      "net": "-25497.01",
+      "opening_balance": "30586.78",
+      "closing_balance": "5089.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202512至202602",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_2.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 173,
+      "income_count": 38,
+      "income_sum": "2267972.91",
+      "expense_count": 135,
+      "expense_sum": "2265772.30",
+      "net": "2200.61",
+      "opening_balance": "2365.25",
+      "closing_balance": "4565.86",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202602至202603",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_0.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 165,
+      "income_count": 43,
+      "income_sum": "1172216.86",
+      "expense_count": 122,
+      "expense_sum": "1162090.00",
+      "net": "10126.86",
+      "opening_balance": "4565.86",
+      "closing_balance": "14692.72",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202603至202605",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_3.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 173,
+      "income_count": 41,
+      "income_sum": "2092761.39",
+      "expense_count": 132,
+      "expense_sum": "2082984.96",
+      "net": "9776.43",
+      "opening_balance": "14692.72",
+      "closing_balance": "24469.15",
+      "issues": 0
+    }
+  },
+  {
+    "name": "平安银行个人-账户交易明细清单-202606",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/流水(1)/流水/银行流水_1.pdf",
+    "tags": ["pingan", "personal"],
+    "expected": {
+      "count": 8,
+      "income_count": 2,
+      "income_sum": "82065.00",
+      "expense_count": 6,
+      "expense_sum": "89989.00",
+      "net": "-7924.00",
+      "opening_balance": "24469.15",
+      "closing_balance": "16545.15",
+      "issues": 0
+    }
+  },
+  {
+    "name": "兴业银行个人-交易流水-江强",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/8c61235fa2a34b999d0f65bae2bf9b451781072000482.pdf",
+    "tags": ["cib", "personal"],
+    "expected": {
+      "count": 44,
+      "income_count": 18,
+      "income_sum": "435131.93",
+      "expense_count": 26,
+      "expense_sum": "422329.39",
+      "net": "12802.54",
+      "opening_balance": "8259.53",
+      "closing_balance": "21062.07",
+      "issues": 0
+    }
+  },
+  {
+    "name": "华夏银行个人-账户交易流水电子版-辛雨",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/流水0613/银行流水_0(3).pdf",
+    "tags": ["huaxia", "personal"],
+    "expected": {
+      "count": 1010,
+      "income_count": 270,
+      "income_sum": "3399817.50",
+      "expense_count": 740,
+      "expense_sum": "3192180.57",
+      "net": "207636.93",
+      "opening_balance": "59910.35",
+      "closing_balance": "267547.28",
+      "issues": 0
+    }
+  },
+  {
+    "name": "桂林银行对公-企业客户交易清单-张罗洋",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/张罗洋桂林银行.pdf",
+    "tags": ["guilin_corp", "corp"],
+    "expected": {
+      "count": 200,
+      "income_count": 98,
+      "income_sum": "3621206.90",
+      "expense_count": 102,
+      "expense_sum": "3654451.01",
+      "net": "-33244.11",
+      "opening_balance": "40285.81",
+      "closing_balance": "7041.70",
+      "issues": 0
+    }
+  },
+  {
+    "name": "公户客户账户明细-浙江瑞拓智能电气",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/幸小利/公户_0.pdf",
+    "tags": ["customer_account_corp", "corp"],
+    "expected": {
+      "count": 322,
+      "income_count": 78,
+      "income_sum": "6493129.95",
+      "expense_count": 244,
+      "expense_sum": "6102568.19",
+      "net": "390561.76",
+      "opening_balance": "2660.18",
+      "closing_balance": "393221.94",
+      "issues": 0
+    }
+  },
+  {
+    "name": "浙江网商银行对公-企业账户交易明细-张燕",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/张燕/网商.pdf",
+    "tags": ["mybank_corp", "corp"],
+    "expected": {
+      "count": 198,
+      "income_count": 85,
+      "income_sum": "9528442.33",
+      "expense_count": 113,
+      "expense_sum": "9474278.22",
+      "net": "54164.11",
+      "opening_balance": "56475.66",
+      "closing_balance": "110639.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "天津农村商业银行对公-交易明细查询-杜",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/杜/ef6816a9e9f14d99950b6f2cd12610b91782392878046.pdf",
+    "tags": ["tianjin_rural_corp", "corp"],
+    "expected": {
+      "count": 383,
+      "income_count": 109,
+      "income_sum": "10047435.39",
+      "expense_count": 274,
+      "expense_sum": "10097272.09",
+      "net": "-49836.70",
+      "opening_balance": "50079.29",
+      "closing_balance": "242.59",
+      "issues": 0
+    }
+  },
+  {
+    "name": "建设银行个人-活期账户交易明细筛选流水-李红梅",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李红梅/3a08cdc3597c48bc8560cd8d218a6f6e1783050410937.pdf",
+    "tags": ["ccb", "personal", "filtered"],
+    "expected": {
+      "count": 244,
+      "income_count": 103,
+      "income_sum": "13393755.82",
+      "expense_count": 141,
+      "expense_sum": "11263623.25",
+      "net": "2130132.57",
+      "opening_balance": "80238.68",
+      "closing_balance": "1510064.59",
+      "issues": 0
+    }
+  },
+  {
+    "name": "支付宝-交易流水证明-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/支付宝交易明细(20251226-20260626)(1).pdf",
+    "tags": ["alipay", "personal", "problem0701"],
+    "expected": {
+      "count": 855,
+      "income_count": 30,
+      "income_sum": "1101734.00",
+      "expense_count": 825,
+      "expense_sum": "611223.97",
+      "net": "490510.03",
+      "issues": 0
+    }
+  },
+  {
+    "name": "盛京银行-个人交易流水-问题流水0701-王武驰",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_0(4).pdf",
+    "tags": ["shengjing", "personal", "problem0701"],
+    "expected": {
+      "count": 31,
+      "income_count": 17,
+      "income_sum": "373219.23",
+      "expense_count": 14,
+      "expense_sum": "210000.00",
+      "net": "163219.23",
+      "opening_balance": "97518.61",
+      "closing_balance": "260737.84",
+      "issues": 0
+    }
+  },
+  {
+    "name": "盛京银行-个人交易流水-问题流水0701-刘丹",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_1(5).pdf",
+    "tags": ["shengjing", "personal", "problem0701"],
+    "expected": {
+      "count": 231,
+      "income_count": 208,
+      "income_sum": "766765.01",
+      "expense_count": 23,
+      "expense_sum": "776521.02",
+      "net": "-9756.01",
+      "opening_balance": "11983.89",
+      "closing_balance": "2227.88",
+      "issues": 0
+    }
+  },
+  {
+    "name": "邢台银行-账户交易明细-问题流水0701-前段",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_3(1).pdf",
+    "tags": ["xingtai", "corp", "problem0701"],
+    "expected": {
+      "count": 38,
+      "income_count": 25,
+      "income_sum": "513700.45",
+      "expense_count": 13,
+      "expense_sum": "556583.13",
+      "net": "-42882.68",
+      "opening_balance": "161623.18",
+      "closing_balance": "118740.50",
+      "issues": 0
+    }
+  },
+  {
+    "name": "邢台银行-账户交易明细-问题流水0701-后段",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_4(1).pdf",
+    "tags": ["xingtai", "corp", "problem0701"],
+    "expected": {
+      "count": 43,
+      "income_count": 38,
+      "income_sum": "951254.97",
+      "expense_count": 5,
+      "expense_sum": "298960.00",
+      "net": "652294.97",
+      "opening_balance": "118740.50",
+      "closing_balance": "771035.47",
+      "issues": 0
+    }
+  },
+  {
+    "name": "兴业银行-强水印交易明细-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_1(2).pdf",
+    "tags": ["cib", "personal", "watermark", "problem0701"],
+    "expected": {
+      "count": 864,
+      "income_count": 171,
+      "income_sum": "8005956.16",
+      "expense_count": 693,
+      "expense_sum": "8024370.99",
+      "net": "-18414.83",
+      "issues": 0
+    }
+  },
+  {
+    "name": "建设银行对公-账户明细信息-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/公户_0(1).pdf",
+    "tags": ["ccb_corp", "corp", "problem0701"],
+    "expected": {
+      "count": 200,
+      "income_count": 73,
+      "income_sum": "6033708.05",
+      "expense_count": 127,
+      "expense_sum": "5981575.66",
+      "net": "52132.39",
+      "opening_balance": "1110.77",
+      "closing_balance": "53243.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "招商银行-个人流水无摘要行-问题流水0701",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/问题流水0701/银行流水_0(5).pdf",
+    "tags": ["cmb", "personal", "problem0701"],
+    "expected": {
+      "count": 519,
+      "income_count": 316,
+      "income_sum": "40855678.35",
+      "expense_count": 203,
+      "expense_sum": "40858068.22",
+      "net": "-2389.87",
+      "opening_balance": "31464.83",
+      "closing_balance": "29074.96",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农村商业银行个人-交易明细缺页提示-李骏军",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/银行流水_0(8).pdf",
+    "tags": ["rural_commercial", "personal", "partial"],
+    "expected": {
+      "count": 570,
+      "income_count": 168,
+      "income_sum": "33285438.91",
+      "expense_count": 402,
+      "expense_sum": "33101395.33",
+      "net": "184043.58",
+      "opening_balance": "238308.72",
+      "closing_balance": "422352.30",
+      "issues": 5
     }
   }
 ]

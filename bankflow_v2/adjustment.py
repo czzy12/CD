@@ -3,10 +3,12 @@ from decimal import Decimal
 import random
 
 from .models import Transaction
-from .summary import CENT, ZERO, monthly_summaries, summarize
+from .summary import CENT, ZERO, Summary, monthly_summaries, summarize
 
 
 WAN = Decimal("10000")
+WECHAT_MIN_MONTHLY_NET = Decimal("100.00")
+WECHAT_MAX_MONTHLY_NET = Decimal("500.00")
 
 
 @dataclass
@@ -84,13 +86,141 @@ def split_amount(total: Decimal, parts: int, randomized: bool = False, seed_text
     return amounts
 
 
+def _is_wechat_transaction(tx: Transaction) -> bool:
+    return getattr(tx, "flow_type", "") == "微信" or getattr(tx, "bank", "") == "微信流水"
+
+
+def _copy_summary(summary: Summary) -> Summary:
+    return Summary(
+        count=summary.count,
+        income_count=summary.income_count,
+        income_sum=summary.income_sum,
+        expense_count=summary.expense_count,
+        expense_sum=summary.expense_sum,
+        net=summary.net,
+        opening_balance=summary.opening_balance,
+        closing_balance=summary.closing_balance,
+        issues=list(summary.issues),
+    )
+
+
+def _sum_summaries(summaries: list[Summary]) -> Summary:
+    total = Summary()
+    for summary in summaries:
+        total.count += summary.count
+        total.income_count += summary.income_count
+        total.income_sum += summary.income_sum
+        total.expense_count += summary.expense_count
+        total.expense_sum += summary.expense_sum
+    total.income_sum = total.income_sum.quantize(CENT)
+    total.expense_sum = total.expense_sum.quantize(CENT)
+    total.net = (total.income_sum - total.expense_sum).quantize(CENT)
+    return total
+
+
+def _split_by_weights(total: Decimal, weights: list[Decimal]) -> list[Decimal]:
+    if not weights:
+        return []
+    if total <= ZERO:
+        return [ZERO for _weight in weights]
+    weight_sum = sum(weights, ZERO)
+    if weight_sum <= ZERO:
+        weights = [Decimal("1") for _weight in weights]
+        weight_sum = sum(weights, ZERO)
+    amounts = [(total * weight / weight_sum).quantize(CENT) for weight in weights[:-1]]
+    amounts.append((total - sum(amounts, ZERO)).quantize(CENT))
+    return amounts
+
+
+def _expense_capacity(index: int, incomes: list[Decimal], reserves: list[Decimal], expenses: list[Decimal]) -> Decimal:
+    running_income = ZERO
+    running_expense = ZERO
+    capacity: Decimal | None = None
+    for month_index, (income, expense) in enumerate(zip(incomes, expenses)):
+        running_income += income
+        running_expense += expense
+        if month_index >= index:
+            available = (running_income - reserves[month_index] - running_expense).quantize(CENT)
+            capacity = available if capacity is None else min(capacity, available)
+    return max(capacity or ZERO, ZERO)
+
+
+def _balance_wechat_month_pairs(month_pairs: list[tuple[str, Summary]]) -> list[tuple[str, Summary]]:
+    balanced = [(month, _copy_summary(summary)) for month, summary in month_pairs]
+    if not balanced:
+        return balanced
+
+    months = [month for month, _summary in balanced]
+    by_month = dict(balanced)
+    incomes = [by_month[month].income_sum for month in months]
+    raw_expenses = [by_month[month].expense_sum for month in months]
+    total_income = sum(incomes, ZERO).quantize(CENT)
+    if total_income <= ZERO:
+        for _month, summary in balanced:
+            summary.expense_sum = ZERO
+            summary.net = ZERO
+        return balanced
+
+    rng_seed = "|".join(
+        [
+            "wechat_default_expense",
+            ",".join(months),
+            ",".join(str(income) for income in incomes),
+            ",".join(str(expense) for expense in raw_expenses),
+        ]
+    )
+    rng = random.Random(rng_seed)
+    reserves: list[Decimal] = []
+    running_income = ZERO
+    for income in incomes:
+        running_income += income
+        reserve = Decimal(rng.randint(int(WECHAT_MIN_MONTHLY_NET), int(WECHAT_MAX_MONTHLY_NET))).quantize(CENT)
+        reserves.append(min(reserve, running_income).quantize(CENT))
+
+    target_total_expense = max(total_income - reserves[-1], ZERO).quantize(CENT)
+    expenses = _split_by_weights(target_total_expense, raw_expenses)
+
+    running_income = ZERO
+    running_expense = ZERO
+    for index, income in enumerate(incomes):
+        running_income += income
+        running_expense += expenses[index]
+        limit = (running_income - reserves[index]).quantize(CENT)
+        if running_expense > limit:
+            reduction = min(expenses[index], (running_expense - limit).quantize(CENT))
+            expenses[index] = (expenses[index] - reduction).quantize(CENT)
+            running_expense = (running_expense - reduction).quantize(CENT)
+
+    remaining = (target_total_expense - sum(expenses, ZERO)).quantize(CENT)
+    for index in range(len(expenses) - 1, -1, -1):
+        if remaining <= ZERO:
+            break
+        addition = min(_expense_capacity(index, incomes, reserves, expenses), remaining).quantize(CENT)
+        expenses[index] = (expenses[index] + addition).quantize(CENT)
+        remaining = (remaining - addition).quantize(CENT)
+
+    for month, expense in zip(months, expenses):
+        summary = by_month[month]
+        summary.expense_sum = max(expense, ZERO).quantize(CENT)
+        summary.net = (summary.income_sum - summary.expense_sum).quantize(CENT)
+    return balanced
+
+
 def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentConfig]) -> AdjustmentResult:
     enabled_configs = [config for config in configs if config.enabled]
     active_configs = [config for config in enabled_configs if config.amount_wan != ZERO]
     warnings = [f"{config.label}已启用，但调整金额为空或为 0" for config in enabled_configs if config.amount_wan == ZERO]
     balanced = any(config.balanced for config in enabled_configs)
     rows: list[AdjustmentRow] = []
-    month_pairs = monthly_summaries(transactions)
+    wechat_income_mode = (
+        bool(active_configs)
+        and not balanced
+        and bool(transactions)
+        and all(_is_wechat_transaction(tx) for tx in transactions)
+    )
+    raw_month_pairs = monthly_summaries(transactions)
+    raw_summary_by_month = dict(raw_month_pairs)
+    month_pairs = _balance_wechat_month_pairs(raw_month_pairs) if wechat_income_mode else raw_month_pairs
     months = [month for month, _ in month_pairs]
     summary_by_month = dict(month_pairs)
     allocations: dict[str, tuple[Decimal, Decimal, list[str]]] = {
@@ -128,12 +258,28 @@ def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentC
                 notes.append(f"收入调整（{distribution_note}）")
             allocations[month] = (income_adjustment.quantize(CENT), expense_adjustment.quantize(CENT), notes)
 
+    wechat_adjusted_by_month: dict[str, Summary] = {}
+    if wechat_income_mode:
+        adjusted_month_pairs = []
+        for month, summary in month_pairs:
+            income_adjustment, expense_adjustment, _notes = allocations[month]
+            adjusted_summary = _copy_summary(raw_summary_by_month[month])
+            adjusted_summary.income_sum = (adjusted_summary.income_sum + income_adjustment).quantize(CENT)
+            adjusted_summary.expense_sum = (adjusted_summary.expense_sum + expense_adjustment).quantize(CENT)
+            adjusted_summary.net = (adjusted_summary.income_sum - adjusted_summary.expense_sum).quantize(CENT)
+            adjusted_month_pairs.append((month, adjusted_summary))
+        wechat_adjusted_by_month = dict(_balance_wechat_month_pairs(adjusted_month_pairs))
+
     previous_adjusted_closing: Decimal | None = None
     for month in months:
         summary = summary_by_month[month]
         income_adjustment, expense_adjustment, notes = allocations[month]
         adjusted_income = (summary.income_sum + income_adjustment).quantize(CENT)
         adjusted_expense = (summary.expense_sum + expense_adjustment).quantize(CENT)
+        if wechat_income_mode:
+            adjusted_summary = wechat_adjusted_by_month[month]
+            adjusted_income = adjusted_summary.income_sum
+            adjusted_expense = adjusted_summary.expense_sum
         adjusted_net = (adjusted_income - adjusted_expense).quantize(CENT)
 
         if previous_adjusted_closing is None:
@@ -172,11 +318,15 @@ def apply_adjustments(transactions: list[Transaction], configs: list[AdjustmentC
         previous_adjusted_closing = adjusted_closing
 
     if rows:
-        original_total = summarize(transactions, "调整前总计")
+        original_total = _sum_summaries(list(summary_by_month.values())) if wechat_income_mode else summarize(transactions, "调整前总计")
         income_adjustment = sum((row.income_adjustment for row in rows), ZERO).quantize(CENT)
         expense_adjustment = sum((row.expense_adjustment for row in rows), ZERO).quantize(CENT)
-        adjusted_income = (original_total.income_sum + income_adjustment).quantize(CENT)
-        adjusted_expense = (original_total.expense_sum + expense_adjustment).quantize(CENT)
+        if wechat_income_mode:
+            adjusted_income = sum((row.adjusted_income_sum for row in rows), ZERO).quantize(CENT)
+            adjusted_expense = sum((row.adjusted_expense_sum for row in rows), ZERO).quantize(CENT)
+        else:
+            adjusted_income = (original_total.income_sum + income_adjustment).quantize(CENT)
+            adjusted_expense = (original_total.expense_sum + expense_adjustment).quantize(CENT)
         adjusted_opening = rows[0].adjusted_opening_balance
         adjusted_closing = rows[-1].adjusted_closing_balance
         rows.append(

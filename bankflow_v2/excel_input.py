@@ -1,17 +1,52 @@
 import re
+from html.parser import HTMLParser
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from zipfile import BadZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .models import Transaction
-from .number_parser import extract_signed_amount, money_to_decimal
+from .number_parser import balance_candidates, extract_signed_amount, money_to_decimal
 
 
 BANK_NAME = "Excel导入"
 CENT = Decimal("0.01")
+
+
+class _HtmlTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tables: list[list[tuple[Any, ...]]] = []
+        self._current_table: list[tuple[Any, ...]] | None = None
+        self._current_row: list[str] | None = None
+        self._current_cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "table":
+            self._current_table = []
+        elif tag == "tr" and self._current_table is not None:
+            self._current_row = []
+        elif tag in {"td", "th"} and self._current_row is not None:
+            self._current_cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_cell is not None:
+            self._current_cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"td", "th"} and self._current_cell is not None and self._current_row is not None:
+            self._current_row.append("".join(self._current_cell).strip())
+            self._current_cell = None
+        elif tag == "tr" and self._current_row is not None and self._current_table is not None:
+            self._current_table.append(tuple(self._current_row))
+            self._current_row = None
+        elif tag == "table" and self._current_table is not None:
+            self.tables.append(self._current_table)
+            self._current_table = None
 
 
 def _norm(value: Any) -> str:
@@ -28,6 +63,14 @@ def _cell_text(value: Any) -> str:
     if isinstance(value, time):
         return value.strftime("%H:%M:%S")
     return str(value).strip()
+
+
+def _read_html_excel_tables(path: str) -> list[list[tuple[Any, ...]]]:
+    raw = Path(path).read_bytes()
+    text = raw.decode("utf-8", errors="ignore")
+    parser = _HtmlTableParser()
+    parser.feed(text)
+    return parser.tables
 
 
 def _find_col(headers: list[str], names: tuple[str, ...], exclude: set[int] | None = None) -> int | None:
@@ -63,7 +106,7 @@ def _parse_time_part(value: Any) -> time:
         return value.time().replace(microsecond=0)
     if isinstance(value, time):
         return value.replace(microsecond=0)
-    text = _cell_text(value).replace("：", ":")
+    text = _cell_text(value).replace("：", ":").replace("；", ":").replace(";", ":")
     match = re.search(r"(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?", text)
     if not match:
         return time(0, 0, 0)
@@ -73,18 +116,36 @@ def _parse_time_part(value: Any) -> time:
         return time(0, 0, 0)
 
 
+def _normalize_ocr_date_text(value: Any) -> str:
+    text = _cell_text(value).strip()
+    replacements = str.maketrans({
+        "G": "6",
+        "g": "6",
+        "E": "6",
+        "e": "6",
+        "D": "0",
+        "d": "0",
+        "O": "0",
+        "o": "0",
+        "I": "1",
+        "l": "1",
+    })
+    return text.translate(replacements)
+
+
 def _parse_datetime(date_value: Any, time_value: Any | None = None) -> datetime | None:
     if isinstance(date_value, datetime) and time_value in (None, ""):
         return date_value.replace(microsecond=0)
 
     if time_value not in (None, ""):
-        parsed_date = _parse_date_part(date_value)
+        parsed_date = _parse_date_part(_normalize_ocr_date_text(date_value))
         if parsed_date is None:
             return None
         return datetime.combine(parsed_date, _parse_time_part(time_value))
 
-    text = _cell_text(date_value).replace("：", ":").replace("/", "-")
+    text = _normalize_ocr_date_text(date_value).replace("：", ":").replace("/", "-")
     text = text.replace("年", "-").replace("月", "-").replace("日", " ")
+    text = re.sub(r"(\d{4}-\d{1,2}-)\s*(\d{1,2})(\d{1,2}:\d{1,2}(?::\d{1,2})?)", r"\1\2 \3", text)
     match = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", text)
     if not match:
         return None
@@ -138,9 +199,38 @@ def _direction(text: str) -> str | None:
 
 def _resolve_missing_directions(transactions: list[Transaction]) -> None:
     previous: Transaction | None = None
-    for tx in sorted(transactions, key=lambda item: (item.transaction_time, item.row_no)):
+    ordered = sorted(transactions, key=lambda item: (item.transaction_time, item.row_no))
+
+    for tx in ordered:
         if previous is not None and previous.balance is not None and tx.balance is not None:
             amount = _parse_money(tx.raw_amount)
+            if amount is not None:
+                possible_deltas = [amount]
+                if amount > 0:
+                    possible_deltas.append(-amount)
+                for delta in possible_deltas:
+                    expected = (previous.balance + delta).quantize(CENT)
+                    if _expected_supported_by_raw(expected, tx.raw_balance, _boc_balance_candidates(tx.raw_balance)):
+                        tx.balance = expected
+                        break
+        previous = tx if tx.balance is not None else previous
+
+    previous = None
+    for tx in ordered:
+        if previous is not None and previous.balance is not None and tx.balance is not None:
+            amount = _parse_money(tx.raw_amount)
+            balance_delta = (tx.balance - previous.balance).quantize(CENT)
+            current_amount = (tx.income - tx.expense).quantize(CENT)
+            if amount is not None and current_amount != balance_delta:
+                if balance_delta >= Decimal("0.00"):
+                    tx.income = balance_delta
+                    tx.expense = Decimal("0.00")
+                else:
+                    tx.income = Decimal("0.00")
+                    tx.expense = -balance_delta
+                tx.issues = [issue for issue in tx.issues if issue != "收支方向无法解析"]
+                if not tx.issues:
+                    tx.status = "ok"
             if amount is not None and tx.income == 0 and tx.expense == 0:
                 if (previous.balance + amount).quantize(CENT) == tx.balance.quantize(CENT):
                     tx.income = amount
@@ -162,7 +252,7 @@ def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, list[str], dict[s
         amount_col = _find_col(headers, ("交易金额", "发生额", "本次金额", "交易额", "金额"))
         income_col = _find_col(headers, ("收入金额", "收入", "贷方发生额", "贷方", "贷"))
         expense_col = _find_col(headers, ("支出金额", "支出", "借方发生额", "借方", "借"))
-        direction_col = _find_col(headers, ("收入/支出", "收入支出", "收支", "借贷标志", "借贷状态", "借贷方向", "方向"))
+        direction_col = _find_col(headers, ("收入/支出", "支出/收入", "收/支", "支/收", "收入支出", "支出收入", "收支", "借贷标志", "借贷状态", "借贷方向", "方向"))
 
         exclude = {col for col in (amount_col, income_col, expense_col) if col is not None}
         balance_col = _find_col(headers, ("账户余额", "本次余额", "交易余额", "余额", "金额"), exclude)
@@ -180,7 +270,391 @@ def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, list[str], dict[s
     return None
 
 
+def _is_boc_converted_sheet(rows: list[tuple[Any, ...]]) -> bool:
+    sample = "\n".join(" ".join(_cell_text(cell) for cell in row[:8]) for row in rows[:8])
+    if "中国银行交易流水明细清单" in sample and "记账日期" in sample and "金额" in sample and "余额" in sample:
+        return True
+    for row in rows[:12]:
+        headers = [_norm(cell) for cell in row]
+        if all(header in headers for header in ("记账日期", "记账时间", "币别", "金额", "余额", "交易名称")):
+            return True
+    return False
+
+
+def _label_money(text: str, label: str) -> Decimal | None:
+    position = text.find(label)
+    if position == -1:
+        return None
+    match = re.search(r"-?[\d,，]+(?:[.．]\d+)?", text[position + len(label) : position + len(label) + 80])
+    if not match:
+        return None
+    return _parse_money(match.group(0))
+
+
+def _label_int(text: str, label: str) -> int | None:
+    position = text.find(label)
+    if position == -1:
+        return None
+    match = re.search(r"\d+", text[position + len(label) : position + len(label) + 30].replace(",", ""))
+    if not match:
+        return None
+    return int(match.group(0))
+
+
+def _boc_filter_direction(rows: list[tuple[Any, ...]]) -> str | None:
+    sample = "\n".join(" ".join(_cell_text(cell) for cell in row) for row in rows[:120])
+    compact = _norm(sample)
+    if "按收支筛选" not in compact:
+        return None
+    if "按收支筛选:收入" in compact or "按收支筛选：收入" in compact:
+        return "income"
+    if "按收支筛选:支出" in compact or "按收支筛选：支出" in compact:
+        return "expense"
+    return None
+
+
+def _boc_page_credit_totals(rows: list[tuple[Any, ...]]) -> list[tuple[int, Decimal]]:
+    totals: list[tuple[int, Decimal]] = []
+    for row_index, row in enumerate(rows, start=1):
+        row_text = " ".join(_cell_text(cell) for cell in row)
+        total = _label_money(row_text, "贷方发生数")
+        if total is not None:
+            totals.append((row_index, total))
+    return totals
+
+
+def _boc_page_for_row(row_no: int, page_totals: list[tuple[int, Decimal]]) -> tuple[int, Decimal] | None:
+    current: tuple[int, Decimal] | None = None
+    for page_index, (start_row, total) in enumerate(page_totals, start=1):
+        if row_no < start_row:
+            break
+        current = (page_index, total)
+    return current
+
+
+def _repair_boc_filtered_income_amounts(transactions: list[Transaction]) -> None:
+    grouped: dict[int, list[Transaction]] = {}
+    page_totals: dict[int, Decimal] = {}
+    for tx in transactions:
+        page_index = getattr(tx, "statement_page_no", None)
+        page_total = getattr(tx, "statement_page_credit_total", None)
+        if page_index is None or page_total is None:
+            continue
+        grouped.setdefault(page_index, []).append(tx)
+        page_totals[page_index] = page_total
+
+    for page_index, items in grouped.items():
+        page_total = page_totals[page_index]
+        page_sum = sum((tx.income for tx in items), Decimal("0.00")).quantize(CENT)
+        diff = (page_total - page_sum).quantize(CENT)
+        if diff == Decimal("0.00"):
+            continue
+
+        matches: list[tuple[Transaction, Decimal]] = []
+        for tx in items:
+            expected = (tx.income + diff).quantize(CENT)
+            if expected <= Decimal("0.00"):
+                continue
+            raw_amount = tx.raw_amount
+            candidates = [_parse_money(raw_amount)] if _parse_money(raw_amount) is not None else []
+            if _expected_supported_by_raw(expected, raw_amount, candidates):
+                matches.append((tx, expected))
+
+        if len(matches) == 1:
+            tx, expected = matches[0]
+            tx.income = expected
+            tx.raw_amount = f"{tx.raw_amount} -> {expected:.2f}"
+            tx.raw_text = f"{tx.raw_text} | 金额按页贷方发生数校正"
+
+
+def _extract_boc_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
+    header_mapping = None
+    for row_index, row in enumerate(rows[:30]):
+        headers = [_norm(cell) for cell in row]
+        date_col = _find_col(headers, ("记账日期",))
+        time_col = _find_col(headers, ("记账时间",))
+        currency_col = _find_col(headers, ("币别",))
+        amount_col = _find_col(headers, ("金额",))
+        balance_col = _find_col(headers, ("余额",))
+        if None not in (date_col, time_col, currency_col, amount_col, balance_col):
+            header_mapping = (row_index, headers, date_col, time_col, currency_col, amount_col, balance_col)
+            break
+    if header_mapping is None:
+        return []
+
+    header_row, headers, date_col, time_col, currency_col, amount_col, balance_col = header_mapping
+    filter_direction = _boc_filter_direction(rows)
+    page_totals = _boc_page_credit_totals(rows)
+    transactions: list[Transaction] = []
+    for excel_row_index, row in enumerate(rows[header_row + 1 :], start=header_row + 2):
+        currency = _norm(row[currency_col] if currency_col < len(row) else "")
+        if currency != "人民币":
+            continue
+
+        tx_time = _parse_datetime(
+            row[date_col] if date_col < len(row) else None,
+            row[time_col] if time_col < len(row) else None,
+        )
+        amount = _parse_money(row[amount_col] if amount_col < len(row) else None)
+        balance = _parse_money(row[balance_col] if balance_col < len(row) else None)
+        if tx_time is None or amount is None or balance is None:
+            continue
+
+        if filter_direction == "income":
+            income = abs(amount)
+            expense = Decimal("0.00")
+        elif filter_direction == "expense":
+            income = Decimal("0.00")
+            expense = abs(amount)
+        else:
+            income = amount if amount >= 0 else Decimal("0.00")
+            expense = -amount if amount < 0 else Decimal("0.00")
+        raw_fields = [_cell_text(cell) for cell in row]
+        tx = Transaction(
+            # BOC converted sheets are printed newest-first. When two rows have
+            # the same second, row order must be reversed to restore the chain.
+            transaction_time=tx_time.replace(microsecond=max(0, 999999 - excel_row_index)),
+            income=income.quantize(CENT),
+            expense=expense.quantize(CENT),
+            balance=balance.quantize(CENT),
+            bank="中国银行Excel导入",
+            page_no=sheet_index,
+            row_no=excel_row_index,
+            raw_time=f"{_cell_text(row[date_col])} {_cell_text(row[time_col])}",
+            raw_amount=_cell_text(row[amount_col]),
+            raw_balance=_cell_text(row[balance_col]),
+            raw_text=" | ".join(raw_fields),
+            raw_fields=raw_fields,
+            raw_headers=headers,
+        )
+        tx.preserve_signed_columns = True
+        if filter_direction in {"income", "expense"}:
+            tx.balance_optional = True
+        page_info = _boc_page_for_row(excel_row_index, page_totals)
+        if page_info is not None:
+            tx.statement_page_no, tx.statement_page_credit_total = page_info
+        transactions.append(tx)
+
+    if filter_direction == "income":
+        _repair_boc_filtered_income_amounts(transactions)
+    if filter_direction is None:
+        _resolve_boc_converted_balances(transactions)
+    return transactions
+
+
+def _balance_cents(value: Decimal) -> str:
+    return f"{value.quantize(CENT):.2f}".replace(".", "")
+
+
+def _raw_balance_digits(raw: str) -> str:
+    normalized = _normalize_ocr_date_text(raw)
+    return re.sub(r"\D", "", normalized)
+
+
+def _boc_balance_candidates(raw: str) -> list[Decimal]:
+    candidates: list[Decimal] = []
+    seen: set[Decimal] = set()
+
+    def add(value: Decimal | None) -> None:
+        if value is not None and value >= Decimal("0.00") and value not in seen:
+            candidates.append(value.quantize(CENT))
+            seen.add(value.quantize(CENT))
+
+    normalized = _normalize_ocr_date_text(raw)
+    add(_parse_money(normalized))
+    for candidate in balance_candidates(normalized):
+        add(candidate)
+
+    digits = _raw_balance_digits(raw)
+    if "." not in normalized and len(digits) > 4:
+        try:
+            add((Decimal(digits) / Decimal("100")).quantize(CENT))
+        except InvalidOperation:
+            pass
+    return candidates
+
+
+def _expected_supported_by_raw(expected: Decimal, raw: str, candidates: list[Decimal]) -> bool:
+    expected_digits = _balance_cents(expected)
+    raw_digits = _raw_balance_digits(raw)
+    if expected in candidates:
+        return True
+    if any(expected_digits.endswith(_balance_cents(candidate)) for candidate in candidates):
+        return True
+    # PDF-to-Excel OCR can drop one digit from the balance. Only repair when
+    # nearly all raw digits appear in the expected balance in order.
+    if raw_digits and len(raw_digits) >= 5:
+        position = 0
+        for char in expected_digits:
+            if position < len(raw_digits) and raw_digits[position] == char:
+                position += 1
+        if position >= len(raw_digits) - 1:
+            return True
+    return False
+
+
+def _resolve_boc_converted_balances(transactions: list[Transaction]) -> None:
+    previous_balance: Decimal | None = None
+    for tx in sorted(transactions, key=lambda item: (item.transaction_time, item.page_no, item.row_no)):
+        amount = (tx.income - tx.expense).quantize(CENT)
+        candidates = _boc_balance_candidates(tx.raw_balance)
+        if previous_balance is not None:
+            expected = (previous_balance + amount).quantize(CENT)
+            if _expected_supported_by_raw(expected, tx.raw_balance, candidates):
+                tx.balance = expected
+        elif candidates:
+            tx.balance = candidates[0]
+        if tx.balance is not None:
+            previous_balance = tx.balance.quantize(CENT)
+
+
+def _is_hkb_converted_sheet(rows: list[tuple[Any, ...]]) -> bool:
+    sample = "\n".join(" ".join(_cell_text(cell) for cell in row) for row in rows[:12])
+    compact = _norm(sample)
+    return (
+        "账户交易明细查询" in compact
+        and "交易笔数" in compact
+        and "贷方交易合计金额" in compact
+        and "借方交易合计金额" in compact
+        and any(
+            all(header in [_norm(cell) for cell in row] for header in ("序号", "交易日期", "交易时间", "收入金额", "支出金额", "余额"))
+            for row in rows[:30]
+        )
+    )
+
+
+def _hkb_header_totals(rows: list[tuple[Any, ...]]) -> tuple[int | None, Decimal | None, Decimal | None]:
+    header_text = "\n".join(" ".join(_cell_text(cell) for cell in row if cell is not None) for row in rows[:12])
+    return (
+        _label_int(header_text, "交易笔数："),
+        _label_money(header_text, "贷方交易合计金额："),
+        _label_money(header_text, "借方交易合计金额："),
+    )
+
+
+def _parse_hkb_datetime(date_value: Any, time_value: Any) -> datetime | None:
+    parsed_date = _parse_date_part(_normalize_ocr_date_text(date_value))
+    if parsed_date is None:
+        return None
+
+    time_text = _cell_text(time_value).replace("：", ":").strip()
+    match = re.search(r"(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?", time_text)
+    if not match:
+        match = re.search(r"^(\d{1,2})(\d{2}):(\d{2})", time_text)
+        if not match:
+            return datetime.combine(parsed_date, time(0, 0, 0))
+        hour, minute, second = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    else:
+        hour, minute, second = int(match.group(1)), int(match.group(2)), int(match.group(3) or "0")
+
+    if hour > 23 or minute > 59 or second > 59:
+        return datetime.combine(parsed_date, time(0, 0, 0))
+    return datetime.combine(parsed_date, time(hour, minute, second))
+
+
+def _repair_hkb_balances(transactions: list[Transaction]) -> None:
+    previous: Transaction | None = None
+    for tx in sorted(transactions, key=lambda item: item.row_no):
+        if previous is not None and previous.balance is not None and tx.balance is not None:
+            expected = (previous.balance + tx.income - tx.expense).quantize(CENT)
+            if tx.balance != expected and _raw_balance_digits(tx.raw_balance) == _balance_cents(expected):
+                tx.balance = expected
+                tx.raw_balance = f"{tx.raw_balance} -> {expected:.2f}"
+                tx.raw_text = f"{tx.raw_text} | 余额按流水链校正"
+        previous = tx if tx.balance is not None else previous
+
+
+def _validate_hkb_header_totals(
+    transactions: list[Transaction],
+    expected_count: int | None,
+    expected_income: Decimal | None,
+    expected_expense: Decimal | None,
+) -> None:
+    if not transactions:
+        return
+
+    issues: list[str] = []
+    income = sum((tx.income for tx in transactions), Decimal("0.00")).quantize(CENT)
+    expense = sum((tx.expense for tx in transactions), Decimal("0.00")).quantize(CENT)
+    if expected_count is not None and len(transactions) != expected_count:
+        issues.append(f"交易笔数与页眉不一致: 解析 {len(transactions)} / 页眉 {expected_count}")
+    if expected_income is not None and income != expected_income:
+        issues.append(f"贷方合计与页眉不一致: 解析 {income:.2f} / 页眉 {expected_income:.2f}")
+    if expected_expense is not None and expense != expected_expense:
+        issues.append(f"借方合计与页眉不一致: 解析 {expense:.2f} / 页眉 {expected_expense:.2f}")
+
+    if issues:
+        first = transactions[0]
+        first.status = "review"
+        first.issues.extend(issues)
+
+
+def _extract_hkb_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
+    expected_count, expected_income, expected_expense = _hkb_header_totals(rows)
+    cols: dict[str, int] | None = None
+    headers: list[str] = []
+    transactions: list[Transaction] = []
+
+    for excel_row_index, row in enumerate(rows, start=1):
+        normalized = [_norm(cell) for cell in row]
+        if all(header in normalized for header in ("序号", "交易日期", "交易时间", "收入金额", "支出金额", "余额")):
+            headers = normalized
+            cols = {
+                key: normalized.index(key)
+                for key in ("序号", "交易日期", "交易时间", "收入金额", "支出金额", "摘要", "用途", "对方账号", "对方户名", "余额")
+                if key in normalized
+            }
+            continue
+        if cols is None:
+            continue
+
+        seq_text = _norm(row[cols["序号"]] if cols["序号"] < len(row) else "")
+        if not re.fullmatch(r"\d+", seq_text):
+            continue
+
+        tx_time = _parse_hkb_datetime(
+            row[cols["交易日期"]] if cols["交易日期"] < len(row) else None,
+            row[cols["交易时间"]] if cols["交易时间"] < len(row) else None,
+        )
+        income = _parse_money(row[cols["收入金额"]] if cols["收入金额"] < len(row) else None) or Decimal("0.00")
+        expense = _parse_money(row[cols["支出金额"]] if cols["支出金额"] < len(row) else None) or Decimal("0.00")
+        balance = _parse_money(row[cols["余额"]] if cols["余额"] < len(row) else None)
+        if tx_time is None or balance is None or (income == Decimal("0.00") and expense == Decimal("0.00")):
+            continue
+
+        raw_fields = [_cell_text(cell) for cell in row]
+        raw_amount = raw_fields[cols["收入金额"]] if income != Decimal("0.00") else raw_fields[cols["支出金额"]]
+        tx = Transaction(
+            transaction_time=tx_time,
+            income=income.quantize(CENT),
+            expense=expense.quantize(CENT),
+            balance=balance.quantize(CENT),
+            bank="汉口银行对公Excel导入",
+            page_no=sheet_index,
+            row_no=excel_row_index,
+            raw_time=_cell_text(row[cols["交易日期"]]),
+            raw_amount=raw_amount,
+            raw_balance=raw_fields[cols["余额"]] if cols["余额"] < len(raw_fields) else "",
+            raw_text=" | ".join(raw_fields),
+            raw_fields=raw_fields,
+            raw_headers=headers,
+        )
+        tx.preserve_signed_columns = True
+        tx.statement_sequence = int(seq_text)
+        transactions.append(tx)
+
+    _repair_hkb_balances(transactions)
+    _validate_hkb_header_totals(transactions, expected_count, expected_income, expected_expense)
+    return transactions
+
+
 def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
+    if _is_hkb_converted_sheet(rows):
+        return _extract_hkb_converted_sheet(rows, sheet_index)
+
+    if _is_boc_converted_sheet(rows):
+        return _extract_boc_converted_sheet(rows, sheet_index)
+
     mapping = _header_mapping(rows)
     if mapping is None:
         return []
@@ -213,12 +687,15 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
         elif amount is not None:
             raw_direction = _cell_text(row[cols["direction"]]) if cols["direction"] is not None and cols["direction"] < len(row) else ""
             direction = _direction(raw_direction)
-            if direction == "income":
-                income = amount
+            if cols["direction"] is not None and not raw_direction.strip():
+                income = Decimal("0.00")
+                expense = Decimal("0.00")
+            elif direction == "income":
+                income = abs(amount)
                 expense = Decimal("0.00")
             elif direction == "expense":
                 income = Decimal("0.00")
-                expense = amount
+                expense = abs(amount)
             elif amount < 0:
                 income = Decimal("0.00")
                 expense = abs(amount)
@@ -253,14 +730,26 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
         )
         tx.preserve_signed_columns = True
         tx.balance_tolerance = Decimal("0.99")
+        if cols["balance"] is None:
+            tx.balance_optional = True
         transactions.append(tx)
 
-    _resolve_missing_directions(transactions)
+    if cols["income"] is None and cols["expense"] is None:
+        _resolve_missing_directions(transactions)
     return transactions
 
 
 def extract_excel_transactions(path: str) -> list[Transaction]:
-    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except (BadZipFile, InvalidFileException):
+        best: list[Transaction] = []
+        for sheet_index, rows in enumerate(_read_html_excel_tables(path), start=1):
+            transactions = _extract_sheet(rows, sheet_index)
+            if len(transactions) > len(best):
+                best = transactions
+        return best
+
     best: list[Transaction] = []
     for sheet_index, worksheet in enumerate(workbook.worksheets, start=1):
         rows = list(worksheet.iter_rows(values_only=True))

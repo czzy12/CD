@@ -58,6 +58,11 @@ def _row_is_non_current_account(row: list) -> bool:
     return "活期" not in account_type_text and ("定期" in account_type_text or "通知存款" in account_type_text)
 
 
+def _row_is_foreign_currency(row: list) -> bool:
+    currency_text = "".join(_clean_cell(cell) for cell in row[4:6])
+    return any(name in currency_text for name in ("美元", "港币", "欧元", "日元", "英镑"))
+
+
 def extract_icbc(pdf_path: str) -> list[Transaction]:
     rows: list[tuple[int, int, list, datetime]] = []
 
@@ -68,6 +73,8 @@ def extract_icbc(pdf_path: str) -> list[Transaction]:
                     if not row or not _row_is_transaction(row):
                         continue
                     if _row_is_non_current_account(row):
+                        continue
+                    if _row_is_foreign_currency(row):
                         continue
 
                     tx_time = parse_icbc_time(row[DATE_COL])

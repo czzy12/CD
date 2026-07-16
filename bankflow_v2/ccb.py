@@ -11,6 +11,7 @@ BANK_NAME = "中国建设银行"
 DATE_COL = 2
 AMOUNT_COL = 3
 BALANCE_COL = 4
+FILTERED_MARKERS = ("【筛选】", "不保证为连续交易")
 
 
 def _clean_cell(value) -> str:
@@ -35,11 +36,17 @@ def _row_is_transaction(row: list) -> bool:
     return parse_ccb_date(row[DATE_COL]) is not None
 
 
+def _is_filtered_statement(text: str) -> bool:
+    return any(marker in text for marker in FILTERED_MARKERS)
+
+
 def extract_ccb(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
     previous_balance: Decimal | None = None
 
     with pdfplumber.open(pdf_path) as pdf:
+        first_page_text = pdf.pages[0].extract_text() if pdf.pages else ""
+        balance_optional = _is_filtered_statement(first_page_text or "")
         for page_index, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
                 for row_index, row in enumerate(table, start=1):
@@ -50,7 +57,7 @@ def extract_ccb(pdf_path: str) -> list[Transaction]:
                     amount, balance, issues = choose_amount_and_balance(
                         row[AMOUNT_COL],
                         row[BALANCE_COL],
-                        previous_balance,
+                        None if balance_optional else previous_balance,
                     )
 
                     if amount is None:
@@ -59,22 +66,24 @@ def extract_ccb(pdf_path: str) -> list[Transaction]:
                     income = amount if amount > 0 else Decimal("0.00")
                     expense = -amount if amount < 0 else Decimal("0.00")
 
-                    transactions.append(
-                        Transaction(
-                            transaction_time=tx_time,
-                            income=income,
-                            expense=expense,
-                            balance=balance,
-                            bank=BANK_NAME,
-                            page_no=page_index,
-                            row_no=row_index,
-                            raw_time=_clean_cell(row[DATE_COL]),
-                            raw_amount=_clean_cell(row[AMOUNT_COL]),
-                            raw_balance=_clean_cell(row[BALANCE_COL]),
-                            status="ok" if not issues else "review",
-                            issues=issues,
-                        )
+                    transaction = Transaction(
+                        transaction_time=tx_time,
+                        income=income,
+                        expense=expense,
+                        balance=balance,
+                        bank=BANK_NAME,
+                        page_no=page_index,
+                        row_no=row_index,
+                        raw_time=_clean_cell(row[DATE_COL]),
+                        raw_amount=_clean_cell(row[AMOUNT_COL]),
+                        raw_balance=_clean_cell(row[BALANCE_COL]),
+                        status="ok" if not issues else "review",
+                        issues=issues,
                     )
+                    if balance_optional:
+                        transaction.balance_optional = True
+
+                    transactions.append(transaction)
 
                     if balance is not None:
                         previous_balance = balance

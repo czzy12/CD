@@ -63,7 +63,7 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         expense = Decimal("0.00")
         issues.append("借贷方向无法解析")
 
-    return Transaction(
+    tx = Transaction(
         transaction_time=tx_time,
         income=income,
         expense=expense,
@@ -77,6 +77,8 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         status="ok" if not issues else "review",
         issues=issues,
     )
+    tx.preserve_signed_columns = True
+    return tx
 
 
 def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
@@ -111,7 +113,7 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
     if balance is None:
         issues.append("余额无法解析")
 
-    return Transaction(
+    tx = Transaction(
         transaction_time=tx_time,
         income=income,
         expense=expense,
@@ -125,6 +127,8 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
         status="ok" if not issues else "review",
         issues=issues,
     )
+    tx.preserve_signed_columns = True
+    return tx
 
 
 def _parse_format_c(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
@@ -172,11 +176,81 @@ def _parse_format_c(row: list, index: dict[str, int], page_no: int, row_no: int)
     )
 
 
+def _parse_format_d(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
+    tx_time = _parse_time(_cell(row, index, "交易时间"))
+    if tx_time is None:
+        return None
+
+    income = money_to_decimal(_cell(row, index, "转入金额")) or Decimal("0.00")
+    expense = money_to_decimal(_cell(row, index, "转出金额")) or Decimal("0.00")
+    balance = money_to_decimal(_cell(row, index, "余额"))
+    issues: list[str] = []
+
+    if income != Decimal("0.00") and expense != Decimal("0.00"):
+        issues.append("转入和转出金额同时存在")
+    if income == Decimal("0.00") and expense == Decimal("0.00"):
+        issues.append("转入和转出金额均为空")
+    if balance is None:
+        issues.append("余额无法解析")
+
+    tx = Transaction(
+        transaction_time=tx_time,
+        income=income,
+        expense=expense,
+        balance=balance,
+        bank=BANK_NAME,
+        page_no=page_no,
+        row_no=row_no,
+        raw_time=_cell(row, index, "交易时间"),
+        raw_amount=f"{_cell(row, index, '转入金额')}|{_cell(row, index, '转出金额')}",
+        raw_balance=_cell(row, index, "余额"),
+        raw_text=" | ".join(_clean_cell(cell) for cell in row),
+        raw_fields=[_clean_cell(cell) for cell in row],
+        raw_headers=[name for name, _ in sorted(index.items(), key=lambda item: item[1])],
+        status="ok" if not issues else "review",
+        issues=issues,
+    )
+    tx.preserve_signed_columns = True
+    return tx
+
+
 def _looks_like_header(row: list) -> bool:
     text = "|".join(_clean_cell(cell) for cell in row or [])
     return bool(re.search(r"交易时间.*余额", text)) and (
-        "借贷标志" in text or "借/贷" in text or ("借方发生额" in text and "贷方发生额" in text)
+        "借贷标志" in text
+        or "借/贷" in text
+        or ("借方发生额" in text and "贷方发生额" in text)
+        or ("转入金额" in text and "转出金额" in text)
     )
+
+
+def _balance_chain_score(items: list[Transaction]) -> int:
+    score = 0
+    for previous, current in zip(items, items[1:]):
+        if previous.balance is None or current.balance is None:
+            continue
+        expected = (previous.balance + current.income - current.expense).quantize(Decimal("0.01"))
+        if expected == current.balance.quantize(Decimal("0.01")):
+            score += 1
+    return score
+
+
+def _restore_same_time_order(transactions: list[Transaction]) -> list[Transaction]:
+    grouped: dict[datetime, list[Transaction]] = {}
+    for tx in transactions:
+        grouped.setdefault(tx.transaction_time, []).append(tx)
+
+    for tx_time, items in grouped.items():
+        if len(items) < 2:
+            continue
+
+        forward = sorted(items, key=lambda tx: (tx.page_no, tx.row_no))
+        reverse = list(reversed(forward))
+        ordered = reverse if _balance_chain_score(reverse) > _balance_chain_score(forward) else forward
+        for index, tx in enumerate(ordered):
+            tx.transaction_time = tx_time.replace(microsecond=index)
+
+    return transactions
 
 
 def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
@@ -197,6 +271,8 @@ def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
                             parser = _parse_format_b
                         elif "借方发生额" in index and "贷方发生额" in index:
                             parser = _parse_format_c
+                        elif "转入金额" in index and "转出金额" in index:
+                            parser = _parse_format_d
                         else:
                             parser = _parse_format_a
                         continue
@@ -207,4 +283,4 @@ def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
                     if tx is not None:
                         transactions.append(tx)
 
-    return transactions
+    return _restore_same_time_order(transactions)

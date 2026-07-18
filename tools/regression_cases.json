@@ -119,6 +119,23 @@
     }
   },
   {
+    "name": "农行对公-账户历史明细九列表格-文祥窑",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/文祥窑流水2025.5.14-2025.11.14.pdf",
+    "tags": ["abc_corp", "abc_corp_history", "corp", "table"],
+    "expected": {
+      "count": 84,
+      "income_count": 22,
+      "income_sum": "5617981.60",
+      "expense_count": 62,
+      "expense_sum": "6075355.39",
+      "net": "-457373.79",
+      "opening_balance": "565892.41",
+      "closing_balance": "108518.62",
+      "issues": 0
+    }
+  },
+  {
     "name": "交通银行-6列日期版",
     "bank": "bocom",
     "path": "${CD_ASSETS}/PDF流水/打包测试/交通银行交易流水(申请时间2026年05月15日09时49分56秒).pdf",

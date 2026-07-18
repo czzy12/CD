@@ -18,6 +18,17 @@ DAY_RE = re.compile(r"\d{2}")
 MONTH_DAY_RE = re.compile(r"\d{2}-\d{2}")
 MONEY_RE = re.compile(r"\d[\d,]*\.\d{2}")
 CENT = Decimal("0.01")
+HISTORY_HEADERS = [
+    "交易时间",
+    "收入金额",
+    "支出金额",
+    "账户余额",
+    "对方账号",
+    "对方户名",
+    "对方开户行",
+    "摘要",
+    "交易用途",
+]
 
 
 @dataclass
@@ -129,6 +140,17 @@ def _table_has_corp_header(row: list) -> bool:
     return all(marker in joined for marker in ("交易时间", "收入金额", "支出金额", "账户余额", "会计日期"))
 
 
+def _table_has_history_header(row: list) -> bool:
+    return [_cell_text(cell) for cell in row[: len(HISTORY_HEADERS)]] == HISTORY_HEADERS
+
+
+def _parse_history_time(raw_time: str) -> datetime | None:
+    try:
+        return datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
 def _parse_table_rows(pdf_path: str) -> list[ParsedRow]:
     parsed_rows: list[ParsedRow] = []
     order_index = 0
@@ -136,14 +158,24 @@ def _parse_table_rows(pdf_path: str) -> list[ParsedRow]:
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             for table in page.extract_tables():
-                if not any(_table_has_corp_header(row) for row in table):
+                has_corp_header = any(_table_has_corp_header(row) for row in table)
+                has_history_header = any(_table_has_history_header(row) for row in table)
+                if not has_corp_header and not has_history_header:
                     continue
                 for row in table:
-                    if len(row) < 10 or _table_has_corp_header(row):
+                    if _table_has_corp_header(row) or _table_has_history_header(row):
                         continue
 
-                    raw_time = _cell_text(row[0])
-                    tx_time = _parse_table_time(raw_time, _cell_text(row[9]))
+                    if has_history_header:
+                        if len(row) < len(HISTORY_HEADERS):
+                            continue
+                        raw_time = _cell_text(row[0])
+                        tx_time = _parse_history_time(raw_time)
+                    else:
+                        if len(row) < 10:
+                            continue
+                        raw_time = _cell_text(row[0])
+                        tx_time = _parse_table_time(raw_time, _cell_text(row[9]))
                     income = money_to_decimal(_cell_text(row[1])) or Decimal("0.00")
                     expense = money_to_decimal(_cell_text(row[2])) or Decimal("0.00")
                     balance = money_to_decimal(_cell_text(row[3]))

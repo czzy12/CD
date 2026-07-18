@@ -194,6 +194,15 @@ def detect_bank_type(pdf_path: str) -> Detection:
         return Detection("fudian", BANK_LABELS["fudian"], 98, "命中富滇银行个人交易流水九列表格")
 
     if (
+        "河北省农村信用社联合社账户历史明细清单" in header_compact
+        and "账号" in header_compact
+        and "户名" in header_compact
+        and "总条数" in header_compact
+        and "序号交易日期交易金额金额对方户名对方账号摘要网点来源" in compact
+    ):
+        return Detection("rural_credit", BANK_LABELS["rural_credit"], 98, "命中河北省农村信用社账户历史明细清单")
+
+    if (
         "明细账查询" in compact
         and "交易日期" in compact
         and "支出金额" in compact

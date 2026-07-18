@@ -1,6 +1,7 @@
 import re
+from collections import defaultdict
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import pdfplumber
 
@@ -8,9 +9,11 @@ from .models import Transaction
 
 
 BANK_NAME = "农村信用社"
+HEBEI_RURAL_BANK_NAME = "河北省农村信用社联合社"
 RURAL_COMMERCIAL_BANK_NAME = "农村商业银行个人"
 MONEY_RE = re.compile(r"[\d,]+\.\d{2}")
 CENT = Decimal("0.01")
+HEBEI_HISTORY_HEADERS = ["序号", "交易日期", "交易金额", "金额", "对方户名", "对方账号", "摘要", "网点", "来源"]
 LINE_ROW_RE = re.compile(
     r"^\s*(?P<seq>\d+)\s+"
     r"(?P<summary>.+?)\s+人民币元\s+钞\s+"
@@ -29,6 +32,14 @@ def _cell(row: list[str], index: int) -> str:
     if index >= len(row) or row[index] is None:
         return ""
     return str(row[index]).strip()
+
+
+def _compact(text: object) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _cell_line(text: object) -> str:
+    return " ".join(str(text or "").split())
 
 
 def _money(text: str) -> Decimal | None:
@@ -52,6 +63,10 @@ def _time(text: str) -> datetime | None:
 def _date_time(raw_date: str, sequence: int) -> datetime:
     parsed = datetime.strptime(raw_date, "%Y%m%d")
     return parsed.replace(microsecond=max(0, 999999 - sequence))
+
+
+def _date(raw_date: str) -> datetime:
+    return datetime.strptime(raw_date, "%Y%m%d")
 
 
 def _rural_commercial_bank_name(text: str) -> str:
@@ -162,7 +177,127 @@ def _add_line_statement_issues(
         first.issues.extend(issues)
 
 
+def _is_hebei_history_header(row: list[str]) -> bool:
+    return [_compact(value) for value in row[: len(HEBEI_HISTORY_HEADERS)]] == HEBEI_HISTORY_HEADERS
+
+
+def _extract_hebei_history_statement(pdf_path: str) -> list[Transaction]:
+    rows: list[Transaction] = []
+    header_total: int | None = None
+
+    with pdfplumber.open(pdf_path) as pdf:
+        if not pdf.pages:
+            return rows
+
+        first_text = _compact(pdf.pages[0].extract_text() or "")
+        if "河北省农村信用社联合社账户历史明细清单" not in first_text:
+            return rows
+        total_match = re.search(r"总条数[:：](\d+)", first_text)
+        if total_match:
+            header_total = int(total_match.group(1))
+
+        saw_header = False
+        for page_no, page in enumerate(pdf.pages, start=1):
+            for table in page.extract_tables():
+                if not table:
+                    continue
+                for row in table:
+                    if len(row) < len(HEBEI_HISTORY_HEADERS):
+                        continue
+                    if _is_hebei_history_header(row):
+                        saw_header = True
+                        continue
+
+                    raw_fields = [_cell_line(value) for value in row[: len(HEBEI_HISTORY_HEADERS)]]
+                    sequence_text = _compact(raw_fields[0])
+                    raw_date = _compact(raw_fields[1])
+                    raw_amount = _compact(raw_fields[2]).replace(",", "")
+                    raw_balance = _compact(raw_fields[3]).replace(",", "")
+                    if not sequence_text.isdigit() or not re.fullmatch(r"20\d{6}", raw_date):
+                        continue
+                    try:
+                        signed_amount = Decimal(raw_amount).quantize(CENT)
+                        balance = Decimal(raw_balance).quantize(CENT)
+                    except (InvalidOperation, ValueError):
+                        continue
+
+                    tx = Transaction(
+                        transaction_time=_date(raw_date),
+                        income=signed_amount if signed_amount > 0 else Decimal("0.00"),
+                        expense=-signed_amount if signed_amount < 0 else Decimal("0.00"),
+                        balance=balance,
+                        bank=HEBEI_RURAL_BANK_NAME,
+                        page_no=page_no,
+                        row_no=int(sequence_text),
+                        raw_time=f"{raw_date} 00:00:00",
+                        raw_amount=raw_fields[2],
+                        raw_balance=raw_fields[3],
+                        raw_text=" | ".join(raw_fields),
+                        raw_fields=raw_fields,
+                        raw_headers=HEBEI_HISTORY_HEADERS,
+                    )
+                    tx.merge_key = "|".join([sequence_text, raw_date, raw_fields[2], raw_fields[3]])
+                    rows.append(tx)
+
+    if not rows or not saw_header:
+        return []
+
+    _order_hebei_history_rows(rows, header_total)
+    return rows
+
+
+def _order_hebei_history_rows(rows: list[Transaction], header_total: int | None) -> None:
+    issues: list[str] = []
+    sequences = sorted(tx.row_no for tx in rows)
+    if sequences != list(range(1, len(rows) + 1)):
+        issues.append("序号不连续")
+    if header_total is not None and len(rows) != header_total:
+        issues.append(f"交易笔数与页眉不一致: 解析 {len(rows)} / 页眉 {header_total}")
+
+    newest_first = sorted(rows, key=lambda tx: tx.row_no)
+    oldest = newest_first[-1]
+    previous_balance = (oldest.balance - oldest.income + oldest.expense).quantize(CENT)
+
+    groups: dict[object, list[Transaction]] = defaultdict(list)
+    for tx in rows:
+        groups[tx.transaction_time.date()].append(tx)
+
+    chain_order = 0
+    unresolved = False
+    for date_key in sorted(groups):
+        remaining = groups[date_key][:]
+        while remaining:
+            matches = [
+                tx
+                for tx in remaining
+                if (previous_balance + tx.income - tx.expense).quantize(CENT) == tx.balance
+            ]
+            if not matches:
+                unresolved = True
+                for tx in sorted(remaining, key=lambda item: item.row_no, reverse=True):
+                    tx.transaction_time = tx.transaction_time.replace(microsecond=chain_order)
+                    chain_order += 1
+                break
+
+            tx = sorted(matches, key=lambda item: item.row_no, reverse=True)[0]
+            remaining.remove(tx)
+            tx.transaction_time = tx.transaction_time.replace(microsecond=chain_order)
+            chain_order += 1
+            previous_balance = tx.balance
+
+    if unresolved:
+        issues.append("同日交易无法完全按余额链恢复顺序")
+    if issues:
+        first = newest_first[0]
+        first.status = "review"
+        first.issues.extend(issues)
+
+
 def extract_rural_credit(pdf_path: str) -> list[Transaction]:
+    hebei_history_rows = _extract_hebei_history_statement(pdf_path)
+    if hebei_history_rows:
+        return hebei_history_rows
+
     line_rows = _extract_line_statement(pdf_path)
     if line_rows:
         return line_rows

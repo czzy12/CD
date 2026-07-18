@@ -1507,5 +1507,22 @@
       "closing_balance": "6589401.20",
       "issues": 3
     }
+  },
+  {
+    "name": "河北省农村信用社-账户历史明细清单-刘丽萍",
+    "bank": "auto",
+    "path": "D:/Codex data/CD_assets/PDF流水/打包测试/城商行/银行流水_0(2).pdf",
+    "tags": ["rural_credit", "personal", "city-commercial"],
+    "expected": {
+      "count": 1078,
+      "income_count": 863,
+      "income_sum": "2843203.88",
+      "expense_count": 215,
+      "expense_sum": "2841060.40",
+      "net": "2143.48",
+      "opening_balance": "3.88",
+      "closing_balance": "2147.36",
+      "issues": 0
+    }
   }
 ]

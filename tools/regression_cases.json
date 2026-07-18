@@ -1156,6 +1156,74 @@
     }
   },
   {
+    "name": "华夏银行对公-交易明细-麦索-202505至202510-片段1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/华夏交易明细20250501-20251031.pdf",
+    "tags": ["huaxia_corp", "corp"],
+    "expected": {
+      "count": 10,
+      "income_count": 2,
+      "income_sum": "10015.55",
+      "expense_count": 8,
+      "expense_sum": "20508.88",
+      "net": "-10493.33",
+      "opening_balance": "132818.77",
+      "closing_balance": "122325.44",
+      "issues": 0
+    }
+  },
+  {
+    "name": "华夏银行对公-交易明细-麦索-202505至202510-片段2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/华夏交易明细20250501-20251031.pdf1.pdf",
+    "tags": ["huaxia_corp", "corp"],
+    "expected": {
+      "count": 10,
+      "income_count": 2,
+      "income_sum": "60022.80",
+      "expense_count": 8,
+      "expense_sum": "39576.40",
+      "net": "20446.40",
+      "opening_balance": "112372.37",
+      "closing_balance": "132818.77",
+      "issues": 0
+    }
+  },
+  {
+    "name": "华夏银行对公-交易明细-麦索-202511至202604-片段1",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/华夏交易明细20251101-20260430.pdf",
+    "tags": ["huaxia_corp", "corp"],
+    "expected": {
+      "count": 10,
+      "income_count": 5,
+      "income_sum": "154297.55",
+      "expense_count": 5,
+      "expense_sum": "37883.08",
+      "net": "116414.47",
+      "opening_balance": "120340.72",
+      "closing_balance": "236755.19",
+      "issues": 0
+    }
+  },
+  {
+    "name": "华夏银行对公-交易明细-麦索-202511至202604-片段2",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/华夏交易明细20251101-20260430.pdf2.pdf",
+    "tags": ["huaxia_corp", "corp"],
+    "expected": {
+      "count": 9,
+      "income_count": 3,
+      "income_sum": "118325.88",
+      "expense_count": 6,
+      "expense_sum": "138263.80",
+      "net": "-19937.92",
+      "opening_balance": "122325.44",
+      "closing_balance": "102387.52",
+      "issues": 0
+    }
+  },
+  {
     "name": "桂林银行对公-企业客户交易清单-张罗洋",
     "bank": "auto",
     "path": "C:/Users/lenovo/Desktop/张罗洋桂林银行.pdf",

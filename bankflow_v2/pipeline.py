@@ -29,6 +29,7 @@ from .guilin_corp import extract_guilin, extract_guilin_corp
 from .hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detail, extract_hebei_personal
 from .huishang_corp import extract_huishang_corp
 from .huaxia import extract_huaxia
+from .huaxia_corp import extract_huaxia_corp
 from .luzhou import extract_luzhou
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
@@ -54,6 +55,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_icbc(pdf_path)
     if bank == "huaxia":
         return extract_huaxia(pdf_path)
+    if bank == "huaxia_corp":
+        return extract_huaxia_corp(pdf_path)
     if bank == "guilin":
         return extract_guilin(pdf_path)
     if bank == "guilin_corp":

@@ -40,6 +40,7 @@ BANK_LABELS = {
     "hebei_personal": "河北银行个人",
     "huishang_corp": "徽商银行对公",
     "huaxia": "华夏银行",
+    "huaxia_corp": "华夏银行对公",
     "jiujiang": "九江银行",
     "lanzhou": "兰州银行",
     "luzhou": "泸州银行个人",
@@ -307,6 +308,16 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易金额余额" in compact
     ):
         return Detection("huaxia", BANK_LABELS["huaxia"], 98, "命中华夏银行个人账户交易流水电子版")
+
+    if (
+        "账号：" in header_compact
+        and "账户名称：" in header_compact
+        and "查询日期：" in header_compact
+        and "交易方向：全部" in header_compact
+        and "排序方向：由近及远" in header_compact
+        and "序号交易日期交易时间支出金额收入金额余额对方账号对方户名对方行名核心流水号交易描述摘要凭证号码明细标注记账日期" in compact
+    ):
+        return Detection("huaxia_corp", BANK_LABELS["huaxia_corp"], 96, "命中华夏银行对公交易明细十五列表格")
 
     if (
         "平安银行个人账户交易明细清单" in compact

@@ -1541,5 +1541,22 @@
       "closing_balance": "0.00",
       "issues": 0
     }
+  },
+  {
+    "name": "长沙银行对公-单位账户明细对账单-顶申机电",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/长沙银行.pdf",
+    "tags": ["changsha_bank_corp", "corp", "city-commercial"],
+    "expected": {
+      "count": 126,
+      "income_count": 33,
+      "income_sum": "1322786.98",
+      "expense_count": 93,
+      "expense_sum": "1347648.68",
+      "net": "-24861.70",
+      "opening_balance": "28543.28",
+      "closing_balance": "3681.58",
+      "issues": 0
+    }
   }
 ]

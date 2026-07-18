@@ -23,6 +23,7 @@ BANK_LABELS = {
     "bazhou_shunfeng_corp": "霸州舜丰村镇银行对公",
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
+    "changsha_bank_corp": "长沙银行对公",
     "chengdu_rural_corp": "成都农村商业银行对公",
     "chongqing": "重庆银行",
     "cmb": "招商银行",
@@ -210,6 +211,16 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "序号交易日期交易金额余额交易摘要附言" in compact
     ):
         return Detection("tianjin_bank", BANK_LABELS["tianjin_bank"], 98, "命中天津银行个人账户交易明细清单")
+
+    if (
+        "单位账户明细对账单" in header_compact
+        and "账户名称" in header_compact
+        and "客户账号" in header_compact
+        and "账单期初余额" in header_compact
+        and "账单期末余额" in header_compact
+        and "交易日期交易金额账户余额摘要/备注编号" in compact
+    ):
+        return Detection("changsha_bank_corp", BANK_LABELS["changsha_bank_corp"], 98, "命中长沙银行单位账户明细对账单")
 
     if (
         "明细账查询" in compact

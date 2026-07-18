@@ -48,6 +48,7 @@ DATE_RANGE_EMPTY_MESSAGE = "日期范围内没有流水"
 FIXED_PROOF_MONTHS = 6
 SALARY_KEYWORDS = ("工资", "代发", "薪资", "薪酬", "奖金")
 ACCOUNT_NAME_PATTERNS = (
+    r"兹证明\s*[:：]\s*([^\s（(，,]+)\s*[（(]",
     r"户名\s*(?:Account Name)?\s*[:：]\s*([^\s，,]+)",
     r"客户姓名\s*[:：]\s*([^\s，,]+)",
     r"账户名称\s*[:：]\s*([^\s，,]+)",
@@ -63,6 +64,9 @@ ACCOUNT_NO_PATTERNS = (
     r"卡号\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
     r"银行卡号\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
     r"Account\s*(?:No\.?|Number)\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
+)
+WECHAT_ID_PATTERNS = (
+    r"微信号\s*[:：]\s*([A-Za-z0-9_.@-]+)",
 )
 
 
@@ -367,6 +371,8 @@ class Worker(QThread):
                     tx.source_file = path.name
                     tx.bank_label = bank_label
                     tx.flow_type = detected_flow_type
+                    tx.account_name = account_name
+                    tx.account_no = account_no
                 file_summary = summarize(transactions, path.name)
                 all_issues.extend(file_summary.issues)
                 review_issues = [issue for issue in file_summary.issues if issue.level == "需复核"]
@@ -2382,6 +2388,10 @@ def parse_account_no(text: str) -> str:
             continue
         header_lines.append(line)
     header_text = "\n".join(header_lines)
+    for pattern in WECHAT_ID_PATTERNS:
+        match = re.search(pattern, header_text, re.I)
+        if match:
+            return match.group(1).strip()
     for pattern in ACCOUNT_NO_PATTERNS:
         match = re.search(pattern, header_text, re.I)
         if match:
@@ -2479,11 +2489,13 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
 
     for tx in sorted(transactions, key=lambda item: (item.transaction_time, getattr(item, "source_file", ""), item.row_no)):
         key = getattr(tx, "merge_key", None)
+        account_key = getattr(tx, "account_no", "") or ""
         if key:
-            signature = (tx.bank, key)
+            signature = (tx.bank, account_key, key)
         else:
             signature = (
                 tx.bank,
+                account_key,
                 tx.transaction_time,
                 tx.income,
                 tx.expense,

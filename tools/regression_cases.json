@@ -1388,5 +1388,22 @@
       "closing_balance": "422352.30",
       "issues": 5
     }
+  },
+  {
+    "name": "泸州银行个人-账户历史明细清单-申志成",
+    "bank": "auto",
+    "path": "D:/Codex data/PDF流水/银行流水_0(9).pdf",
+    "tags": ["luzhou", "personal"],
+    "expected": {
+      "count": 544,
+      "income_count": 241,
+      "income_sum": "365604949.28",
+      "expense_count": 303,
+      "expense_sum": "365545225.80",
+      "net": "59723.48",
+      "opening_balance": "6529677.72",
+      "closing_balance": "6589401.20",
+      "issues": 3
+    }
   }
 ]

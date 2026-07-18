@@ -42,6 +42,7 @@ BANK_LABELS = {
     "huaxia": "华夏银行",
     "jiujiang": "九江银行",
     "lanzhou": "兰州银行",
+    "luzhou": "泸州银行个人",
     "nanjing_corp": "南京银行对公",
     "ningbo": "宁波银行",
     "mybank_corp": "浙江网商银行对公",
@@ -162,6 +163,14 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易时间收入金额支出金额账户余额对方账号对方户名对方开户行用途流水号附言摘要" in compact
     ):
         return Detection("huishang_corp", BANK_LABELS["huishang_corp"], 98, "命中徽商银行账户交易明细")
+
+    if (
+        "泸州银行账户历史明细清单" in header_compact
+        and "客户名称" in header_compact
+        and "总条数" in header_compact
+        and "序号交易时间币种交易金额账户余额对方账号对方户名交易类型摘要交易渠道" in compact
+    ):
+        return Detection("luzhou", BANK_LABELS["luzhou"], 98, "命中泸州银行账户历史明细清单")
 
     if (
         "明细账查询" in compact

@@ -34,6 +34,7 @@ BANK_LABELS = {
     "everbright": "中国光大银行个人",
     "everbright_corp": "中国光大银行对公",
     "foshan_rural": "佛山农村商业银行",
+    "fudian": "富滇银行",
     "guilin": "桂林银行个人",
     "guilin_corp": "桂林银行对公",
     "hebei_corp_detail": "河北银行对公",
@@ -172,6 +173,25 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "序号交易时间币种交易金额账户余额对方账号对方户名交易类型摘要交易渠道" in compact
     ):
         return Detection("luzhou", BANK_LABELS["luzhou"], 98, "命中泸州银行账户历史明细清单")
+
+    if (
+        "富滇银行交易流水" in header_compact
+        and "FudianBankTransactionDetails" in header_compact
+        and all(
+            marker in compact
+            for marker in (
+                "序号SerialNumber",
+                "交易日期TradingDate",
+                "交易金额TradingAmount",
+                "账户余额AccountBalance",
+                "对方账号CounterpartyAccount",
+                "对方户名CounterpartyName",
+                "摘要描述TradingDescription",
+                "备注Remark",
+            )
+        )
+    ):
+        return Detection("fudian", BANK_LABELS["fudian"], 98, "命中富滇银行个人交易流水九列表格")
 
     if (
         "明细账查询" in compact

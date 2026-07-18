@@ -697,6 +697,23 @@
     }
   },
   {
+    "name": "富滇银行个人-交易流水九列表格-赵云飞",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/打包测试/富滇银行.pdf",
+    "tags": ["fudian", "personal", "city-commercial", "table"],
+    "expected": {
+      "count": 267,
+      "income_count": 21,
+      "income_sum": "224091.90",
+      "expense_count": 246,
+      "expense_sum": "225511.53",
+      "net": "-1419.63",
+      "opening_balance": "10004.79",
+      "closing_balance": "8585.16",
+      "issues": 0
+    }
+  },
+  {
     "name": "南京银行对公-账户交易明细",
     "bank": "auto",
     "path": "${CD_ASSETS}/PDF流水/打包测试/城商行/银行流水_1(1).pdf",

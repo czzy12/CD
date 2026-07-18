@@ -24,6 +24,7 @@ from .cib import extract_cib
 from .customer_account_corp import extract_customer_account_corp
 from .customer_detail_corp import extract_customer_detail_corp
 from .everbright import extract_everbright, extract_everbright_corp
+from .fudian import extract_fudian
 from .generic_pdf import extract_generic_pdf
 from .guilin_corp import extract_guilin, extract_guilin_corp
 from .hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detail, extract_hebei_personal
@@ -79,6 +80,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_everbright(pdf_path)
     if bank == "everbright_corp":
         return extract_everbright_corp(pdf_path)
+    if bank == "fudian":
+        return extract_fudian(pdf_path)
     if bank == "abc":
         return extract_abc(pdf_path)
     if bank == "abc_corp":

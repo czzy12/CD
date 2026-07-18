@@ -1524,5 +1524,22 @@
       "closing_balance": "2147.36",
       "issues": 0
     }
+  },
+  {
+    "name": "天津银行个人-账户交易明细清单-吴林",
+    "bank": "auto",
+    "path": "D:/Codex data/CD_assets/PDF流水/打包测试/城商行/天津银行.pdf",
+    "tags": ["tianjin_bank", "personal", "city-commercial"],
+    "expected": {
+      "count": 34,
+      "income_count": 22,
+      "income_sum": "105452.15",
+      "expense_count": 12,
+      "expense_sum": "105452.15",
+      "net": "0.00",
+      "opening_balance": "0.00",
+      "closing_balance": "0.00",
+      "issues": 0
+    }
   }
 ]

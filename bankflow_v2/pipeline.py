@@ -43,6 +43,7 @@ from .rural_credit import extract_rural_credit
 from .shanghai import extract_shanghai, extract_shanghai_corp
 from .shengjing import extract_shengjing
 from .spdb import extract_spdb, extract_spdb_corp
+from .tianjin_bank import extract_tianjin_bank
 from .tianjin_rural_corp import extract_tianjin_rural_corp
 from .wechat import extract_wechat
 from .xingtai import extract_xingtai
@@ -146,6 +147,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_spdb(pdf_path)
     if bank == "spdb_corp":
         return extract_spdb_corp(pdf_path)
+    if bank == "tianjin_bank":
+        return extract_tianjin_bank(pdf_path)
     if bank == "tianjin_rural_corp":
         return extract_tianjin_rural_corp(pdf_path)
     if bank == "cmbc":

@@ -10,6 +10,7 @@ from .number_parser import money_to_decimal
 
 
 BANK_NAME = "微信流水"
+RAW_HEADERS = ["交易单号", "交易时间", "交易类型", "收/支/其他", "交易方式", "金额(元)", "交易对方", "商户单号"]
 TIME_RE = re.compile(r"20\d{2}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?")
 AMOUNT_RE = re.compile(r"[￥¥]?\s*[+-]?\d[\d,]*\.\d{2}")
 
@@ -70,6 +71,7 @@ def _find_col(headers: list[str], names: tuple[str, ...]) -> int | None:
 def _parse_table(table: list[list[Any]], page_no: int) -> list[Transaction]:
     transactions: list[Transaction] = []
     header_index = None
+    raw_headers = RAW_HEADERS
     cols: dict[str, int | None] = {}
 
     for row_index, row in enumerate(table[:20]):
@@ -79,6 +81,7 @@ def _parse_table(table: list[list[Any]], page_no: int) -> list[Transaction]:
         direction_col = _find_col(headers, ("收/支", "收支", "收入/支出", "交易方向"))
         if time_col is not None and amount_col is not None:
             header_index = row_index
+            raw_headers = [_clean(cell) for cell in row]
             cols = {"time": time_col, "amount": amount_col, "direction": direction_col}
             break
 
@@ -128,6 +131,7 @@ def _parse_table(table: list[list[Any]], page_no: int) -> list[Transaction]:
             raw_balance="",
             raw_text=row_text,
             raw_fields=[_clean(cell) for cell in row],
+            raw_headers=raw_headers,
             status="ok" if not issues else "review",
             issues=issues,
         )

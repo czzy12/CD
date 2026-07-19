@@ -58,6 +58,22 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
         "交易名称",
         "transaction type",
     ),
+    "transaction_direction": (
+        "收/支/其他",
+        "收支或其他",
+        "收/支",
+        "收支",
+    ),
+    "transaction_method": (
+        "交易方式",
+    ),
+    "payment_method": (
+        "收/付款方式",
+        "收付款方式",
+    ),
+    "product_description": (
+        "商品说明",
+    ),
     "merchant_name": (
         "商户名称",
         "商家名称",
@@ -139,6 +155,10 @@ class Transaction:
     remark: str = ""
     purpose: str = ""
     transaction_type: str = ""
+    transaction_direction: str = ""
+    transaction_method: str = ""
+    payment_method: str = ""
+    product_description: str = ""
     merchant_name: str = ""
     merchant_category: str = ""
     merchant_location: str = ""

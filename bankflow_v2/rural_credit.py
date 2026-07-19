@@ -235,6 +235,21 @@ def _extract_hebei_history_statement(pdf_path: str) -> list[Transaction]:
                         raw_text=" | ".join(raw_fields),
                         raw_fields=raw_fields,
                         raw_headers=HEBEI_HISTORY_HEADERS,
+                        source_fields={
+                            field_name: raw_fields[index]
+                            for field_name, index in (("transaction_branch", 7), ("record_source", 8))
+                            if raw_fields[index]
+                        },
+                        field_sources={
+                            field_name: f"raw_headers[{index}]:{HEBEI_HISTORY_HEADERS[index]}"
+                            for field_name, index in (("transaction_branch", 7), ("record_source", 8))
+                            if raw_fields[index]
+                        },
+                        field_confidence={
+                            field_name: 1.0
+                            for field_name, index in (("transaction_branch", 7), ("record_source", 8))
+                            if raw_fields[index]
+                        },
                     )
                     tx.merge_key = "|".join([sequence_text, raw_date, raw_fields[2], raw_fields[3]])
                     rows.append(tx)

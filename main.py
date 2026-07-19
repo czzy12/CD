@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from bankflow_v2.auto_detect import detect_bank_type
 from bankflow_v2.income_proof_export import flow_type as income_flow_type
+from bankflow_v2.models import get_statement_metadata
 from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import money, monthly_summaries, summarize
 from gui_v2 import FileResult, write_workbook
@@ -93,6 +94,7 @@ def process_pdf(pdf_path: str, date_range_str: str | None = None) -> dict:
         raise ValueError(f"无法识别该PDF的银行格式: {path}\n{detection.reason}")
 
     transactions = extract_transactions(str(path), detection.bank_id)
+    statement_metadata = get_statement_metadata(transactions)
     detected_flow_type = income_flow_type(detection.bank_id)
     for tx in transactions:
         tx.source_file = path.name
@@ -123,6 +125,9 @@ def process_pdf(pdf_path: str, date_range_str: str | None = None) -> dict:
         shown_transactions,
         status,
         message,
+        statement_metadata.account_name,
+        statement_metadata.account_number,
+        statement_metadata,
     )
     output_path = path.with_name(f"{path.stem}_解析结果.xlsx")
     write_workbook(output_path, [result], summary.issues, [])

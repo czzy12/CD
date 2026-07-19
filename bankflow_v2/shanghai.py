@@ -120,6 +120,20 @@ def _parse_debit_credit_row(
 
     raw_amount = _cell(row, index, credit_name) if credit else _cell(row, index, debit_name)
     raw_fields = [_clean_cell(cell) for cell in row]
+    source_fields = {
+        field_name: _cell(row, index, header)
+        for field_name, header in (
+            ("posting_date", "记账日期"),
+            ("transaction_reference", "交易流水号"),
+            ("transaction_voucher_id", "交易凭证号"),
+        )
+        if _cell(row, index, header)
+    }
+    source_headers = {
+        "posting_date": "记账日期",
+        "transaction_reference": "交易流水号",
+        "transaction_voucher_id": "交易凭证号",
+    }
     return Transaction(
         transaction_time=tx_time,
         income=credit,
@@ -134,6 +148,12 @@ def _parse_debit_credit_row(
         raw_text=" | ".join(raw_fields),
         raw_fields=raw_fields,
         raw_headers=[name for name, _idx in sorted(index.items(), key=lambda item: item[1])],
+        source_fields=source_fields,
+        field_sources={
+            field_name: f"raw_headers[{index[source_headers[field_name]]}]:{source_headers[field_name]}"
+            for field_name in source_fields
+        },
+        field_confidence={field_name: 1.0 for field_name in source_fields},
         status="ok" if not issues else "review",
         issues=issues,
     )

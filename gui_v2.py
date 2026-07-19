@@ -2,7 +2,7 @@ import sys
 import re
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
@@ -40,6 +40,7 @@ from bankflow_v2.income_proof_export import (
     write_income_proof_input,
     write_salary_income_proof_input,
 )
+from bankflow_v2.models import StatementMetadata, get_statement_metadata
 from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_transactions, summarize
 
 
@@ -106,6 +107,7 @@ class FileResult:
     message: str
     account_name: str = ""
     account_no: str = ""
+    statement_metadata: StatementMetadata = field(default_factory=StatementMetadata)
 
 
 @dataclass
@@ -361,8 +363,9 @@ class Worker(QThread):
 
             try:
                 transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
-                account_name = extract_account_name(path)
-                account_no = extract_account_no(path)
+                statement_metadata = get_statement_metadata(transactions)
+                account_name = statement_metadata.account_name or extract_account_name(path)
+                account_no = statement_metadata.account_number or extract_account_no(path)
                 bank_label = infer_excel_bank_label(bank_label, transactions)
                 detected_flow_type = infer_flow_type(detection.bank_id, account_name, transactions)
                 original_count = len(transactions)
@@ -398,6 +401,7 @@ class Worker(QThread):
                         message,
                         account_name,
                         account_no,
+                        statement_metadata,
                     )
                 )
             except Exception as exc:

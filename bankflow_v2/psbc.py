@@ -121,6 +121,21 @@ def _parse_corp_row(row: list, page_no: int, row_no: int) -> Transaction | None:
         raw_text=" | ".join(raw_text_parts),
         raw_fields=[_clean_cell(cell) for cell in row],
         raw_headers=CORP_HEADERS,
+        source_fields={
+            field_name: _clean_cell(row[index])
+            for field_name, index in (("posting_date", 2), ("transaction_reference", 12), ("global_routing_number", 13))
+            if index < len(row) and _clean_cell(row[index])
+        },
+        field_sources={
+            field_name: f"raw_headers[{index}]:{CORP_HEADERS[index]}"
+            for field_name, index in (("posting_date", 2), ("transaction_reference", 12), ("global_routing_number", 13))
+            if index < len(row) and _clean_cell(row[index])
+        },
+        field_confidence={
+            field_name: 1.0
+            for field_name, index in (("posting_date", 2), ("transaction_reference", 12), ("global_routing_number", 13))
+            if index < len(row) and _clean_cell(row[index])
+        },
         status="ok" if not issues else "review",
         issues=issues,
     )

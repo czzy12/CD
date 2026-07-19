@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 
@@ -9,13 +9,20 @@ ZERO = Decimal("0.00")
 
 
 STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
+    "source_sequence": (
+        "序号",
+    ),
     "counterparty_name": (
         "对方户名",
         "对方账户名称",
         "对方账户名",
         "对手户名",
+        "对手名称",
         "交易对方",
         "对方名称",
+        "收(付)方名称",
+        "收付方名称",
+        "交易对手名称",
         "counterparty name",
     ),
     "counterparty_account": (
@@ -25,6 +32,8 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
         "对方卡号账号",
         "对手账号",
         "交易对方账号",
+        "收(付)方账号",
+        "收付方账号",
         "counterparty account",
     ),
     "counterparty_bank": (
@@ -32,6 +41,8 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
         "对方行名",
         "对手行名",
         "对方银行",
+        "对方开户行名",
+        "对方行名称",
         "counterparty bank",
     ),
     "summary": (
@@ -63,6 +74,13 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
         "收支或其他",
         "收/支",
         "收支",
+        "收入/支出",
+        "收支状态",
+        "交易方向",
+        "借贷标志",
+        "借贷状态",
+        "借/贷",
+        "借贷",
     ),
     "transaction_method": (
         "交易方式",
@@ -70,6 +88,7 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     "payment_method": (
         "收/付款方式",
         "收付款方式",
+        "付款方式",
     ),
     "product_description": (
         "商品说明",
@@ -86,7 +105,6 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "merchant_location": (
         "商户地点",
-        "交易地点",
         "merchant location",
     ),
 }
@@ -103,6 +121,29 @@ NORMALIZED_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
+SOURCE_FIELD_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
+    "core_transaction_id": ("核心流水号",),
+    "transaction_reference": ("交易流水号", "流水号"),
+    "transaction_voucher_id": ("交易凭证号",),
+    "voucher_number": ("凭证号码",),
+    "voucher_type": ("凭证种类",),
+    "posting_date": ("记账日期", "记账日"),
+    "accounting_date": ("会计日期",),
+    "detail_marker": ("明细标注",),
+    "transaction_description": ("交易描述",),
+    "transaction_branch": ("交易网点", "网点"),
+    "record_source": ("来源",),
+    "global_routing_number": ("全局路由号",),
+    "card_number": ("卡号",),
+}
+
+
+NORMALIZED_SOURCE_FIELD_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
+    field_name: tuple(normalize_text_header(alias) for alias in aliases)
+    for field_name, aliases in SOURCE_FIELD_HEADER_ALIASES.items()
+}
+
+
 def map_standard_text_fields(
     raw_headers: list[str] | tuple[str, ...] | None,
     raw_fields: list[str] | tuple[str, ...] | None,
@@ -116,6 +157,34 @@ def map_standard_text_fields(
     mapped: dict[str, tuple[str, str]] = {}
 
     for field_name, aliases in NORMALIZED_TEXT_HEADER_ALIASES.items():
+        for alias in aliases:
+            for index in header_indices.get(alias, []):
+                if index >= len(fields):
+                    continue
+                value = re.sub(r"\s+", " ", str(fields[index] or "")).strip()
+                if not value:
+                    continue
+                mapped[field_name] = (value, f"raw_headers[{index}]:{headers[index]}")
+                break
+            if field_name in mapped:
+                break
+
+    return mapped
+
+
+def map_source_fields(
+    raw_headers: list[str] | tuple[str, ...] | None,
+    raw_fields: list[str] | tuple[str, ...] | None,
+) -> dict[str, tuple[str, str]]:
+    """Map exact evidence-field headers without inferring from unstructured text."""
+    headers = list(raw_headers or [])
+    fields = list(raw_fields or [])
+    header_indices: dict[str, list[int]] = {}
+    for index, header in enumerate(headers):
+        header_indices.setdefault(normalize_text_header(header), []).append(index)
+    mapped: dict[str, tuple[str, str]] = {}
+
+    for field_name, aliases in NORMALIZED_SOURCE_FIELD_HEADER_ALIASES.items():
         for alias in aliases:
             for index in header_indices.get(alias, []):
                 if index >= len(fields):
@@ -165,6 +234,8 @@ class Transaction:
     field_sources: dict[str, str] = field(default_factory=dict)
     field_confidence: dict[str, float] = field(default_factory=dict)
     manual_review: dict[str, str] = field(default_factory=dict)
+    source_sequence: str = ""
+    source_fields: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         mapped_fields = map_standard_text_fields(self.raw_headers, self.raw_fields)
@@ -175,6 +246,44 @@ class Transaction:
             self.field_sources.setdefault(field_name, source)
             self.field_confidence.setdefault(field_name, 1.0)
 
+        mapped_source_fields = map_source_fields(self.raw_headers, self.raw_fields)
+        for field_name, (value, source) in mapped_source_fields.items():
+            self.source_fields.setdefault(field_name, value)
+            self.field_sources.setdefault(field_name, source)
+            self.field_confidence.setdefault(field_name, 1.0)
+
     @property
     def amount(self) -> Decimal:
         return self.income - self.expense
+
+
+@dataclass
+class StatementMetadata:
+    account_name: str = ""
+    account_number: str = ""
+    statement_period_start: date | None = None
+    statement_period_end: date | None = None
+    generated_at: datetime | None = None
+    source_part_label: str = ""
+    page_total: int | None = None
+    raw_fields: dict[str, str] = field(default_factory=dict)
+    field_sources: dict[str, str] = field(default_factory=dict)
+    field_confidence: dict[str, float] = field(default_factory=dict)
+    manual_review: dict[str, str] = field(default_factory=dict)
+
+
+class TransactionList(list[Transaction]):
+    """List-compatible parser result with file-level statement metadata."""
+
+    def __init__(
+        self,
+        transactions: list[Transaction] | tuple[Transaction, ...] | None = None,
+        metadata: StatementMetadata | None = None,
+    ) -> None:
+        super().__init__(transactions or [])
+        self.metadata = metadata or StatementMetadata()
+
+
+def get_statement_metadata(transactions: object) -> StatementMetadata:
+    metadata = getattr(transactions, "metadata", None)
+    return metadata if isinstance(metadata, StatementMetadata) else StatementMetadata()

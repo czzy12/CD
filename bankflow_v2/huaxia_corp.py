@@ -70,6 +70,24 @@ def extract_huaxia_corp(pdf_path: str) -> list[Transaction]:
                         continue
 
                     raw_amount = raw_fields[4] if income != ZERO else f"-{raw_fields[3]}"
+                    source_fields = {
+                        field_name: raw_fields[index]
+                        for field_name, index in (
+                            ("core_transaction_id", 9),
+                            ("transaction_description", 10),
+                            ("voucher_number", 12),
+                            ("detail_marker", 13),
+                            ("posting_date", 14),
+                        )
+                        if raw_fields[index]
+                    }
+                    source_labels = {
+                        "core_transaction_id": 9,
+                        "transaction_description": 10,
+                        "voucher_number": 12,
+                        "detail_marker": 13,
+                        "posting_date": 14,
+                    }
                     transaction = Transaction(
                         transaction_time=tx_time,
                         income=income.quantize(CENT),
@@ -84,6 +102,12 @@ def extract_huaxia_corp(pdf_path: str) -> list[Transaction]:
                         raw_text=" | ".join(raw_fields),
                         raw_fields=raw_fields,
                         raw_headers=HEADERS,
+                        source_fields=source_fields,
+                        field_sources={
+                            field_name: f"raw_headers[{source_labels[field_name]}]:{HEADERS[source_labels[field_name]]}"
+                            for field_name in source_fields
+                        },
+                        field_confidence={field_name: 1.0 for field_name in source_fields},
                     )
                     transaction.preserve_signed_columns = True
                     transaction.merge_key = "|".join(

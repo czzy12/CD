@@ -101,6 +101,22 @@ def _parse_row(row: list, index: dict[str, int], page_no: int, row_no: int) -> T
 
     raw_amount = _cell(row, index, "贷方发生额") if credit else _cell(row, index, "借方发生额")
     raw_fields = [_clean_cell(cell) for cell in row]
+    source_fields = {
+        field_name: _cell(row, index, header)
+        for field_name, header in (
+            ("accounting_date", "会计日期"),
+            ("voucher_number", "凭证号码"),
+            ("transaction_reference", "流水号"),
+            ("card_number", "卡号"),
+        )
+        if _cell(row, index, header)
+    }
+    source_headers = {
+        "accounting_date": "会计日期",
+        "voucher_number": "凭证号码",
+        "transaction_reference": "流水号",
+        "card_number": "卡号",
+    }
     return Transaction(
         transaction_time=tx_time,
         income=income,
@@ -115,6 +131,12 @@ def _parse_row(row: list, index: dict[str, int], page_no: int, row_no: int) -> T
         raw_text=" | ".join(raw_fields),
         raw_fields=raw_fields,
         raw_headers=[name for name, _idx in sorted(index.items(), key=lambda item: item[1])],
+        source_fields=source_fields,
+        field_sources={
+            field_name: f"raw_headers[{index[source_headers[field_name]]}]:{source_headers[field_name]}"
+            for field_name in source_fields
+        },
+        field_confidence={field_name: 1.0 for field_name in source_fields},
         status="ok" if not issues else "review",
         issues=issues,
     )

@@ -47,6 +47,14 @@ D:\OneDrive\应用\remotely-save\Note Data\车贷\自动化项目\05-子项目�
 
 不要让银行解析器直接输出 Word、Excel 行或自然语言结论。
 
+### StatementMetadata / TransactionList
+
+`bankflow_v2/models.py` 中的 `StatementMetadata` 是账户和文件级字段容器，承载户名、账号、查询区间、文件生成时间、分段标识、总页数及对应来源、置信度和人工复核信息。
+
+`TransactionList` 继承 `list[Transaction]` 并通过 `metadata` 属性携带 `StatementMetadata`。解析器需要返回文件级字段时使用该容器；既有只按交易列表迭代、排序、汇总的调用保持兼容。
+
+文件级字段不得为了省事重复写入每笔 `Transaction`。调用方可使用 `get_statement_metadata(transactions)` 安全取得元数据；普通列表返回空的 `StatementMetadata`。
+
 ### Summary
 
 `bankflow_v2/summary.py` 是统一统计口径。

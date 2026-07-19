@@ -18,7 +18,7 @@ class TransactionTextFieldTests(unittest.TestCase):
             "业务类型",
             "商户名称",
             "商户类别",
-            "交易地点",
+            "商户地点",
         ]
         fields = ["甲公司", "62220001", "示例银行", "转账", "加急", "货款", "网银转账", "乙商户", "零售", "上海"]
 
@@ -36,6 +36,40 @@ class TransactionTextFieldTests(unittest.TestCase):
         self.assertEqual(transaction.merchant_location, "上海")
         self.assertEqual(transaction.field_sources["counterparty_name"], "raw_headers[0]:对方账户名称")
         self.assertEqual(transaction.field_confidence["counterparty_name"], 1.0)
+
+    def test_maps_explicit_direction_and_counterparty_synonyms(self):
+        transaction = Transaction(
+            datetime(2026, 7, 18),
+            raw_headers=["序号", "对手名称", "交易方向", "付款方式"],
+            raw_fields=["7", "甲公司", "贷", "快捷支付"],
+        )
+
+        self.assertEqual(transaction.source_sequence, "7")
+        self.assertEqual(transaction.counterparty_name, "甲公司")
+        self.assertEqual(transaction.transaction_direction, "贷")
+        self.assertEqual(transaction.payment_method, "快捷支付")
+
+    def test_does_not_assume_transaction_location_is_merchant_location(self):
+        transaction = Transaction(
+            datetime(2026, 7, 18),
+            raw_headers=["交易地点"],
+            raw_fields=["网点柜台"],
+        )
+
+        self.assertEqual(transaction.merchant_location, "")
+
+    def test_maps_exact_evidence_headers_to_source_fields(self):
+        transaction = Transaction(
+            datetime(2026, 7, 18),
+            raw_headers=["交易流水号", "凭证号码", "记账日期", "交易网点"],
+            raw_fields=["TX-1", "V-2", "2026-07-18", "昆明分行"],
+        )
+
+        self.assertEqual(transaction.source_fields["transaction_reference"], "TX-1")
+        self.assertEqual(transaction.source_fields["voucher_number"], "V-2")
+        self.assertEqual(transaction.source_fields["posting_date"], "2026-07-18")
+        self.assertEqual(transaction.source_fields["transaction_branch"], "昆明分行")
+        self.assertEqual(transaction.field_sources["transaction_reference"], "raw_headers[0]:交易流水号")
 
     def test_explicit_fields_and_metadata_are_not_overwritten(self):
         transaction = Transaction(

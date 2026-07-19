@@ -9,7 +9,7 @@ from .number_parser import CENT, money_to_decimal
 
 
 BANK_NAME = "对公客户账户明细"
-RAW_HEADERS = ["交易日期", "交易发生金额", "账户余额", "对方账号", "对方户名", "摘要", "备注"]
+RAW_HEADERS = ["交易日期", "交易发生金额", "账户余额", "对方账号", "未拆分交易文本"]
 ROW_RE = re.compile(
     r"(?P<date>20\d{6})\s+"
     r"(?P<amount>[+-][\d,]+\.\d{2})\s+"
@@ -40,6 +40,7 @@ def _append_continuation(transactions: list[Transaction], line: str) -> None:
     tx.raw_text = f"{tx.raw_text}\n{line}" if tx.raw_text else line
     if tx.raw_fields:
         tx.raw_fields[-1] = f"{tx.raw_fields[-1]} {line}".strip()
+        tx.source_fields["unparsed_transaction_text"] = tx.raw_fields[-1]
 
 
 def extract_customer_detail_corp(pdf_path: str) -> list[Transaction]:
@@ -93,6 +94,9 @@ def extract_customer_detail_corp(pdf_path: str) -> list[Transaction]:
                         raw_text=line,
                         raw_fields=raw_fields,
                         raw_headers=RAW_HEADERS,
+                        source_fields={"unparsed_transaction_text": rest} if rest else {},
+                        field_sources={"unparsed_transaction_text": "raw_headers[4]:未拆分交易文本"} if rest else {},
+                        field_confidence={"unparsed_transaction_text": 1.0} if rest else {},
                         status="ok" if not issues else "review",
                         issues=issues,
                     )

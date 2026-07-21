@@ -12,6 +12,7 @@ BANK_NAME = "中国工商银行"
 DATE_COL = 0
 AMOUNT_COL = 8
 BALANCE_COL = 9
+RAW_HEADERS = ["交易日期", "账号", "储种", "序号", "币种", "钞汇", "摘要", "地区", "收入/支出金额", "余额", "对方户名", "对方账号", "渠道"]
 
 
 def _clean_cell(value) -> str:
@@ -92,6 +93,12 @@ def extract_icbc(pdf_path: str) -> list[Transaction]:
         expense = -amount if amount < 0 else Decimal("0.00")
         status = "ok" if not issues else "review"
 
+        raw_fields = [_clean_cell(cell) for cell in row]
+        source_fields = {
+            field_name: raw_fields[index]
+            for field_name, index in (("storage_type", 2), ("transaction_channel", 12))
+            if index < len(raw_fields) and raw_fields[index]
+        }
         tx = Transaction(
             transaction_time=tx_time,
             income=income,
@@ -103,9 +110,22 @@ def extract_icbc(pdf_path: str) -> list[Transaction]:
             raw_time=_clean_cell(row[DATE_COL]),
             raw_amount=_clean_cell(row[AMOUNT_COL]),
             raw_balance=_clean_cell(row[BALANCE_COL]),
+            raw_text=" | ".join(raw_fields),
+            raw_fields=raw_fields,
+            raw_headers=RAW_HEADERS,
             status=status,
             issues=issues,
+            source_fields=source_fields,
+            field_sources={
+                field_name: f"raw_headers[{index}]:{RAW_HEADERS[index]}"
+                for field_name, index in (("storage_type", 2), ("transaction_channel", 12))
+                if field_name in source_fields
+            },
+            field_confidence={field_name: 1.0 for field_name in source_fields},
         )
+        tx.counterparty_account = ""
+        tx.field_sources.pop("counterparty_account", None)
+        tx.field_confidence.pop("counterparty_account", None)
         transactions.append(tx)
 
     return transactions

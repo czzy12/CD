@@ -13,6 +13,7 @@ ZERO = Decimal("0.00")
 DATE_RE = re.compile(r"20\d{2}-\d{2}-\d{2}")
 DATE_DIGITS_RE = re.compile(r"(20\d{2})(\d{2})(\d{2})")
 SIGNED_NUMBER_RE = re.compile(r"[+-]?\d+(?:\.\d+)?")
+RAW_HEADERS = ["交易时间", "记账日期", "摘要", "支/收", "交易金额", "账户余额", "交易用途", "对方户名", "对方账户/对方银行"]
 
 
 def _cell(value: object) -> str:
@@ -130,6 +131,12 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
 
                     row_no = len(rows) + 1
                     fields = [_cell(cell) for cell in row]
+                    counterparty_account_bank_raw = fields[8] if len(fields) > 8 else ""
+                    source_fields = (
+                        {"counterparty_account_bank_raw": counterparty_account_bank_raw}
+                        if counterparty_account_bank_raw
+                        else {}
+                    )
                     tx = Transaction(
                         transaction_time=tx_time,
                         income=amount if amount >= ZERO else ZERO,
@@ -143,6 +150,24 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
                         raw_balance=_cell(row[5]),
                         raw_text=" ".join(field for field in fields if field),
                         raw_fields=fields,
+                        raw_headers=RAW_HEADERS,
+                        transaction_direction=fields[3],
+                        source_fields=source_fields,
+                        field_sources={
+                            **({"transaction_direction": "raw_headers[3]:支/收"} if fields[3] else {}),
+                            **(
+                                {"counterparty_account_bank_raw": "raw_headers[8]:对方账户/对方银行"}
+                                if counterparty_account_bank_raw
+                                else {}
+                            ),
+                        },
+                        field_confidence={
+                            field_name: 1.0
+                            for field_name in (
+                                (["transaction_direction"] if fields[3] else [])
+                                + (["counterparty_account_bank_raw"] if counterparty_account_bank_raw else [])
+                            )
+                        },
                     )
                     if strong_watermark:
                         tx.balance_optional = True

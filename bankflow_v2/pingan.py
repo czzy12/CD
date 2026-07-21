@@ -12,6 +12,7 @@ CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
 DATE_RE = re.compile(r"(20\d{2})-?(\d{2})-?(\d{2})")
 PAGE_RE = re.compile(r"(\d+)\s*/\s*31")
+RAW_HEADERS = ["序号", "交易日期", "交易金额", "余额", "交易地点", "摘要", "备注", "交易对手信息"]
 
 
 def _cell(value: object) -> str:
@@ -73,6 +74,11 @@ def extract_pingan(pdf_path: str) -> list[Transaction]:
                         continue
 
                     fields = [_cell(cell) for cell in row]
+                    source_fields = {
+                        field_name: fields[index]
+                        for field_name, index in (("transaction_location", 4), ("counterparty_info_raw", 7))
+                        if index < len(fields) and fields[index]
+                    }
                     tx = Transaction(
                         transaction_time=tx_time,
                         income=amount if amount >= ZERO else ZERO,
@@ -86,6 +92,14 @@ def extract_pingan(pdf_path: str) -> list[Transaction]:
                         raw_balance=_cell(row[3]),
                         raw_text=" ".join(field for field in fields if field),
                         raw_fields=fields,
+                        raw_headers=RAW_HEADERS,
+                        source_fields=source_fields,
+                        field_sources={
+                            field_name: f"raw_headers[{index}]:{RAW_HEADERS[index]}"
+                            for field_name, index in (("transaction_location", 4), ("counterparty_info_raw", 7))
+                            if field_name in source_fields
+                        },
+                        field_confidence={field_name: 1.0 for field_name in source_fields},
                     )
                     tx.merge_key = "|".join([str(sequence), tx.raw_time, tx.raw_amount, tx.raw_balance])
                     rows.append(tx)

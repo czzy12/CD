@@ -12,14 +12,25 @@
 
 除非需要追溯历史问题，不要每次完整读取长篇历史记录。
 
+## 完成记录固定位置
+
+| 内容 | 唯一保存位置 |
+| --- | --- |
+| 字段确认、实现、验证状态 | 人工确认工作簿 |
+| 当前字段/版式规则 | `银行适配手册.md` 与 `docs/bank-rules/` |
+| 新增、修改、解析和回归结果摘要 | `技术变更记录.md` 与 `docs/change-history/` |
+| 当前提交、阶段状态和下一入口 | `PROJECT_STATUS.md` |
+| 阶段完成度与跨窗口续接 | Obsidian《PDF流水核实能力重构规划》与《阶段进展与续接记录》 |
+| 完整解析或回归运行产物（需要时） | `D:\\Investigator PDF\\outputs\\verification-runs\\YYYY-MM-DD\\<chg-id>\\` |
+
 ## 当前定位
 
 本项目是 PDF / Excel / 微信流水识别与统计工具，后续会作为车贷报告自动化总项目的流水子模块。
 
-当前源码仓库：
+当前隔离开发仓库：
 
 ```text
-D:\Codex data\CD
+D:\Investigator PDF\CD-bankflow-refactor
 ```
 
 当前资料与样本入口：
@@ -28,25 +39,13 @@ D:\Codex data\CD
 D:\Codex data\CD_assets
 ```
 
-当前 Obsidian 记忆：
+当前字段重构的 Obsidian 续接记录：
 
 ```text
-D:\OneDrive\应用\remotely-save\Note Data\Vibe Coding\PDF流水
+D:\OneDrive\应用\remotely-save\0 to 1\PDF流水核实能力重构\阶段进展与续接记录.md
 ```
 
-## 当前分支
-
-当前开发分支：
-
-```text
-work/2026-05-31-flow-adjustment
-```
-
-远端分支：
-
-```text
-origin/work/2026-05-31-flow-adjustment
-```
+分支、HEAD、验证基线和当前待办等可变状态统一读取 `PROJECT_STATUS.md`，不得在本文件重复维护。
 
 ## 项目目标
 

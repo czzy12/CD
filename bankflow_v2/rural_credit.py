@@ -8,7 +8,7 @@ from .models import Transaction
 
 
 BANK_NAME = "农村信用社"
-RURAL_COMMERCIAL_BANK_NAME = "农村商业银行个人"
+RURAL_COMMERCIAL_BANK_NAME = "云南威信农村商业银行"
 MONEY_RE = re.compile(r"[\d,]+\.\d{2}")
 CENT = Decimal("0.01")
 LINE_ROW_RE = re.compile(

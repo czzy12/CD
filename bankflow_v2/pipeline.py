@@ -32,6 +32,7 @@ from .huaxia import extract_huaxia
 from .luzhou import extract_luzhou
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
+from .jinan_rural_corp import extract_jinan_rural_corp
 from .mybank_corp import extract_mybank_corp
 from .models import Transaction
 from .pingan import extract_pingan
@@ -126,6 +127,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_citic_corp(pdf_path)
     if bank == "jiujiang":
         return extract_jiujiang(pdf_path)
+    if bank == "jinan_rural_corp":
+        return extract_jinan_rural_corp(pdf_path)
     if bank == "foshan_rural":
         return extract_foshan_rural(pdf_path)
     if bank == "lanzhou":

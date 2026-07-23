@@ -51,6 +51,7 @@ ACCOUNT_NAME_PATTERNS = (
     r"兹证明\s*[:：]\s*([^\s（(，,]+)\s*[（(]",
     r"户名\s*(?:Account Name)?\s*[:：]\s*([^\s，,]+)",
     r"客户姓名\s*[:：]\s*([^\s，,]+)",
+    r"客户名称\s*[:：]\s*([^\s，,]+)",
     r"账户名称\s*[:：]\s*([^\s，,]+)",
     r"户主\s*[:：]\s*([^\s，,]+)",
     r"Account Name\s*[:：]\s*([^\s，,]+)",
@@ -289,6 +290,141 @@ class Worker(QThread):
             filtered.append(tx)
         return filtered
 
+    @staticmethod
+    def _summarize_printed_statement(transactions: list) -> Summary:
+        """Summarize a newest-first statement whose rows only contain dates."""
+        if not transactions:
+            return summarize([])
+
+        income = sum((tx.income for tx in transactions), Decimal("0.00"))
+        expense = sum((tx.expense for tx in transactions), Decimal("0.00"))
+        first_tx = transactions[0]
+        last_tx = transactions[-1]
+        return Summary(
+            count=len(transactions),
+            income_count=sum(1 for tx in transactions if tx.income > 0),
+            income_sum=income,
+            expense_count=sum(1 for tx in transactions if tx.expense > 0),
+            expense_sum=expense,
+            net=(income - expense).quantize(Decimal("0.01")),
+            opening_balance=(last_tx.balance - last_tx.amount).quantize(Decimal("0.01")),
+            closing_balance=first_tx.balance,
+        )
+
+    @staticmethod
+    def _rural_commercial_page_info(path: Path):
+        """Return the printed page range and statement signature, if present."""
+        import pdfplumber
+        from bankflow_v2.rural_credit import FOOTER_PAGE_RE, HEADER_TOTAL_RE
+
+        printed_pages = []
+        statement_signature = ""
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                if not statement_signature:
+                    total_match = HEADER_TOTAL_RE.search(text)
+                    if total_match:
+                        statement_signature = "|".join(total_match.groups())
+                footer_match = FOOTER_PAGE_RE.search(text)
+                if footer_match:
+                    printed_pages.append(int(footer_match.group(1)))
+                    total_pages = int(footer_match.group(2))
+
+        if not printed_pages:
+            return None
+        return min(printed_pages), max(printed_pages), total_pages, statement_signature
+
+    def _merge_complete_rural_commercial_statements(self, results: list[FileResult]):
+        """Combine complete statements and date-range-complete newest page ranges."""
+        groups = {}
+        for result in results:
+            if result.bank_id != "rural_commercial" or not result.account_no or not result.transactions:
+                continue
+            try:
+                page_info = self._rural_commercial_page_info(result.path)
+            except Exception:
+                continue
+            if page_info is None:
+                continue
+            first_page, _, total_pages, statement_signature = page_info
+            key = (result.bank_id, result.account_no, total_pages, statement_signature)
+            groups.setdefault(key, []).append((first_page, page_info, result))
+
+        replacements = {}
+        grouped_sources = set()
+        for (_, account_no, total_pages, _), members in groups.items():
+            if len(members) < 2:
+                continue
+            printed_pages = set()
+            for _, page_info, _ in members:
+                printed_pages.update(range(page_info[0], page_info[1] + 1))
+
+            members.sort(key=lambda item: item[0])
+            component_results = [item[2] for item in members]
+            transactions = [tx for result in component_results for tx in result.transactions]
+            complete_statement = printed_pages == set(range(1, total_pages + 1))
+            latest_page_range = printed_pages == set(range(1, max(printed_pages) + 1))
+            earliest_imported_time = min(tx.transaction_time for tx in transactions)
+            date_range_complete = (
+                self.start_date is not None
+                and latest_page_range
+                and self.start_date >= earliest_imported_time
+            )
+            if not complete_statement and not date_range_complete:
+                continue
+
+            for tx in transactions:
+                # The source has no transaction time. Its printed order is the
+                # only reliable balance-chain order, so avoid generic same-day
+                # chronological checks after validating the complete page set.
+                tx.status = "ok"
+                tx.issues.clear()
+                tx.balance_optional = True
+
+            summary = self._summarize_printed_statement(transactions)
+            base = component_results[0]
+            source_names = "、".join(result.path.name for result in component_results)
+            coverage = (
+                f"完整覆盖 1–{total_pages} 页"
+                if complete_statement
+                else f"已按日期范围覆盖第 1–{max(printed_pages)} 页"
+            )
+            combined = FileResult(
+                base.path,
+                base.bank_id,
+                base.bank_label,
+                base.bank_confidence,
+                base.bank_reason,
+                summary,
+                transactions,
+                "正常",
+                f"已合并同账户分段账单：{source_names}（{coverage}）",
+                base.account_name,
+                account_no,
+            )
+            combined.complete_segment_statement = True
+            replacements[id(base)] = (component_results, combined)
+            grouped_sources.update(result.path.name for result in component_results)
+
+        if not replacements:
+            return results, grouped_sources
+
+        merged_results = []
+        component_ids = {
+            id(component)
+            for components, _ in replacements.values()
+            for component in components
+        }
+        for result in results:
+            replacement = replacements.get(id(result))
+            if replacement:
+                _, combined = replacement
+                merged_results.append(combined)
+            elif id(result) not in component_ids:
+                merged_results.append(result)
+        return merged_results, grouped_sources
+
     def _generic_pdf_label(self, detection) -> str:
         if detection.bank_id and detection.label not in ("未识别", ""):
             return f"{detection.label}（通用识别）"
@@ -365,26 +501,12 @@ class Worker(QThread):
                 account_no = extract_account_no(path)
                 bank_label = infer_excel_bank_label(bank_label, transactions)
                 detected_flow_type = infer_flow_type(detection.bank_id, account_name, transactions)
-                original_count = len(transactions)
-                transactions = self._filter_transactions(transactions)
                 for tx in transactions:
                     tx.source_file = path.name
                     tx.bank_label = bank_label
                     tx.flow_type = detected_flow_type
                     tx.account_name = account_name
                     tx.account_no = account_no
-                file_summary = summarize(transactions, path.name)
-                all_issues.extend(file_summary.issues)
-                review_issues = [issue for issue in file_summary.issues if issue.level == "需复核"]
-                if transactions and not review_issues:
-                    status = "通用识别" if used_generic else "正常"
-                else:
-                    status = "需复核"
-                message = fallback_message if transactions else (fallback_message or "未解析到流水")
-                if original_count and not transactions:
-                    message = DATE_RANGE_EMPTY_MESSAGE
-                if message and (not transactions or review_issues):
-                    all_issues.append(Issue("需复核", path.name, "", message))
                 results.append(
                     FileResult(
                         path,
@@ -392,18 +514,44 @@ class Worker(QThread):
                         bank_label,
                         detection.confidence,
                         detection.reason,
-                        file_summary,
+                        summarize([]),
                         transactions,
-                        status,
-                        message,
+                        "通用识别" if used_generic else "正常",
+                        fallback_message,
                         account_name,
                         account_no,
                     )
                 )
             except Exception as exc:
-                issue = Issue("需复核", path.name, "", f"解析失败: {exc}")
-                all_issues.append(issue)
                 results.append(FileResult(path, detection.bank_id, detection.label, detection.confidence, detection.reason, summarize([]), [], "需复核", str(exc), extract_account_name(path), extract_account_no(path)))
+
+        results, _ = self._merge_complete_rural_commercial_statements(results)
+        all_issues = []
+        for result in results:
+            original_transactions = result.transactions
+            result.transactions = self._filter_transactions(original_transactions)
+            if getattr(result, "complete_segment_statement", False):
+                result.summary = self._summarize_printed_statement(result.transactions)
+                if result.transactions:
+                    result.status = "正常"
+                else:
+                    result.status = "需复核"
+                    result.message = DATE_RANGE_EMPTY_MESSAGE
+            else:
+                result.summary = summarize(result.transactions, result.path.name)
+                review_issues = [issue for issue in result.summary.issues if issue.level == "需复核"]
+                if result.transactions and not review_issues:
+                    result.status = "通用识别" if result.status == "通用识别" else "正常"
+                else:
+                    result.status = "需复核"
+                    if original_transactions and not result.transactions:
+                        result.message = DATE_RANGE_EMPTY_MESSAGE
+                    elif not result.message:
+                        result.message = "未解析到流水"
+
+            all_issues.extend(result.summary.issues)
+            if result.message and (not result.transactions or result.status == "需复核"):
+                all_issues.append(Issue("需复核", result.path.name, "", result.message))
 
         self.finished.emit(results, all_issues)
 

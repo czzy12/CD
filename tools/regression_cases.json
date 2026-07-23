@@ -1405,5 +1405,22 @@
       "closing_balance": "6589401.20",
       "issues": 3
     }
+  },
+  {
+    "name": "济南农商银行对公-交易流水-罗云斌资料",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/罗云斌20260718112009/基础资料/银行流水_1.pdf",
+    "tags": ["jinan_rural_corp", "corp"],
+    "expected": {
+      "count": 316,
+      "income_count": 208,
+      "income_sum": "2257729.95",
+      "expense_count": 108,
+      "expense_sum": "2320484.92",
+      "net": "-62754.97",
+      "opening_balance": "311251.67",
+      "closing_balance": "248496.70",
+      "issues": 0
+    }
   }
 ]

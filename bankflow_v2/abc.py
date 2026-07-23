@@ -16,10 +16,46 @@ LINE_RE = re.compile(
     r"(?P<amount>[+-]?\d[\d,]*\.\d{2})\s+"
     r"(?P<balance>\d[\d,]*\.\d{2})(?:\s+(?P<counterparty>.*))?$"
 )
+CHANNEL_RE = re.compile(
+    r"^(?P<counterparty>.*?)\s+(?P<journal>[A-Za-z]?\d+[A-Za-z0-9]*)\s+"
+    r"(?P<channel>掌上银行|电子商务|超级网银)(?:\s+(?P<remark>.*))?$"
+)
+RAW_HEADERS = ["交易日期", "交易时间", "交易摘要", "交易金额", "本次余额", "对手信息", "日志号", "交易渠道", "交易附言"]
 
 
 def _clean_cell(value) -> str:
     return str(value or "").replace("\n", "").strip()
+
+
+def _remark_text(value: str) -> str:
+    """Keep the meaningful text portion of the agricultural-bank postscript."""
+    value = re.sub(r"^[A-Za-z0-9]+", "", value or "").strip()
+    return value if re.search(r"[\u4e00-\u9fff]", value) else ""
+
+
+def _personal_text_fields(value: str) -> tuple[list[str], dict[str, str], dict[str, str]]:
+    match = CHANNEL_RE.match(value or "")
+    if not match:
+        raw_value = (value or "").strip()
+        return (
+            [raw_value, "", "", ""],
+            {"counterparty_info_raw": raw_value} if raw_value else {},
+            {"counterparty_info_raw": "raw_headers[5]:对手信息"} if raw_value else {},
+        )
+
+    counterparty = match.group("counterparty").strip()
+    journal = match.group("journal").strip()
+    channel = match.group("channel").strip()
+    postscript = _remark_text(match.group("remark") or "")
+    fields = [counterparty, journal, channel, match.group("remark") or ""]
+    source_fields = {"counterparty_info_raw": counterparty} if counterparty else {}
+    field_sources = {
+        "counterparty_info_raw": "raw_headers[5]:对手信息",
+    }
+    if postscript:
+        source_fields["transaction_postscript_raw"] = match.group("remark") or ""
+        field_sources["transaction_postscript_raw"] = "raw_headers[8]:交易附言"
+    return fields, source_fields, field_sources
 
 
 def parse_abc_amount_and_balance(
@@ -162,6 +198,21 @@ def extract_abc(pdf_path: str) -> list[Transaction]:
                 if match.group("time"):
                     raw_time = f"{raw_time} {match.group('time')}"
 
+                parsed_fields, source_fields, field_sources = _personal_text_fields(match.group("counterparty") or "")
+                counterparty_raw, journal, channel, postscript_raw = (parsed_fields + ["", "", "", ""])[:4]
+                remark = _remark_text(postscript_raw)
+                raw_fields = [
+                    match.group("date"),
+                    match.group("time") or "",
+                    match.group("type"),
+                    match.group("amount"),
+                    match.group("balance"),
+                    counterparty_raw,
+                    journal,
+                    channel,
+                    postscript_raw,
+                ]
+
                 transactions.append(
                     Transaction(
                         transaction_time=tx_time,
@@ -174,6 +225,25 @@ def extract_abc(pdf_path: str) -> list[Transaction]:
                         raw_time=raw_time,
                         raw_amount=match.group("amount"),
                         raw_balance=match.group("balance"),
+                        raw_text=" | ".join(raw_fields),
+                        raw_fields=raw_fields,
+                        raw_headers=RAW_HEADERS,
+                        remark=remark,
+                        transaction_method=channel,
+                        source_fields=source_fields,
+                        field_sources={
+                            **field_sources,
+                            **({"transaction_method": "raw_headers[7]:交易渠道"} if channel else {}),
+                            **({"remark": "raw_headers[8]:交易附言#仅保留文字部分"} if remark else {}),
+                        },
+                        field_confidence={
+                            field_name: 1.0
+                            for field_name in {
+                                *field_sources,
+                                *( {"transaction_method"} if channel else set() ),
+                                *( {"remark"} if remark else set() ),
+                            }
+                        },
                         status="ok" if not issues else "review",
                         issues=issues,
                     )

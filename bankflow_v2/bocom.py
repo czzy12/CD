@@ -66,6 +66,16 @@ def _amounts_from_direction(direction: str, amount: Decimal) -> tuple[Decimal, D
     return Decimal("0.00"), Decimal("0.00"), issues
 
 
+def _transaction_location(fields: list[str], header_index: int) -> tuple[dict[str, str], dict[str, str]]:
+    location = fields[header_index] if len(fields) > header_index else ""
+    if not location:
+        return {}, {}
+    return (
+        {"transaction_location": location},
+        {"transaction_location": f"raw_headers[{header_index}]:交易地点"},
+    )
+
+
 def extract_bocom(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
 
@@ -83,6 +93,8 @@ def extract_bocom(pdf_path: str) -> list[Transaction]:
                         direction = _clean_cell(row[DIRECTION_COL])
                         income, expense, issues = _amounts_from_direction(direction, amount)
 
+                        fields = [_clean_cell(cell) for cell in row]
+                        source_fields, field_sources = _transaction_location(fields, 7)
                         transactions.append(
                             Transaction(
                                 transaction_time=tx_time,
@@ -95,9 +107,16 @@ def extract_bocom(pdf_path: str) -> list[Transaction]:
                                 raw_time=f"{_clean_cell(row[DATE_COL])} {_clean_cell(row[TIME_COL])}",
                                 raw_amount=_clean_cell(row[AMOUNT_COL]),
                                 raw_balance=_clean_cell(row[BALANCE_COL]),
-                                raw_text=" | ".join(_clean_cell(cell) for cell in row),
-                                raw_fields=[_clean_cell(cell) for cell in row],
-                                raw_headers=RAW_HEADERS,
+                                raw_text=" | ".join(fields),
+                                raw_fields=fields,
+                                raw_headers=[
+                                    "序号", "交易日期", "交易时间", "交易类型", "借贷标志", "交易金额", "账户余额",
+                                    "交易地点", "对方户名", "交易渠道", "摘要",
+                                ],
+                                counterparty_account="",
+                                source_fields=source_fields,
+                                field_sources=field_sources,
+                                field_confidence={field_name: 1.0 for field_name in field_sources},
                                 status="ok" if not issues else "review",
                                 issues=issues,
                             )

@@ -73,6 +73,19 @@ def _restore_duplicate_order(transactions: list[Transaction]) -> None:
             tx.transaction_time = tx.transaction_time.replace(microsecond=len(items) - index - 1)
 
 
+def _apply_confirmed_fields(tx: Transaction, fields: list[str]) -> None:
+    channel = fields[6] if len(fields) > 6 else ""
+    branch = fields[7] if len(fields) > 7 else ""
+    if channel:
+        tx.transaction_method = channel
+        tx.field_sources["transaction_method"] = "raw_headers[6]:渠道"
+        tx.field_confidence["transaction_method"] = 1.0
+    if branch and set(branch) != {"-"}:
+        tx.source_fields["branch_name"] = branch
+        tx.field_sources["branch_name"] = "raw_headers[7]:网点名称"
+        tx.field_confidence["branch_name"] = 1.0
+
+
 def extract_boc(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
 
@@ -113,6 +126,7 @@ def extract_boc(pdf_path: str) -> list[Transaction]:
                         status="ok" if not issues else "review",
                         issues=issues,
                     )
+                    _apply_confirmed_fields(tx, fields)
                     if currency and currency != "人民币":
                         tx.neutral = True
                         tx.balance_optional = True

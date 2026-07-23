@@ -176,6 +176,7 @@ def extract_changsha_bank_corp(pdf_path: str) -> list[Transaction]:
                     continue
 
                 raw_fields = [raw_date, raw_amount, raw_balance, memo, number]
+                source_fields = {"summary_remark_raw": memo} if memo else {}
                 transaction = Transaction(
                     transaction_time=tx_time,
                     income=amount if amount > ZERO else ZERO,
@@ -190,6 +191,9 @@ def extract_changsha_bank_corp(pdf_path: str) -> list[Transaction]:
                     raw_text=" | ".join(raw_fields),
                     raw_fields=raw_fields,
                     raw_headers=RAW_HEADERS,
+                    source_fields=source_fields,
+                    field_sources={"summary_remark_raw": "raw_headers[3]:摘要/备注"} if memo else {},
+                    field_confidence={"summary_remark_raw": 1.0} if memo else {},
                 )
                 transaction.merge_key = "|".join([str(sequence), raw_date, raw_amount, raw_balance, number])
                 transactions.append(transaction)

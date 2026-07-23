@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import money_to_decimal
 
 
@@ -17,6 +17,11 @@ DATE_PREFIX_RE = re.compile(r"20\d{2}-(?:\d{2}-)?$")
 DAY_RE = re.compile(r"\d{2}")
 MONTH_DAY_RE = re.compile(r"\d{2}-\d{2}")
 MONEY_RE = re.compile(r"\d[\d,]*\.\d{2}")
+METADATA_RE = re.compile(
+    r"账号[:：]\s*(?P<account>[0-9-]+)\s+户名[:：]\s*(?P<name>.+?)\s+币种[:：].*?"
+    r"起止日期[:：]\s*(?P<start>\d{4}年\d{2}月\d{2}日)\s*-\s*(?P<end>\d{4}年\d{2}月\d{2}日)",
+    re.S,
+)
 CENT = Decimal("0.01")
 HISTORY_HEADERS = [
     "交易时间",
@@ -407,7 +412,29 @@ def _order_rows(parsed_rows: list[ParsedRow]) -> list[ParsedRow]:
     return ordered
 
 
-def extract_abc_corp(pdf_path: str) -> list[Transaction]:
+def _statement_metadata(pdf_path: str) -> StatementMetadata:
+    metadata = StatementMetadata()
+    with pdfplumber.open(pdf_path) as pdf:
+        if not pdf.pages:
+            return metadata
+        match = METADATA_RE.search(pdf.pages[0].extract_text() or "")
+    if not match:
+        return metadata
+    metadata.account_name = match.group("name").strip()
+    metadata.account_number = match.group("account")
+    metadata.statement_period_start = datetime.strptime(match.group("start"), "%Y年%m月%d日").date()
+    metadata.statement_period_end = datetime.strptime(match.group("end"), "%Y年%m月%d日").date()
+    metadata.field_sources = {
+        "account_name": "document_header:户名",
+        "account_number": "document_header:账号",
+        "statement_period_start": "document_header:起止日期",
+        "statement_period_end": "document_header:起止日期",
+    }
+    metadata.field_confidence = {field_name: 1.0 for field_name in metadata.field_sources}
+    return metadata
+
+
+def extract_abc_corp(pdf_path: str) -> TransactionList:
     parsed_rows = _parse_table_rows(pdf_path)
     if not parsed_rows:
         parsed_rows = _parse_text_rows(pdf_path)
@@ -455,4 +482,4 @@ def extract_abc_corp(pdf_path: str) -> list[Transaction]:
         )
         previous_balance = row.balance
 
-    return transactions
+    return TransactionList(transactions, _statement_metadata(pdf_path))

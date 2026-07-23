@@ -1,9 +1,10 @@
+import re
 from datetime import datetime
 from decimal import Decimal
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import money_to_decimal
 
 
@@ -13,6 +14,11 @@ DEBIT_COL = 2
 CREDIT_COL = 3
 BALANCE_COL = 4
 SERIAL_COL = 12
+METADATA_RE = re.compile(
+    r"账号[:：]\s*(?P<account>[0-9A-Za-z-]+)\s+账户名称[:：]\s*(?P<name>.+?)\s+日期[:：]\s*"
+    r"(?P<start>\d{8})\s*-\s*(?P<end>\d{8})",
+    re.S,
+)
 
 
 def _clean_cell(value) -> str:
@@ -144,7 +150,29 @@ def _transaction_key(row: list) -> str:
     )
 
 
-def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
+def _statement_metadata(pdf_path: str) -> StatementMetadata:
+    metadata = StatementMetadata()
+    with pdfplumber.open(pdf_path) as pdf:
+        if not pdf.pages:
+            return metadata
+        match = METADATA_RE.search(pdf.pages[0].extract_text() or "")
+    if not match:
+        return metadata
+    metadata.account_name = match.group("name").strip()
+    metadata.account_number = match.group("account")
+    metadata.statement_period_start = datetime.strptime(match.group("start"), "%Y%m%d").date()
+    metadata.statement_period_end = datetime.strptime(match.group("end"), "%Y%m%d").date()
+    metadata.field_sources = {
+        "account_name": "document_header:账户名称",
+        "account_number": "document_header:账号",
+        "statement_period_start": "document_header:日期",
+        "statement_period_end": "document_header:日期",
+    }
+    metadata.field_confidence = {field_name: 1.0 for field_name in metadata.field_sources}
+    return metadata
+
+
+def extract_ccb_corp(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
 
     with pdfplumber.open(pdf_path) as pdf:
@@ -193,7 +221,7 @@ def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
 
                     transactions[-1].merge_key = _transaction_key(row)
 
-    return transactions
+    return TransactionList(transactions, _statement_metadata(pdf_path))
 
 
 def merge_transactions(transactions: list[Transaction]) -> list[Transaction]:

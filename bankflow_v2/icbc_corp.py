@@ -36,6 +36,53 @@ def _cell(row: list, index: dict[str, int], name: str) -> str:
     return _clean_cell(row[idx])
 
 
+def _ordered_fields(row: list, index: dict[str, int]) -> tuple[list[str], list[str]]:
+    headers = [name for name, _ in sorted(index.items(), key=lambda item: item[1])]
+    return [_clean_cell(row[index[name]]) if index[name] < len(row) else "" for name in headers], headers
+
+
+def _apply_account_detail_fields(tx: Transaction, row: list, index: dict[str, int]) -> None:
+    """Map only the confirmed fields for 工行对公账户明细清单."""
+    counterparty_name = _cell(row, index, "对方单位")
+    summary = _cell(row, index, "摘要")
+    purpose = _cell(row, index, "用途")
+    posting_date = _cell(row, index, "入账日期") or _cell(row, index, "记账日期")
+
+    if counterparty_name:
+        tx.counterparty_name = counterparty_name
+        tx.field_sources["counterparty_name"] = f"raw_headers[{index['对方单位']}]:对方单位"
+        tx.field_confidence["counterparty_name"] = 1.0
+    if summary:
+        tx.summary = summary
+        tx.field_sources["summary"] = f"raw_headers[{index['摘要']}]:摘要"
+        tx.field_confidence["summary"] = 1.0
+    if purpose:
+        tx.purpose = purpose
+        tx.field_sources["purpose"] = f"raw_headers[{index['用途']}]:用途"
+        tx.field_confidence["purpose"] = 1.0
+    if posting_date:
+        tx.source_fields["posting_date"] = posting_date
+        header = "入账日期" if "入账日期" in index else "记账日期"
+        tx.field_sources["posting_date"] = f"raw_headers[{index[header]}]:{header}"
+        tx.field_confidence["posting_date"] = 1.0
+
+    for field_name, header in (
+        ("counterparty_bank_code", "对方行号"),
+        ("receipt_customization", "回单个性化信息"),
+    ):
+        value = _cell(row, index, header)
+        if value:
+            tx.source_fields[field_name] = value
+            tx.field_sources[field_name] = f"raw_headers[{index[header]}]:{header}"
+            tx.field_confidence[field_name] = 1.0
+
+    tx.counterparty_account = ""
+    for field_name in ("counterparty_account", "card_number"):
+        tx.field_sources.pop(field_name, None)
+        tx.field_confidence.pop(field_name, None)
+        tx.source_fields.pop(field_name, None)
+
+
 def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int) -> Transaction | None:
     tx_time = _parse_time(_cell(row, index, "交易时间"))
     if tx_time is None:
@@ -63,6 +110,7 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         expense = Decimal("0.00")
         issues.append("借贷方向无法解析")
 
+    raw_fields, raw_headers = _ordered_fields(row, index)
     tx = Transaction(
         transaction_time=tx_time,
         income=income,
@@ -74,9 +122,13 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         raw_time=_cell(row, index, "交易时间"),
         raw_amount=_cell(row, index, "发生额"),
         raw_balance=_cell(row, index, "余额"),
+        raw_text=" | ".join(raw_fields),
+        raw_fields=raw_fields,
+        raw_headers=raw_headers,
         status="ok" if not issues else "review",
         issues=issues,
     )
+    _apply_account_detail_fields(tx, row, index)
     tx.preserve_signed_columns = True
     return tx
 

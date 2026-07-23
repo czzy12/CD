@@ -47,6 +47,12 @@ def _split_pipe_row(line: str) -> list[str]:
     return [part.strip() for part in line.split("|")]
 
 
+def _meaningful_text(value: str) -> str:
+    parts = [part.strip() for part in (value or "").split("/")]
+    text_parts = [part for part in parts if re.search(r"[\u4e00-\u9fff]", part)]
+    return "/".join(text_parts)
+
+
 def _parse_transaction_line(line: str, page_no: int, row_no: int) -> Transaction | None:
     parts = _split_pipe_row(line)
     if len(parts) < 11:
@@ -80,6 +86,23 @@ def _parse_transaction_line(line: str, page_no: int, row_no: int) -> Transaction
         if index < len(parts) and parts[index]:
             raw_text_parts.append(parts[index])
 
+    detail_text = _meaningful_text(parts[6] if len(parts) > 6 else "")
+    reference = parts[10] if len(parts) > 10 else ""
+    note = parts[11] if len(parts) > 11 else ""
+    source_fields = {
+        field_name: value
+        for field_name, value in (
+            ("voucher_details_text", detail_text),
+            ("operator_reference", reference),
+            ("counterparty_info_raw", note),
+        )
+        if value
+    }
+    field_sources = {
+        "voucher_details_text": "raw_headers[5]:凭证号码/业务编号/用途/摘要#仅保留文字部分",
+        "operator_reference": "raw_headers[9]:机构/柜员/流水",
+        "counterparty_info_raw": "raw_headers[10]:备注",
+    }
     tx = Transaction(
         transaction_time=tx_time,
         income=credit,
@@ -106,9 +129,26 @@ def _parse_transaction_line(line: str, page_no: int, row_no: int) -> Transaction
             "机构/柜员/流水",
             "备注",
         ],
+        summary=detail_text,
+        remark="",
+        source_fields=source_fields,
+        field_sources={
+            **{field_name: field_sources[field_name] for field_name in source_fields},
+            **({"summary": field_sources["voucher_details_text"]} if detail_text else {}),
+        },
+        field_confidence={
+            field_name: 1.0
+            for field_name in {
+                *source_fields,
+                *( {"summary"} if detail_text else set() ),
+            }
+        },
         status="ok" if not issues else "review",
         issues=issues,
     )
+    tx.remark = ""
+    tx.field_sources.pop("remark", None)
+    tx.field_confidence.pop("remark", None)
     tx.merge_key = "|".join([parts[1], parts[2], debit_raw, credit_raw, balance_raw, str(page_no), str(row_no)])
     return tx
 
@@ -128,6 +168,15 @@ def extract_boc_corp(pdf_path: str) -> list[Transaction]:
                     continue
                 tx = _parse_transaction_line(line, page_no, row_no)
                 if tx is None:
+                    parts = _split_pipe_row(line)
+                    continuation = parts[11] if len(parts) > 11 else ""
+                    if transactions and continuation:
+                        previous = transactions[-1]
+                        previous.source_fields["counterparty_info_raw"] = (
+                            f"{previous.source_fields.get('counterparty_info_raw', '')}{continuation}"
+                        )
+                        previous.field_sources["counterparty_info_raw"] = "raw_headers[10]:备注（续行已合并）"
+                        previous.field_confidence["counterparty_info_raw"] = 1.0
                     continue
                 transactions.append(tx)
 

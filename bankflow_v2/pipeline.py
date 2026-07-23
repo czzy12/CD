@@ -7,6 +7,7 @@ from .bocom import extract_bocom
 from .bocom_corp import extract_bocom_corp
 from .cmb import extract_cmb
 from .cmb_corp import extract_cmb_corp
+from .cmbc import extract_cmbc
 from .citic import extract_citic, extract_citic_corp
 from .city_commercial import (
     extract_foshan_rural,
@@ -155,7 +156,7 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
     if bank == "tianjin_rural_corp":
         return extract_tianjin_rural_corp(pdf_path)
     if bank == "cmbc":
-        return extract_generic_pdf(pdf_path, "民生银行个人")
+        return extract_cmbc(pdf_path)
     if bank == "cib":
         return extract_cib(pdf_path)
     if bank == "generic_pdf":

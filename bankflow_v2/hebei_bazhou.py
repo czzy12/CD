@@ -101,6 +101,14 @@ def extract_hebei_personal(pdf_path: str) -> list[Transaction]:
             raw_fields=fields,
             raw_headers=PERSONAL_HEADERS,
         )
+        raw_counterparty_account = fields[4] if len(fields) > 4 else ""
+        tx.counterparty_account = ""
+        tx.field_sources.pop("counterparty_account", None)
+        tx.field_confidence.pop("counterparty_account", None)
+        if raw_counterparty_account:
+            tx.source_fields["counterparty_account_raw"] = raw_counterparty_account
+            tx.field_sources["counterparty_account_raw"] = "raw_headers[4]:对方账户"
+            tx.field_confidence["counterparty_account_raw"] = 1.0
         tx.direction_text = direction_text
         rows.append(tx)
 
@@ -206,8 +214,77 @@ def _corp_time(block: str) -> tuple[datetime | None, str]:
     return datetime.combine(datetime.strptime(date_match.group(1), "%Y-%m-%d").date(), parsed_time), raw_time or date_match.group(1)
 
 
+def _bazhou_header_index(row: list) -> dict[str, int]:
+    return {
+        re.sub(r"\s+", "", _cell(row, index)): index
+        for index in range(len(row))
+        if _cell(row, index)
+    }
+
+
+def _bazhou_table_rows(page, page_no: int) -> list[Transaction]:
+    transactions: list[Transaction] = []
+    required_headers = {"交易日期", "汇出金额", "汇入金额", "余额", "摘要", "用途"}
+    for table in page.extract_tables():
+        index: dict[str, int] | None = None
+        for row in table:
+            if not row:
+                continue
+            candidate = _bazhou_header_index(row)
+            if required_headers.issubset(candidate):
+                index = candidate
+                continue
+            if index is None:
+                continue
+
+            raw_date = _cell(row, index["交易日期"])
+            tx_time, raw_time = _corp_time(raw_date)
+            if tx_time is None:
+                continue
+            expense = _money(_cell(row, index["汇出金额"]))
+            income = _money(_cell(row, index["汇入金额"]))
+            balance = _money(_cell(row, index["余额"]))
+            raw_headers = [name for name, _ in sorted(index.items(), key=lambda item: item[1])]
+            raw_fields = [_cell(row, index[name]) for name in raw_headers]
+            tx = Transaction(
+                transaction_time=tx_time,
+                income=income,
+                expense=expense,
+                balance=balance,
+                bank=BAZHOU_CORP_BANK,
+                page_no=page_no,
+                row_no=len(transactions) + 1,
+                raw_time=raw_time,
+                raw_amount=f"汇出:{_cell(row, index['汇出金额'])} 汇入:{_cell(row, index['汇入金额'])}",
+                raw_balance=_cell(row, index["余额"]),
+                raw_text=" | ".join(raw_fields),
+                raw_fields=raw_fields,
+                raw_headers=raw_headers,
+            )
+            account_index = index.get("对方账户")
+            if account_index is not None:
+                raw_account = _cell(row, account_index)
+                tx.counterparty_account = ""
+                tx.field_sources.pop("counterparty_account", None)
+                tx.field_confidence.pop("counterparty_account", None)
+                if raw_account:
+                    tx.source_fields["counterparty_account_raw"] = raw_account
+                    tx.field_sources["counterparty_account_raw"] = f"raw_headers[{account_index}]:对方账户"
+                    tx.field_confidence["counterparty_account_raw"] = 1.0
+            transactions.append(tx)
+    return transactions
+
+
 def extract_bazhou_shunfeng_corp(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            transactions.extend(_bazhou_table_rows(page, page_no))
+    if transactions:
+        for row_index, tx in enumerate(transactions, start=1):
+            tx.row_no = row_index
+        return transactions
+
     for row_index, block in enumerate(_corp_blocks(_extract_text(pdf_path)), start=1):
         tx_time, raw_time = _corp_time(block)
         if tx_time is None:

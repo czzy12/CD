@@ -21,6 +21,8 @@ COORD_BALANCE_RE = re.compile(r"^(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})")
 COORD_DATE_RE = re.compile(r"^20\d{2}-\d{2}-\d{2}$")
 COORD_TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 COORD_HEADERS = ["交易日期", "借方(出账)", "贷方(入账)", "余额", "摘要", "收(付)方名称", "收(付)方账号", "交易类型"]
+STATEMENT_HEADERS = ["日期", "业务类型", "票据号/摘要", "借方/贷方金额", "余额", "对手户名"]
+BILL_NUMBER_RE = re.compile(r"^(?P<bill>\d{10,})(?:\s+(?P<summary>.*))?$")
 
 
 def _parse_date(raw: str) -> datetime | None:
@@ -28,6 +30,15 @@ def _parse_date(raw: str) -> datetime | None:
         return datetime.strptime(raw, "%Y%m%d")
     except ValueError:
         return None
+
+
+def _summary_from_bill_or_description(raw: str) -> str:
+    """Keep only the confirmed description portion of the combined text column."""
+    text = raw.strip()
+    match = BILL_NUMBER_RE.fullmatch(text)
+    if match:
+        return (match.group("summary") or "").strip()
+    return text
 
 
 def _append_continuation(transactions: list[Transaction], line: str) -> None:
@@ -178,6 +189,7 @@ def _extract_statement_of_account(pdf_path: str) -> list[Transaction]:
                     match.group("balance"),
                     match.group("counterparty").strip(),
                 ]
+                summary = _summary_from_bill_or_description(match.group("body"))
                 transactions.append(
                     Transaction(
                         transaction_time=tx_time,
@@ -192,7 +204,10 @@ def _extract_statement_of_account(pdf_path: str) -> list[Transaction]:
                         raw_balance=match.group("balance"),
                         raw_text=line,
                         raw_fields=raw_fields,
-                        raw_headers=["日期", "业务类型", "票据号/摘要", "借方/贷方金额", "余额", "对手户名"],
+                        raw_headers=STATEMENT_HEADERS,
+                        summary=summary,
+                        field_sources={"summary": "raw_headers[2]:票据号/摘要"} if summary else {},
+                        field_confidence={"summary": 1.0} if summary else {},
                         status="ok" if not issues else "review",
                         issues=issues,
                     )

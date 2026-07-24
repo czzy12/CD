@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pdfplumber
 
+from .coordinate_rows import extract_coordinate_rows
 from .models import Transaction
 from .number_parser import money_to_decimal
 
@@ -214,6 +215,49 @@ def extract_shanghai_corp(pdf_path: str) -> list[Transaction]:
 
 
 def extract_shanghai(pdf_path: str) -> list[Transaction]:
+    """Parse the confirmed personal layout with its printed column coordinates."""
+    headers = ["记账日期", "交易摘要", "币种", "交易金额", "期末金额", "交易网点", "对方户名", "交易渠道"]
+    kept_headers = [header for header in headers if header != "交易网点"]
+    transactions: list[Transaction] = []
+    print_index = 0
+    column_positions: dict[str, float] = {}
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            for row in extract_coordinate_rows(page, headers, lambda value: _parse_datetime(value) is not None, column_positions):
+                tx_time = _parse_datetime(row["记账日期"])
+                amount = money_to_decimal(row["交易金额"])
+                balance = money_to_decimal(row["期末金额"])
+                if tx_time is None or amount is None:
+                    continue
+                print_index += 1
+                issues = ["余额无法解析"] if balance is None else []
+                transactions.append(
+                    Transaction(
+                        transaction_time=tx_time,
+                        income=amount if amount >= 0 else ZERO,
+                        expense=-amount if amount < 0 else ZERO,
+                        balance=balance,
+                        bank=PERSONAL_BANK_NAME,
+                        page_no=0,
+                        row_no=-print_index,
+                        raw_time=row["记账日期"],
+                        raw_amount=row["交易金额"],
+                        raw_balance=row["期末金额"],
+                        raw_text=" | ".join(row[header] for header in kept_headers if row[header]),
+                        raw_fields=[row[header] for header in kept_headers],
+                        raw_headers=kept_headers,
+                        source_fields={"transaction_channel_raw": row["交易渠道"]} if row["交易渠道"] else {},
+                        field_sources={"transaction_channel_raw": "raw_headers[6]:交易渠道"} if row["交易渠道"] else {},
+                        field_confidence={"transaction_channel_raw": 1.0} if row["交易渠道"] else {},
+                        status="ok" if not issues else "review",
+                        issues=issues,
+                    )
+                )
+    return transactions
+
+
+def _extract_shanghai_legacy(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
     print_index = 0
 

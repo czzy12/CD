@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 import pdfplumber
 
+from .coordinate_rows import extract_coordinate_rows
 from .models import Transaction
 
 
@@ -122,6 +123,9 @@ def _make_tx(
     raw_amount: str,
     raw_balance: str,
     raw_fields: list[str],
+    raw_headers: list[str] | None = None,
+    source_fields: dict[str, str] | None = None,
+    field_sources: dict[str, str] | None = None,
 ) -> Transaction:
     tx = Transaction(
         transaction_time=tx_time,
@@ -136,9 +140,163 @@ def _make_tx(
         raw_balance=raw_balance,
         raw_text=" ".join(field for field in raw_fields if field),
         raw_fields=raw_fields,
+        raw_headers=raw_headers or [],
+        source_fields=source_fields or {},
+        field_sources=field_sources or {},
     )
     tx.merge_key = "|".join([raw_time, raw_amount, raw_balance, str(page_no), str(row_no)])
     return tx
+
+
+def _extract_confirmed_table_rows(
+    pdf_path: str,
+    bank_name: str,
+    headers: list[str],
+    excluded_headers: set[str],
+    *,
+    date_header: str,
+    amount_header: str | None = None,
+    income_header: str | None = None,
+    expense_header: str | None = None,
+    balance_header: str,
+) -> list[Transaction]:
+    transactions: list[Transaction] = []
+    sequence = 0
+    required_headers = {date_header, balance_header}
+    if amount_header:
+        required_headers.add(amount_header)
+    else:
+        required_headers.update({income_header or "", expense_header or ""})
+
+    with pdfplumber.open(pdf_path) as pdf:
+        active_index: dict[str, int] | None = None
+        for page_no, page in enumerate(pdf.pages, start=1):
+            for table in page.extract_tables():
+                start_row = 0
+                index = active_index
+                for row_index, row in enumerate(table):
+                    normalized = [_norm(cell) for cell in row]
+                    if not required_headers.issubset(normalized):
+                        continue
+                    candidate_index = {header: normalized.index(header) for header in headers if header in normalized}
+                    if set(headers) - set(candidate_index):
+                        continue
+                    index = candidate_index
+                    active_index = candidate_index
+                    start_row = row_index + 1
+                    break
+                if index is None:
+                    continue
+                if set(headers) - set(index):
+                    continue
+                kept_headers = [header for header in headers if header not in excluded_headers]
+                for values in table[start_row:]:
+                    tx_time = _parse_time(_cell(values, index[date_header]))
+                    balance = _parse_money(_cell(values, index[balance_header]))
+                    if tx_time is None or balance is None:
+                        continue
+                    if amount_header:
+                        raw_amount = _cell(values, index[amount_header])
+                        amount = _parse_money(raw_amount)
+                        if amount is None:
+                            continue
+                        income = amount if amount >= 0 else Decimal("0.00")
+                        expense = -amount if amount < 0 else Decimal("0.00")
+                    else:
+                        raw_income = _cell(values, index[income_header])
+                        raw_expense = _cell(values, index[expense_header])
+                        income = _parse_money(raw_income) or Decimal("0.00")
+                        expense = _parse_money(raw_expense) or Decimal("0.00")
+                        if not income and not expense:
+                            continue
+                        raw_amount = f"收入:{raw_income} 支出:{raw_expense}"
+                    sequence += 1
+                    transactions.append(
+                        _make_tx(
+                            tx_time,
+                            income,
+                            expense,
+                            balance,
+                            bank_name,
+                            page_no,
+                            sequence,
+                            _cell(values, index[date_header]),
+                            raw_amount,
+                            _cell(values, index[balance_header]),
+                            [_cell(values, index[header]) for header in kept_headers],
+                            kept_headers,
+                        )
+                    )
+    return _normalize_partial_times(transactions)
+
+
+def _extract_jiujiang_coordinate_rows(pdf_path: str) -> list[Transaction]:
+    headers = ["记账日期", "货币", "交易金额", "联机余额", "交易摘要", "对手信息"]
+    transactions: list[Transaction] = []
+    sequence = 0
+    column_positions: dict[str, float] = {}
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            for row in extract_coordinate_rows(page, headers, lambda value: _parse_time(value) is not None, column_positions):
+                tx_time = _parse_time(row["记账日期"])
+                amount = _parse_money(row["交易金额"])
+                balance = _parse_money(row["联机余额"])
+                if tx_time is None or amount is None or balance is None:
+                    continue
+                sequence += 1
+                transactions.append(
+                    _make_tx(
+                        tx_time,
+                        amount if amount >= 0 else Decimal("0.00"),
+                        -amount if amount < 0 else Decimal("0.00"),
+                        balance,
+                        "九江银行",
+                        page_no,
+                        sequence,
+                        row["记账日期"],
+                        row["交易金额"],
+                        row["联机余额"],
+                        [row[header] for header in headers],
+                        headers,
+                        {"counterparty_info_raw": row["对手信息"]} if row["对手信息"] else {},
+                        {"counterparty_info_raw": "raw_headers[5]:对手信息"} if row["对手信息"] else {},
+                    )
+                )
+    return _normalize_partial_times(transactions)
+
+
+def _extract_ningbo_coordinate_rows(pdf_path: str) -> list[Transaction]:
+    headers = ["日期", "摘要", "币种", "交易金额", "余额", "交易柜员"]
+    kept_headers = ["日期", "摘要", "交易金额", "余额"]
+    transactions: list[Transaction] = []
+    sequence = 0
+    column_positions: dict[str, float] = {}
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            for row in extract_coordinate_rows(page, headers, lambda value: _parse_time(value) is not None, column_positions):
+                tx_time = _parse_time(row["日期"])
+                amount = _parse_money(row["交易金额"])
+                balance = _parse_money(row["余额"])
+                if tx_time is None or amount is None or balance is None:
+                    continue
+                sequence += 1
+                transactions.append(
+                    _make_tx(
+                        tx_time,
+                        amount if amount >= 0 else Decimal("0.00"),
+                        -amount if amount < 0 else Decimal("0.00"),
+                        balance,
+                        "宁波银行",
+                        page_no,
+                        sequence,
+                        row["日期"],
+                        row["交易金额"],
+                        row["余额"],
+                        [row[header] for header in kept_headers],
+                        kept_headers,
+                    )
+                )
+    return _normalize_partial_times(transactions)
 
 
 def _extract_table_rows(pdf_path: str, bank_name: str) -> list[Transaction]:
@@ -288,11 +446,19 @@ def extract_city_commercial(pdf_path: str, bank_name: str = BANK_NAME) -> list[T
 
 
 def extract_jiujiang(pdf_path: str) -> list[Transaction]:
-    return extract_city_commercial(pdf_path, "九江银行")
+    return _extract_jiujiang_coordinate_rows(pdf_path)
 
 
 def extract_foshan_rural(pdf_path: str) -> list[Transaction]:
-    return extract_city_commercial(pdf_path, "佛山农村商业银行")
+    return _extract_confirmed_table_rows(
+        pdf_path,
+        "佛山农村商业银行",
+        ["流水号", "记账日期", "交易日期", "收入/支出", "余额", "对方账号", "对方户名", "对方行名", "交易类型", "摘要", "附言"],
+        {"流水号", "记账日期", "附言"},
+        date_header="交易日期",
+        amount_header="收入/支出",
+        balance_header="余额",
+    )
 
 
 def extract_lanzhou(pdf_path: str) -> list[Transaction]:
@@ -300,8 +466,17 @@ def extract_lanzhou(pdf_path: str) -> list[Transaction]:
 
 
 def extract_ningbo(pdf_path: str) -> list[Transaction]:
-    return extract_city_commercial(pdf_path, "宁波银行")
+    return _extract_ningbo_coordinate_rows(pdf_path)
 
 
 def extract_nanjing_corp(pdf_path: str) -> list[Transaction]:
-    return extract_city_commercial(pdf_path, "南京银行对公")
+    return _extract_confirmed_table_rows(
+        pdf_path,
+        "南京银行对公",
+        ["序号", "交易日期", "收入", "支出", "账户余额", "对方账号", "对方户名", "对方行名", "摘要", "附言", "流水号"],
+        {"序号", "流水号"},
+        date_header="交易日期",
+        income_header="收入",
+        expense_header="支出",
+        balance_header="账户余额",
+    )

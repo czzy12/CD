@@ -64,10 +64,13 @@ def extract_luzhou(pdf_path: str) -> list[Transaction]:
                             raw_time=raw_fields[1],
                             raw_amount=raw_fields[3],
                             raw_balance=raw_fields[4],
-                            raw_text=" | ".join(raw_fields),
-                            raw_fields=raw_fields,
-                            raw_headers=RAW_HEADERS,
-                        )
+                        raw_text=" | ".join(raw_fields),
+                        raw_fields=raw_fields,
+                        raw_headers=RAW_HEADERS,
+                        transaction_method=raw_fields[9],
+                        field_sources={"transaction_method": "raw_headers[9]:交易渠道"} if raw_fields[9] else {},
+                        field_confidence={"transaction_method": 1.0} if raw_fields[9] else {},
+                    )
                     )
 
     # 清单按倒序展示；同一秒若有多笔交易，也按序号倒序排列。

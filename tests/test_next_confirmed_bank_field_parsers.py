@@ -7,7 +7,7 @@ from bankflow_v2.ccb_corp import _statement_metadata as ccb_metadata
 from bankflow_v2.changsha_bank_corp import extract_changsha_bank_corp
 from bankflow_v2.cmb_corp import extract_cmb_corp
 from bankflow_v2.customer_detail_corp import extract_customer_detail_corp
-from bankflow_v2.hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_personal
+from bankflow_v2.hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detail, extract_hebei_personal
 from bankflow_v2.icbc_corp import extract_icbc_corp
 
 
@@ -93,6 +93,21 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_account, "")
         self.assertEqual(tx.source_fields["counterparty_account_raw"], "6222")
         self.assertEqual(tx.counterparty_name, "甲公司")
+
+    def test_hebei_corp_maps_confirmed_counterparty_account_and_bank(self):
+        table = [
+            ["交易日期", "交易金额", "借贷标志", "交易后余额", "交易对手账号", "交易对手名称", "交易对手开户行", "摘要", "备注"],
+            ["2026-01-01 10:00:00", "20.00", "借", "80.00", "6222", "甲公司", "示例银行", "转账", "备注"],
+        ]
+        page = _TablePage("", [table])
+        with patch("bankflow_v2.hebei_bazhou.pdfplumber.open", return_value=_Pdf([page])):
+            tx = extract_hebei_corp_detail("sample.pdf")[0]
+
+        self.assertEqual(tx.counterparty_account, "6222")
+        self.assertEqual(tx.counterparty_bank, "示例银行")
+        self.assertEqual(tx.counterparty_name, "甲公司")
+        self.assertEqual(tx.summary, "转账")
+        self.assertEqual(tx.remark, "备注")
 
     def test_bazhou_table_maps_confirmed_columns_and_excludes_account(self):
         table = [

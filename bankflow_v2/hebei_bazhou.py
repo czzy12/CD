@@ -152,23 +152,28 @@ def extract_hebei_corp_detail(pdf_path: str) -> list[Transaction]:
                     income, expense = _amounts_from_direction(direction, amount)
 
                     raw_fields = [_cell(row, index) for index in range(len(row))]
-                    rows.append(
-                        Transaction(
-                            transaction_time=tx_time,
-                            income=income,
-                            expense=expense,
-                            balance=balance,
-                            bank=HEBEI_CORP_DETAIL_BANK,
-                            page_no=page_no,
-                            row_no=len(rows) + 1,
-                            raw_time=tx_time.strftime("%Y-%m-%d %H:%M:%S"),
-                            raw_amount=f"{direction} {_cell(row, 1)}",
-                            raw_balance=_cell(row, 3),
-                            raw_text=" | ".join(raw_fields),
-                            raw_fields=raw_fields,
-                            raw_headers=HEBEI_CORP_HEADERS,
-                        )
+                    tx = Transaction(
+                        transaction_time=tx_time,
+                        income=income,
+                        expense=expense,
+                        balance=balance,
+                        bank=HEBEI_CORP_DETAIL_BANK,
+                        page_no=page_no,
+                        row_no=len(rows) + 1,
+                        raw_time=tx_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        raw_amount=f"{direction} {_cell(row, 1)}",
+                        raw_balance=_cell(row, 3),
+                        raw_text=" | ".join(raw_fields),
+                        raw_fields=raw_fields,
+                        raw_headers=HEBEI_CORP_HEADERS,
                     )
+                    for field_name, index in (("counterparty_account", 4), ("counterparty_bank", 6)):
+                        value = _cell(row, index)
+                        if value:
+                            setattr(tx, field_name, value)
+                            tx.field_sources[field_name] = f"raw_headers[{index}]:{HEBEI_CORP_HEADERS[index]}"
+                            tx.field_confidence[field_name] = 1.0
+                    rows.append(tx)
 
     # 明细按倒序展示；同一秒内常见“转账、手续费”也倒序。
     # 给同秒交易补微秒顺序，让汇总排序按余额链顺序检查。

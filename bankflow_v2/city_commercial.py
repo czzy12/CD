@@ -227,7 +227,7 @@ def _extract_confirmed_table_rows(
                             kept_headers,
                         )
                     )
-    return _normalize_partial_times(transactions)
+    return _normalize_partial_times(transactions, dedupe=False)
 
 
 def _extract_jiujiang_coordinate_rows(pdf_path: str) -> list[Transaction]:
@@ -406,8 +406,9 @@ def _extract_text_rows(pdf_path: str, bank_name: str) -> list[Transaction]:
     return _normalize_partial_times(rows)
 
 
-def _normalize_partial_times(rows: list[Transaction]) -> list[Transaction]:
-    rows = _dedupe_rows(rows)
+def _normalize_partial_times(rows: list[Transaction], *, dedupe: bool = True) -> list[Transaction]:
+    if dedupe:
+        rows = _dedupe_rows(rows)
     if len(rows) < 2:
         return rows
 
@@ -462,7 +463,15 @@ def extract_foshan_rural(pdf_path: str) -> list[Transaction]:
 
 
 def extract_lanzhou(pdf_path: str) -> list[Transaction]:
-    return extract_city_commercial(pdf_path, "兰州银行")
+    return _extract_confirmed_table_rows(
+        pdf_path,
+        "兰州银行",
+        ["序号", "交易日期", "收/支金额", "余额", "对方户名", "对方帐号", "对方行名", "现转标识", "交易渠道", "交易摘要"],
+        {"序号", "对方帐号"},
+        date_header="交易日期",
+        amount_header="收/支金额",
+        balance_header="余额",
+    )
 
 
 def extract_ningbo(pdf_path: str) -> list[Transaction]:

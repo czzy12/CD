@@ -65,6 +65,7 @@ BANK_LABELS = {
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
     "tianjin_bank": "天津银行个人",
+    "tianjin_rural": "天津农村商业银行个人",
     "tianjin_rural_corp": "天津农村商业银行对公",
     "generic_pdf": "通用PDF识别",
     "wechat": "微信流水",
@@ -211,6 +212,12 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "序号交易日期交易金额余额交易摘要附言" in compact
     ):
         return Detection("tianjin_bank", BANK_LABELS["tianjin_bank"], 98, "命中天津银行个人账户交易明细清单")
+
+    if (
+        "天津农商银行账户交易明细" in header_compact
+        and "交易日期交易时间交易摘要交易金额当前余额交易附言对手户名对手账号交易渠道" in compact
+    ):
+        return Detection("tianjin_rural", BANK_LABELS["tianjin_rural"], 98, "命中天津农商银行个人账户交易明细")
 
     if (
         "单位账户明细对账单" in header_compact

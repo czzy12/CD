@@ -51,6 +51,13 @@ def _parse_money(raw: str | None) -> Decimal:
     return money_to_decimal(_clean_cell(raw)) or Decimal("0.00")
 
 
+def _classify_amounts(debit: Decimal, credit: Decimal) -> tuple[Decimal, Decimal]:
+    """Keep signed debit/credit reversals in their economic direction."""
+    income = credit if credit > 0 else -debit if debit < 0 else Decimal("0.00")
+    expense = debit if debit > 0 else -credit if credit < 0 else Decimal("0.00")
+    return income, expense
+
+
 def _cell_at(values: list[str], index: int) -> str:
     return values[index] if index < len(values) else ""
 
@@ -95,8 +102,7 @@ def _extract_deposit_detail_rows(table: list[list], page_index: int) -> list[Tra
             debit = _parse_money(_cell_at(debits, index))
             credit = _parse_money(_cell_at(credits, index))
             balance = money_to_decimal(_cell_at(balances, index))
-            income = credit
-            expense = debit
+            income, expense = _classify_amounts(debit, credit)
             issues = []
 
             if debit > 0 and credit > 0:
@@ -193,8 +199,7 @@ def extract_ccb_corp(pdf_path: str) -> TransactionList:
                     debit = _parse_money(row[DEBIT_COL])
                     credit = _parse_money(row[CREDIT_COL])
                     balance = money_to_decimal(_clean_cell(row[BALANCE_COL]))
-                    income = credit
-                    expense = debit
+                    income, expense = _classify_amounts(debit, credit)
                     issues = []
 
                     if debit > 0 and credit > 0:

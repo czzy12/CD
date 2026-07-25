@@ -103,13 +103,33 @@ def _choose_balance(candidates: list[Decimal], expected: Decimal | None) -> Deci
     return candidates[0]
 
 
+def _has_confirmed_strong_watermark(text: str) -> bool:
+    return (
+        ("兴业银行交易明细" in text and "核验" in text)
+        or (
+            _has_fragmented_marker(text, "说明交易明细涉及您的个人隐私")
+            and _has_fragmented_marker(text, "交易明细内容仅供个人参考")
+        )
+    )
+
+
+def _has_fragmented_marker(text: str, marker: str) -> bool:
+    position = text.find(marker[0])
+    for char in marker[1:]:
+        next_position = text.find(char, position + 1)
+        if next_position < 0 or next_position - position > 40:
+            return False
+        position = next_position
+    return True
+
+
 def extract_cib(pdf_path: str) -> list[Transaction]:
     rows: list[Transaction] = []
     previous_balance: Decimal | None = None
 
     with pdfplumber.open(pdf_path) as pdf:
         sample_text = "\n".join((page.extract_text() or "") for page in pdf.pages[:2])
-        strong_watermark = "兴业银行交易明细" in sample_text and "核验" in sample_text
+        strong_watermark = _has_confirmed_strong_watermark(sample_text)
         for page_no, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
                 for row in table[1:]:

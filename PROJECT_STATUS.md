@@ -25,10 +25,10 @@ origin/work/2026-07-18-bankflow-verification
 已提交的当前实现：
 
 ```text
-2536803
+bdf6f06
 ```
 
-数字测试基线为 `ded0a8a`；此前 10 类确认字段基线为 `277be1b`，随后两批已确认字段已由 `7ac8b6a` 提交并推送，本轮八类字段已由 `ae77782` 提交并推送；可追溯核实 MVP 前两项能力已提交为 `4188563`，记录提交为 `eb98124`，第三项已提交为 `2536803`，均尚未推送，分支领先远端 3 个提交。
+数字测试基线为 `ded0a8a`；此前 10 类确认字段基线为 `277be1b`，随后两批已确认字段已由 `7ac8b6a` 提交并推送，本轮八类字段已由 `ae77782` 提交并推送；可追溯核实 MVP 前两项能力已提交为 `4188563`，记录提交为 `eb98124`，第三项功能已提交为 `bdf6f06`，均尚未推送。
 
 最近重要变更：
 
@@ -41,7 +41,7 @@ origin/work/2026-07-18-bankflow-verification
 - 2026-07-25：`03efcb8` 已提交并推送建行对公冲正方向与兴业强水印余额定向修复。建行负借方冲正归收入、负贷方冲正归支出；已确认兴业强水印免责声明版余额仅作参考，跳过余额链与总闭合校验。最小回归 3 PASS、`ccb_corp` 标签 5 PASS、`cib` 标签 2 PASS；完整回归仍为 71 PASS / 1 FAIL / 20 SKIP，唯一 FAIL 仍为冻结的佛山农村商业银行第 23 页疑点，未改解析或期望。
 - 2026-07-26：可追溯核实 MVP 第一项已实现但尚未提交：`Transaction` 增加 `transaction_id`、`source_file_id` 和 `evidence_locator`；来源文件 ID 使用内容 SHA-256，交易 ID 由原始交易证据稳定生成。PDF 管线和工作台的 PDF/Excel/通用兜底入口均接入；未改银行解析、文字字段规则或佛山期望。定向测试 16 PASS、编译通过，详见 `chg-20260726-01`。
 - 2026-07-26：可追溯核实 MVP 两项能力已提交为 `4188563`：新增稳定交易/来源/页行证据标识及 `result_export.py` 的 `schema_version: "1.0"` 原始交易证据 JSON；不混入调整、事实或风险结论。单元测试 65 PASS，完整回归仍为既有 71 PASS / 1 FAIL / 20 SKIP；详见 `chg-20260726-01`、`chg-20260726-02`。
-- 2026-07-26：可追溯核实 MVP 第三项已提交为 `2536803`：`result_export.py` 将基于 `original_transactions` 输出 `schema_version: "1.1"` 的确定性事实（笔数、收支、净额、期间及可用余额），每项均含 `evidence_transaction_ids`；待人工核实事项也区分交易/汇总范围并携带相关交易 ID。不作风险定性或大模型结论，未改解析、去重、统计口径或佛山农商行冻结项。定向测试 8 PASS、单元测试 66 PASS；完整回归仍为 71 PASS / 1 FAIL / 20 SKIP。
+- 2026-07-26：可追溯核实 MVP 第三项已提交为 `bdf6f06`：`result_export.py` 将基于 `original_transactions` 输出 `schema_version: "1.1"` 的确定性事实（笔数、收支、净额、期间及可用余额），每项均含 `evidence_transaction_ids`；待人工核实事项也区分交易/汇总范围并携带相关交易 ID。不作风险定性或大模型结论，未改解析、去重、统计口径或佛山农商行冻结项。定向测试 8 PASS、单元测试 66 PASS；完整回归仍为 71 PASS / 1 FAIL / 20 SKIP。
 - `PROJECT_CONTEXT.md`：轻量项目入口。
 - `PROJECT_STATUS.md`：当前状态概要，只保留必要过程和结果。
 - `INTEGRATION_CONTRACT.md`：与车贷报告自动化总项目的集成契约。

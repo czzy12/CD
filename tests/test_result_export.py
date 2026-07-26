@@ -37,7 +37,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.5")
+        self.assertEqual(result["schema_version"], "1.6")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -247,6 +247,123 @@ class ResultExportTests(unittest.TestCase):
         self.assertEqual(
             observation["field_coverage"]["covered_transaction_count"],
             1,
+        )
+
+    def test_pairs_only_mutual_same_day_opposite_direction_candidates(self):
+        outgoing = transaction()
+        outgoing.transaction_id = "tx:company-expense"
+        outgoing.source_file_id = "sha256:company"
+        outgoing.income = Decimal("0.00")
+        outgoing.expense = Decimal("100.00")
+        outgoing.counterparty_account = "6222 0000 0000 1234"
+        outgoing.field_confidence["counterparty_account"] = 1.0
+
+        incoming = transaction()
+        incoming.transaction_id = "tx:personal-income"
+        incoming.source_file_id = "sha256:personal"
+        incoming.counterparty_account = "3000-2401-0400-09217"
+        incoming.field_confidence["counterparty_account"] = 1.0
+
+        single_sided = transaction()
+        single_sided.transaction_id = "tx:company-single"
+        single_sided.source_file_id = "sha256:company"
+        single_sided.income = Decimal("0.00")
+        single_sided.expense = Decimal("50.00")
+        single_sided.counterparty_account = "6222000000001234"
+        single_sided.field_confidence["counterparty_account"] = 1.0
+
+        ambiguous_outgoing = transaction()
+        ambiguous_outgoing.transaction_id = "tx:company-ambiguous"
+        ambiguous_outgoing.source_file_id = "sha256:company"
+        ambiguous_outgoing.income = Decimal("0.00")
+        ambiguous_outgoing.expense = Decimal("200.00")
+        ambiguous_outgoing.counterparty_account = "6222000000001234"
+        ambiguous_outgoing.field_confidence["counterparty_account"] = 1.0
+
+        ambiguous_incoming_one = transaction()
+        ambiguous_incoming_one.transaction_id = "tx:personal-ambiguous-1"
+        ambiguous_incoming_one.source_file_id = "sha256:personal"
+        ambiguous_incoming_one.income = Decimal("200.00")
+        ambiguous_incoming_one.counterparty_account = "30002401040009217"
+        ambiguous_incoming_one.field_confidence["counterparty_account"] = 1.0
+
+        ambiguous_incoming_two = transaction()
+        ambiguous_incoming_two.transaction_id = "tx:personal-ambiguous-2"
+        ambiguous_incoming_two.source_file_id = "sha256:personal"
+        ambiguous_incoming_two.income = Decimal("200.00")
+        ambiguous_incoming_two.counterparty_account = "30002401040009217"
+        ambiguous_incoming_two.field_confidence["counterparty_account"] = 1.0
+
+        context = {
+            "confirmed_owned_accounts": [
+                {
+                    "account_ref": "owned:company",
+                    "account_number": "30002401040009217",
+                    "verification_status": "confirmed",
+                    "ownership_evidence_ref": "case-file:company",
+                    "source_file_ids": ["sha256:company"],
+                },
+                {
+                    "account_ref": "owned:personal",
+                    "account_number": "6222000000001234",
+                    "verification_status": "confirmed",
+                    "ownership_evidence_ref": "case-file:personal",
+                    "source_file_ids": ["sha256:personal"],
+                },
+            ]
+        }
+        observation = build_bankflow_result(
+            [
+                outgoing,
+                incoming,
+                single_sided,
+                ambiguous_outgoing,
+                ambiguous_incoming_one,
+                ambiguous_incoming_two,
+            ],
+            verification_context=context,
+        )["result"]["observations"][1]
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["paired"],
+            [
+                {
+                    "transaction_ids": ["tx:company-expense", "tx:personal-income"],
+                    "calendar_date": "2026-07-26",
+                    "amount": "100.00",
+                    "account_refs": ["owned:company", "owned:personal"],
+                }
+            ],
+        )
+        self.assertEqual(
+            [item["transaction_id"] for item in observation["value"]["single_sided_candidates"]],
+            ["tx:company-single"],
+        )
+        self.assertEqual(
+            [item["transaction_id"] for item in observation["value"]["ambiguous_candidates"]],
+            ["tx:company-ambiguous", "tx:personal-ambiguous-1", "tx:personal-ambiguous-2"],
+        )
+
+    def test_reports_pairing_unavailable_without_confirmed_source_files(self):
+        context = {
+            "confirmed_owned_accounts": [
+                {
+                    "account_ref": "owned:personal",
+                    "account_number": "6222000000001234",
+                    "verification_status": "confirmed",
+                    "ownership_evidence_ref": "case-file:personal",
+                }
+            ]
+        }
+        observation = build_bankflow_result(
+            [transaction()], verification_context=context
+        )["result"]["observations"][1]
+
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["reason"],
+            "confirmed_account_source_files_unavailable",
         )
 
     def test_exports_neutral_flag_needed_to_reproduce_indicator_eligibility(self):

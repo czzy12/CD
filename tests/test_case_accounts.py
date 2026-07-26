@@ -85,6 +85,13 @@ class CaseAccountTests(unittest.TestCase):
             {account["account_number"] for account in context["confirmed_owned_accounts"]},
             {"30002401040009217", "6217000480002792404"},
         )
+        self.assertTrue(
+            all(
+                len(account["source_file_ids"]) == 1
+                and account["source_file_ids"][0].startswith("sha256:")
+                for account in context["confirmed_owned_accounts"]
+            )
+        )
 
     def test_does_not_discover_generic_or_unreliable_header_accounts(self):
         with tempfile.TemporaryDirectory() as temp_dir:

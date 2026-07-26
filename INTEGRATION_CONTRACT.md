@@ -142,11 +142,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.5"` JSON 必须包含：
+当前实现的 `schema_version: "1.6"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -184,7 +184,7 @@ v1B 固定包含：
 
 对手字段缺失或置信度不足时必须输出不可用状态和覆盖率，不得从摘要、备注、原始混合文本或 `generic_pdf` 猜测。可靠文字观察、外部 `event` / `case_context` 参数和跨资料比对不属于当前 `result.indicators[]`，其边界登记于 `docs/流水事实指标字典_v1.md`。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
 
-v1C 新增独立 `result.observations[]`，当前只包含 `confirmed_own_account_transfer_candidates`：
+v1C 新增独立 `result.observations[]`，包含 `confirmed_own_account_transfer_candidates`：
 
 - 仅匹配外部上下文中已确认归属、带稳定引用和证据引用的完整账号。
 - 交易侧只接受非中性、非零收支、存在交易 ID、完整对手账号且 `field_confidence.counterparty_account == 1.0` 的记录。
@@ -194,6 +194,13 @@ v1C 新增独立 `result.observations[]`，当前只包含 `confirmed_own_accoun
 - 匹配结果不表示资金来源、资金闭环或账户实际控制关系。
 
 跨笔资金闭环、拆分/合并交易配对、手续费容差和唯一资金路径归因不属于 v1C。
+
+v1D 新增 `confirmed_own_account_transfer_pair_candidates`：
+
+- 仅在已确认账户同时提供其可靠来源文件 ID 映射时可用；上下文由案件 manifest 自动提供该映射，外部手工上下文缺失时明确输出不可用原因。
+- 双方交易必须各自来自对应已确认账户的来源文件、可靠完整对手账号相互精确匹配、同一自然日、金额完全相等且方向相反；不会按姓名、摘要、备注、尾号、掩码、金额容差、拆分或合并推测。
+- 输出唯一双边配对、单边候选、歧义候选和不可用原因，并保留双方交易 ID、账户引用和金额日期证据；不回显完整账号。
+- 配对结果仅为可复核候选，不表示资金来源、资金闭环、实际控制、风险或案件结论。
 
 字段变化必须更新 `schema_version`。
 

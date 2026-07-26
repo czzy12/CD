@@ -14,7 +14,7 @@ from .models import get_statement_metadata
 from .pipeline import extract_transactions
 
 
-MANIFEST_SCHEMA_VERSION = "1.0"
+MANIFEST_SCHEMA_VERSION = "1.1"
 CONFIRMABLE_ROLES = {
     "primary_borrower",
     "co_borrower",
@@ -202,12 +202,20 @@ def verification_context_from_manifest(manifest: dict[str, object]) -> dict[str,
         account_ref = str(account.get("account_ref", "")).strip()
         if not account_ref or not evidence_ref or normalized_account is None:
             continue
+        source_file_ids = account.get("source_file_ids", [])
+        if not isinstance(source_file_ids, list):
+            source_file_ids = []
         confirmed_accounts.append(
             {
                 "account_ref": account_ref,
                 "account_number": normalized_account,
                 "verification_status": "confirmed",
                 "ownership_evidence_ref": evidence_ref,
+                "source_file_ids": [
+                    str(source_file_id).strip()
+                    for source_file_id in source_file_ids
+                    if str(source_file_id).strip()
+                ],
             }
         )
     return {"confirmed_owned_accounts": confirmed_accounts}

@@ -13,7 +13,7 @@ from .models import Transaction, get_statement_metadata
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.5"
+SCHEMA_VERSION = "1.6"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -850,7 +850,7 @@ def _normalize_full_account(value: object) -> str | None:
 
 def _confirmed_owned_accounts(
     verification_context: dict[str, object] | None,
-) -> dict[str, dict[str, str]]:
+) -> dict[str, dict[str, object]]:
     if not verification_context:
         return {}
 
@@ -874,6 +874,13 @@ def _confirmed_owned_accounts(
             {
                 "account_ref": account_ref,
                 "ownership_evidence_ref": ownership_evidence_ref,
+                "source_file_ids": [
+                    str(source_file_id).strip()
+                    for source_file_id in account.get("source_file_ids", [])
+                    if str(source_file_id).strip()
+                ]
+                if isinstance(account.get("source_file_ids", []), list)
+                else [],
             },
         )
     return confirmed
@@ -978,6 +985,163 @@ def _own_account_transfer_observation(
     }
 
 
+def _cross_account_pair_observation(
+    transactions: list[Transaction],
+    verification_context: dict[str, object] | None,
+) -> dict[str, object]:
+    confirmed_accounts = _confirmed_owned_accounts(verification_context)
+    source_accounts: dict[str, dict[str, object]] = {}
+    ambiguous_source_ids: set[str] = set()
+    for account in confirmed_accounts.values():
+        for source_file_id in account["source_file_ids"]:
+            existing = source_accounts.get(source_file_id)
+            if existing is not None and existing["account_ref"] != account["account_ref"]:
+                ambiguous_source_ids.add(source_file_id)
+                continue
+            source_accounts[source_file_id] = account
+    for source_file_id in ambiguous_source_ids:
+        source_accounts.pop(source_file_id, None)
+
+    eligible: list[tuple[Transaction, str]] = []
+    for transaction in sort_transactions(transactions):
+        if getattr(transaction, "neutral", False) or not transaction.transaction_id:
+            continue
+        if transaction.income != Decimal("0.00") and transaction.expense == Decimal("0.00"):
+            direction = "income"
+        elif transaction.expense != Decimal("0.00") and transaction.income == Decimal("0.00"):
+            direction = "expense"
+        else:
+            continue
+        eligible.append((transaction, direction))
+
+    candidates: list[dict[str, object]] = []
+    for transaction, direction in eligible:
+        source_account = source_accounts.get(transaction.source_file_id)
+        counterparty_account = confirmed_accounts.get(
+            _normalize_full_account(transaction.counterparty_account) or ""
+        )
+        if (
+            source_account is None
+            or counterparty_account is None
+            or source_account["account_ref"] == counterparty_account["account_ref"]
+            or transaction.field_confidence.get("counterparty_account") != 1.0
+        ):
+            continue
+        candidates.append(
+            {
+                "transaction": transaction,
+                "source_account_ref": source_account["account_ref"],
+                "counterparty_account_ref": counterparty_account["account_ref"],
+                "direction": direction,
+                "amount": transaction.income if direction == "income" else transaction.expense,
+            }
+        )
+
+    paired: list[dict[str, object]] = []
+    single_sided: list[dict[str, object]] = []
+    ambiguous: list[dict[str, object]] = []
+    paired_ids: set[str] = set()
+    reciprocal_by_transaction_id: dict[str, list[dict[str, object]]] = {}
+    for candidate in candidates:
+        transaction = candidate["transaction"]
+        reciprocal_by_transaction_id[transaction.transaction_id] = [
+            other
+            for other in candidates
+            if other["source_account_ref"] == candidate["counterparty_account_ref"]
+            and other["counterparty_account_ref"] == candidate["source_account_ref"]
+            and other["direction"] != candidate["direction"]
+            and other["amount"] == candidate["amount"]
+            and other["transaction"].transaction_time.date()
+            == transaction.transaction_time.date()
+        ]
+    for candidate in candidates:
+        transaction = candidate["transaction"]
+        reciprocal = reciprocal_by_transaction_id[transaction.transaction_id]
+        evidence = {
+            "transaction_id": transaction.transaction_id,
+            "source_account_ref": candidate["source_account_ref"],
+            "counterparty_account_ref": candidate["counterparty_account_ref"],
+            "direction": candidate["direction"],
+            "transaction_time": transaction.transaction_time.isoformat(),
+            "amount": _decimal(candidate["amount"]),
+        }
+        if len(reciprocal) == 0:
+            single_sided.append(evidence)
+        elif (
+            len(reciprocal) > 1
+            or len(reciprocal_by_transaction_id[reciprocal[0]["transaction"].transaction_id])
+            > 1
+        ):
+            ambiguous.append(
+                {
+                    **evidence,
+                    "candidate_transaction_ids": sorted(
+                        other["transaction"].transaction_id for other in reciprocal
+                    ),
+                }
+            )
+        else:
+            other_transaction = reciprocal[0]["transaction"]
+            pair_key = tuple(sorted((transaction.transaction_id, other_transaction.transaction_id)))
+            if transaction.transaction_id in paired_ids or other_transaction.transaction_id in paired_ids:
+                continue
+            paired_ids.update(pair_key)
+            paired.append(
+                {
+                    "transaction_ids": list(pair_key),
+                    "calendar_date": transaction.transaction_time.date().isoformat(),
+                    "amount": _decimal(candidate["amount"]),
+                    "account_refs": sorted(
+                        [candidate["source_account_ref"], candidate["counterparty_account_ref"]]
+                    ),
+                }
+            )
+
+    available = bool(confirmed_accounts) and bool(source_accounts) and bool(eligible)
+    value: dict[str, object] = {
+        "available": available,
+        "paired": paired,
+        "single_sided_candidates": single_sided,
+        "ambiguous_candidates": ambiguous,
+    }
+    if not confirmed_accounts:
+        value["reason"] = "confirmed_owned_accounts_unavailable"
+    elif not source_accounts:
+        value["reason"] = "confirmed_account_source_files_unavailable"
+    elif not eligible:
+        value["reason"] = "eligible_transactions_unavailable"
+
+    evidence_transactions = [candidate["transaction"] for candidate in candidates]
+    return {
+        "observation_type": "confirmed_own_account_transfer_pair_candidates",
+        "value": value,
+        "parameters": {
+            "matching_rule": "mutual_normalized_full_account_exact_match",
+            "source_account_rule": "confirmed_account_source_file_exact_match",
+            "date_rule": "same_calendar_date",
+            "amount_rule": "exact_same_currency_amount",
+            "direction_rule": "opposite_income_expense",
+            "required_counterparty_account_confidence": 1.0,
+            "excludes_neutral_transactions": True,
+            "interpretation": (
+                "仅表示已确认账户之间同日、同额、方向相反的双边交易候选；"
+                "不表示资金来源、资金闭环或账户实际控制关系。"
+            ),
+        },
+        "evidence_transaction_ids": _transaction_ids(evidence_transactions),
+        "field_coverage": _coverage(
+            [
+                "transaction_id",
+                "source_file_id",
+                "counterparty_account",
+                "field_confidence.counterparty_account",
+            ],
+            [transaction for transaction, _ in eligible],
+            evidence_transactions,
+        ),
+    }
+
+
 def _review_items(transactions: list[Transaction], summary: Summary) -> list[dict[str, object]]:
     review_items: list[dict[str, object]] = []
     transaction_issue_messages = {message for transaction in transactions for message in transaction.issues}
@@ -1060,7 +1224,11 @@ def build_bankflow_result(
                 _own_account_transfer_observation(
                     original_transactions,
                     verification_context,
-                )
+                ),
+                _cross_account_pair_observation(
+                    original_transactions,
+                    verification_context,
+                ),
             ],
         },
         "manual_review": {"required": bool(review_items), "items": review_items},
@@ -1070,6 +1238,7 @@ def build_bankflow_result(
             "资金时间邻近指标仅表示先收入后支出的时间共现，不表示支出资金来源于某笔收入。",
             "收入连续性、余额快照、金额形态和近期变化均为中性数值观察，不表示工资稳定、资金充足、流水包装或业务趋势。",
             "本人账户转账候选仅基于外部已确认账户集合与可靠完整对手账号精确匹配，不表示资金来源、资金闭环或账户实际控制关系。",
+            "跨账户双边候选仅基于已确认账户来源文件、可靠完整对手账号、同日同额和相反方向匹配，不表示资金来源、资金闭环或账户实际控制关系。",
         ],
     }
 

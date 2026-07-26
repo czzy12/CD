@@ -66,6 +66,29 @@ class ConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.source_fields["transaction_location"], "网点，附言")
         self.assertEqual(tx.source_fields["counterparty_account_name_raw"], "6222/甲公司")
 
+    def test_ccb_maps_only_full_numeric_account_before_unique_slash(self):
+        table = [["header"] * 7, [
+            "1", "电子汇出", "20260101", "-20.00", "80.00", "转账", "6217004530016072148/甲公司",
+        ], [
+            "2", "消费", "20260102", "-10.00", "70.00", "消费", "4******9202/乙商户",
+        ], [
+            "3", "转账", "20260103", "-5.00", "65.00", "转账", "6217004530016072148/",
+        ]]
+        with patch("bankflow_v2.ccb.pdfplumber.open", return_value=_Pdf([_Page([table])])):
+            full_account, masked_account, missing_name = extract_ccb("sample.pdf")
+
+        self.assertEqual(full_account.counterparty_account, "6217004530016072148")
+        self.assertEqual(full_account.counterparty_name, "甲公司")
+        self.assertEqual(full_account.field_confidence["counterparty_account"], 1.0)
+        self.assertEqual(
+            full_account.source_fields["counterparty_account_name_raw"],
+            "6217004530016072148/甲公司",
+        )
+        self.assertEqual(masked_account.counterparty_account, "")
+        self.assertEqual(masked_account.counterparty_name, "乙商户")
+        self.assertEqual(missing_name.counterparty_account, "")
+        self.assertEqual(missing_name.counterparty_name, "")
+
     def test_cib_maps_nine_confirmed_columns_without_splitting_mixed_counterparty(self):
         table = [["header"] * 9, [
             "2026-01-01 10:00:00", "20260101", "汇款", "支", "-20.00", "80.00", "货款", "甲公司", "6222/示例银行",

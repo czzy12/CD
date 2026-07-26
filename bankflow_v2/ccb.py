@@ -107,10 +107,21 @@ def extract_ccb(pdf_path: str) -> TransactionList:
                         source_fields["counterparty_account_name_raw"] = counterparty_raw
                         field_sources["counterparty_account_name_raw"] = "raw_headers[6]:对方账号与户名"
 
+                    counterparty_account = ""
                     counterparty_name = ""
                     if counterparty_raw.count("/") == 1:
-                        _account, name = counterparty_raw.split("/", 1)
+                        account_raw, name = counterparty_raw.split("/", 1)
+                        normalized_account = re.sub(r"[\s-]+", "", account_raw)
                         counterparty_name = name.strip()
+                        if (
+                            counterparty_name
+                            and normalized_account.isdigit()
+                            and 12 <= len(normalized_account) <= 32
+                        ):
+                            counterparty_account = normalized_account
+                            field_sources["counterparty_account"] = (
+                                "raw_headers[6]:对方账号与户名#斜杠前完整账号"
+                            )
                         if counterparty_name:
                             field_sources["counterparty_name"] = "raw_headers[6]:对方账号与户名#斜杠后户名"
 
@@ -130,6 +141,7 @@ def extract_ccb(pdf_path: str) -> TransactionList:
                         raw_headers=RAW_HEADERS,
                         status="ok" if not issues else "review",
                         issues=issues,
+                        counterparty_account=counterparty_account,
                         counterparty_name=counterparty_name,
                         remark=location_remark_raw,
                         source_fields=source_fields,

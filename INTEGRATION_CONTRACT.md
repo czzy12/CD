@@ -123,11 +123,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.1"` JSON 必须包含：
+当前实现的 `schema_version: "1.2"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -135,7 +135,8 @@ GUI 已新增：
   "result": {
     "summary": {},
     "original_transactions": [],
-    "facts": []
+    "facts": [],
+    "indicators": []
   },
   "manual_review": {
     "required": true,
@@ -146,7 +147,15 @@ GUI 已新增：
 }
 ```
 
-每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
+每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。
+
+`result.indicators[]` 只读取 `original_transactions`，每项必须包含 `indicator_type`、`value`、`parameters`、`evidence_transaction_ids` 与 `field_coverage`。v1A 固定包含：
+
+- 1/3/7 天收入后支出时间邻近观察，窗口起止均含边界；该指标只表示时间共现，不表示支出资金来源于某笔收入。
+- 收入和支出交易对手集中度；对手身份优先使用可靠账号，其次使用可靠名称，只接受非空且 `field_confidence == 1.0` 的现有字段。
+- 指标可用性与交易 ID、来源文件 ID、页/行定位的证据覆盖。
+
+对手字段缺失或置信度不足时必须输出不可用状态和覆盖率，不得从摘要、备注、原始混合文本或 `generic_pdf` 猜测。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
 
 字段变化必须更新 `schema_version`。
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from bisect import bisect_left, bisect_right
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -12,7 +13,7 @@ from .models import Transaction, get_statement_metadata
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.4"
+SCHEMA_VERSION = "1.5"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -840,6 +841,143 @@ def _indicators(transactions: list[Transaction]) -> list[dict[str, object]]:
     ]
 
 
+def _normalize_full_account(value: object) -> str | None:
+    normalized = re.sub(r"[\s-]+", "", str(value or ""))
+    if not normalized.isdigit() or not 12 <= len(normalized) <= 32:
+        return None
+    return normalized
+
+
+def _confirmed_owned_accounts(
+    verification_context: dict[str, object] | None,
+) -> dict[str, dict[str, str]]:
+    if not verification_context:
+        return {}
+
+    confirmed: dict[str, dict[str, str]] = {}
+    accounts = verification_context.get("confirmed_owned_accounts", [])
+    if not isinstance(accounts, list):
+        return confirmed
+
+    for account in accounts:
+        if not isinstance(account, dict):
+            continue
+        if account.get("verification_status") != "confirmed":
+            continue
+        account_ref = str(account.get("account_ref", "")).strip()
+        ownership_evidence_ref = str(account.get("ownership_evidence_ref", "")).strip()
+        normalized = _normalize_full_account(account.get("account_number"))
+        if not account_ref or not ownership_evidence_ref or normalized is None:
+            continue
+        confirmed.setdefault(
+            normalized,
+            {
+                "account_ref": account_ref,
+                "ownership_evidence_ref": ownership_evidence_ref,
+            },
+        )
+    return confirmed
+
+
+def _own_account_transfer_observation(
+    transactions: list[Transaction],
+    verification_context: dict[str, object] | None,
+) -> dict[str, object]:
+    eligible = [
+        transaction
+        for transaction in sort_transactions(transactions)
+        if not getattr(transaction, "neutral", False)
+        and (
+            transaction.income != Decimal("0.00")
+            or transaction.expense != Decimal("0.00")
+        )
+    ]
+    covered = [
+        transaction
+        for transaction in eligible
+        if transaction.transaction_id
+        and transaction.field_confidence.get("counterparty_account") == 1.0
+        and _normalize_full_account(transaction.counterparty_account) is not None
+    ]
+    confirmed_accounts = _confirmed_owned_accounts(verification_context)
+    candidates: list[dict[str, object]] = []
+    matched_transactions: list[Transaction] = []
+
+    for transaction in covered:
+        account = confirmed_accounts.get(
+            _normalize_full_account(transaction.counterparty_account) or ""
+        )
+        if account is None:
+            continue
+        income = transaction.income != Decimal("0.00")
+        candidates.append(
+            {
+                "transaction_id": transaction.transaction_id,
+                "confirmed_account_ref": account["account_ref"],
+                "ownership_evidence_ref": account["ownership_evidence_ref"],
+                "direction": (
+                    "income_from_confirmed_owned_account"
+                    if income
+                    else "expense_to_confirmed_owned_account"
+                ),
+                "transaction_time": transaction.transaction_time.isoformat(),
+                "amount": _decimal(
+                    transaction.income if income else transaction.expense
+                ),
+            }
+        )
+        matched_transactions.append(transaction)
+
+    available = bool(confirmed_accounts) and bool(covered)
+    value: dict[str, object] = {
+        "available": available,
+        "matched_transaction_count": len(matched_transactions),
+        "matched_income": _decimal(
+            sum(
+                (transaction.income for transaction in matched_transactions),
+                Decimal("0.00"),
+            )
+        ),
+        "matched_expense": _decimal(
+            sum(
+                (transaction.expense for transaction in matched_transactions),
+                Decimal("0.00"),
+            )
+        ),
+        "candidates": candidates,
+    }
+    if not confirmed_accounts:
+        value["reason"] = "confirmed_owned_accounts_unavailable"
+    elif not covered:
+        value["reason"] = "reliable_counterparty_accounts_unavailable"
+
+    return {
+        "observation_type": "confirmed_own_account_transfer_candidates",
+        "value": value,
+        "parameters": {
+            "matching_rule": "normalized_full_account_exact_match",
+            "account_normalization": "remove_whitespace_and_hyphens",
+            "full_account_digit_length": {"minimum": 12, "maximum": 32},
+            "required_counterparty_account_confidence": 1.0,
+            "excludes_neutral_transactions": True,
+            "interpretation": (
+                "仅表示交易对手账号与外部已确认本人账户集合精确匹配；"
+                "不表示资金来源、资金闭环或账户实际控制关系。"
+            ),
+        },
+        "evidence_transaction_ids": _transaction_ids(matched_transactions),
+        "field_coverage": _coverage(
+            [
+                "counterparty_account",
+                "field_confidence.counterparty_account",
+                "transaction_id",
+            ],
+            eligible,
+            covered,
+        ),
+    }
+
+
 def _review_items(transactions: list[Transaction], summary: Summary) -> list[dict[str, object]]:
     review_items: list[dict[str, object]] = []
     transaction_issue_messages = {message for transaction in transactions for message in transaction.issues}
@@ -888,7 +1026,9 @@ def _review_items(transactions: list[Transaction], summary: Summary) -> list[dic
 
 
 def build_bankflow_result(
-    transactions: list[Transaction], metadata: object | None = None
+    transactions: list[Transaction],
+    metadata: object | None = None,
+    verification_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Build a verification result without applying adjustment or analysis logic."""
     original_transactions = list(transactions)
@@ -916,6 +1056,12 @@ def build_bankflow_result(
             "original_transactions": [_transaction_record(transaction) for transaction in original_transactions],
             "facts": _facts(original_transactions, summary),
             "indicators": _indicators(original_transactions),
+            "observations": [
+                _own_account_transfer_observation(
+                    original_transactions,
+                    verification_context,
+                )
+            ],
         },
         "manual_review": {"required": bool(review_items), "items": review_items},
         "warnings": [],
@@ -923,6 +1069,7 @@ def build_bankflow_result(
             "仅包含原始标准交易、确定性事实、确定性指标和待人工核实事项；未应用流水调整或风险定性。",
             "资金时间邻近指标仅表示先收入后支出的时间共现，不表示支出资金来源于某笔收入。",
             "收入连续性、余额快照、金额形态和近期变化均为中性数值观察，不表示工资稳定、资金充足、流水包装或业务趋势。",
+            "本人账户转账候选仅基于外部已确认账户集合与可靠完整对手账号精确匹配，不表示资金来源、资金闭环或账户实际控制关系。",
         ],
     }
 

@@ -78,9 +78,28 @@ bankflow_v2/result_export.py
 对外提供：
 
 ```python
-build_bankflow_result(transactions, metadata=None) -> dict
+build_bankflow_result(transactions, metadata=None, verification_context=None) -> dict
 write_bankflow_json(result, path) -> Path
 ```
+
+`verification_context` 是可选外部核实上下文。当前仅接受 `confirmed_owned_accounts[]`，每项必须包含完整账号、稳定 `account_ref`、`verification_status: "confirmed"` 和 `ownership_evidence_ref`；缺少上下文时既有调用保持兼容。
+
+案件文件夹账户发现与一次性角色确认由：
+
+```text
+bankflow_v2/case_accounts.py
+```
+
+提供：
+
+```python
+discover_case_accounts(case_folder) -> dict
+confirm_case_roles(discovery, role_by_account_ref) -> dict
+verification_context_from_manifest(manifest) -> dict
+write_case_manifest(manifest, path) -> Path
+```
+
+发现只接受文件抬头中户名、完整账号均可靠的 `StatementMetadata`；文件夹只定义案件边界，不自动认定同一主体。角色确认只引用 `account_ref`，不得要求用户重新录入完整账号；`generic_pdf` 和未确认混合字段不得用于账户发现。
 
 后续新增收入佐证 Word 填写时，建议新增：
 
@@ -123,11 +142,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.4"` JSON 必须包含：
+当前实现的 `schema_version: "1.5"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -136,7 +155,8 @@ GUI 已新增：
     "summary": {},
     "original_transactions": [],
     "facts": [],
-    "indicators": []
+    "indicators": [],
+    "observations": []
   },
   "manual_review": {
     "required": true,
@@ -163,6 +183,17 @@ v1B 固定包含：
 - 收支规模与近期变化：以末笔交易所在月为锚，比较最近 3 个自然月与此前 3 个自然月；不足连续 6 个月时比较不可用，边界月可能不完整。
 
 对手字段缺失或置信度不足时必须输出不可用状态和覆盖率，不得从摘要、备注、原始混合文本或 `generic_pdf` 猜测。可靠文字观察、外部 `event` / `case_context` 参数和跨资料比对不属于当前 `result.indicators[]`，其边界登记于 `docs/流水事实指标字典_v1.md`。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
+
+v1C 新增独立 `result.observations[]`，当前只包含 `confirmed_own_account_transfer_candidates`：
+
+- 仅匹配外部上下文中已确认归属、带稳定引用和证据引用的完整账号。
+- 交易侧只接受非中性、非零收支、存在交易 ID、完整对手账号且 `field_confidence.counterparty_account == 1.0` 的记录。
+- 账号只移除空白和连字符后做完整精确匹配；不按姓名、摘要、备注、账号尾号或掩码猜测。
+- 输出匹配方向、时间、金额、账户引用、归属证据引用和交易证据 ID，不回显外部账户集合。
+- 缺少有效账户集合时输出 `confirmed_owned_accounts_unavailable`；存在账户集合但可靠完整对手账号覆盖为 0 时输出 `reliable_counterparty_accounts_unavailable`。两种情况均为 `available: false`，不得把零覆盖解释为“已检查且无本人互转”。
+- 匹配结果不表示资金来源、资金闭环或账户实际控制关系。
+
+跨笔资金闭环、拆分/合并交易配对、手续费容差和唯一资金路径归因不属于 v1C。
 
 字段变化必须更新 `schema_version`。
 

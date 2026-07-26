@@ -1,9 +1,10 @@
+import re
 from datetime import datetime
 from decimal import Decimal
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import choose_amount_and_balance
 
 
@@ -13,6 +14,12 @@ AMOUNT_COL = 3
 BALANCE_COL = 4
 FILTERED_MARKERS = ("【筛选】", "不保证为连续交易")
 RAW_HEADERS = ["序号", "摘要", "交易日期", "交易金额", "账户余额", "交易地点/附言", "对方账号与户名"]
+METADATA_RE = re.compile(
+    r"卡号[/／]账号[:：]\s*(?P<account>[0-9-]+)\s+"
+    r"客户名称[:：]\s*(?P<name>.+?)\s+币别[:：].*?"
+    r"起止日期[:：]\s*(?P<start>\d{8})\s*-\s*(?P<end>\d{8})",
+    re.S,
+)
 
 
 def _clean_cell(value) -> str:
@@ -41,12 +48,33 @@ def _is_filtered_statement(text: str) -> bool:
     return any(marker in text for marker in FILTERED_MARKERS)
 
 
-def extract_ccb(pdf_path: str) -> list[Transaction]:
+def _statement_metadata(first_page_text: str) -> StatementMetadata:
+    metadata = StatementMetadata()
+    match = METADATA_RE.search(first_page_text)
+    if not match:
+        return metadata
+    metadata.account_name = match.group("name").strip()
+    metadata.account_number = match.group("account")
+    metadata.statement_period_start = datetime.strptime(match.group("start"), "%Y%m%d").date()
+    metadata.statement_period_end = datetime.strptime(match.group("end"), "%Y%m%d").date()
+    metadata.field_sources = {
+        "account_name": "document_header:客户名称",
+        "account_number": "document_header:卡号/账号",
+        "statement_period_start": "document_header:起止日期",
+        "statement_period_end": "document_header:起止日期",
+    }
+    metadata.field_confidence = {field_name: 1.0 for field_name in metadata.field_sources}
+    return metadata
+
+
+def extract_ccb(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
     previous_balance: Decimal | None = None
+    metadata = StatementMetadata()
 
     with pdfplumber.open(pdf_path) as pdf:
         first_page_text = pdf.pages[0].extract_text() if pdf.pages else ""
+        metadata = _statement_metadata(first_page_text or "")
         balance_optional = _is_filtered_statement(first_page_text or "")
         for page_index, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
@@ -124,4 +152,4 @@ def extract_ccb(pdf_path: str) -> list[Transaction]:
                     if balance is not None:
                         previous_balance = balance
 
-    return transactions
+    return TransactionList(transactions, metadata)

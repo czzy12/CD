@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
@@ -34,6 +34,16 @@ HISTORY_HEADERS = [
     "摘要",
     "交易用途",
 ]
+LINED_HISTORY_HEADERS = [
+    "交易时间",
+    "收入金额",
+    "支出金额",
+    "账户余额",
+    "对方账号",
+    "对方户名",
+    "对方开户行",
+    "交易用途",
+]
 
 
 @dataclass
@@ -48,6 +58,8 @@ class ParsedRow:
     same_time_order: int
     income: Decimal | None = None
     expense: Decimal | None = None
+    raw_headers: list[str] = field(default_factory=list)
+    raw_fields: list[str] = field(default_factory=list)
 
 
 def _cell_text(value) -> str:
@@ -167,6 +179,14 @@ def _parse_table_rows(pdf_path: str) -> list[ParsedRow]:
                 has_history_header = any(_table_has_history_header(row) for row in table)
                 if not has_corp_header and not has_history_header:
                     continue
+                table_headers = next(
+                    (
+                        [_cell_text(cell) for cell in row]
+                        for row in table
+                        if _table_has_corp_header(row) or _table_has_history_header(row)
+                    ),
+                    [],
+                )
                 for row in table:
                     if _table_has_corp_header(row) or _table_has_history_header(row):
                         continue
@@ -200,6 +220,8 @@ def _parse_table_rows(pdf_path: str) -> list[ParsedRow]:
                             same_time_order=order_index,
                             income=income,
                             expense=expense,
+                            raw_headers=table_headers,
+                            raw_fields=[_cell_text(cell) for cell in row],
                         )
                     )
 
@@ -255,6 +277,106 @@ def _first_money(text: str) -> Decimal | None:
     return money_to_decimal(match.group(0)) if match else None
 
 
+def _parse_lined_history_rows(pdf_path: str) -> list[ParsedRow]:
+    parsed_rows: list[ParsedRow] = []
+    order_index = 0
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            words = _body_words(page)
+            header_words = {
+                str(word["text"]): word
+                for word in words
+                if str(word["text"]) in LINED_HISTORY_HEADERS
+            }
+            if set(header_words) != set(LINED_HISTORY_HEADERS):
+                continue
+
+            centers = [
+                (
+                    float(header_words[header]["x0"])
+                    + float(header_words[header].get("x1", header_words[header]["x0"]))
+                )
+                / 2
+                for header in LINED_HISTORY_HEADERS
+            ]
+            bounds = [0.0]
+            bounds.extend(
+                (centers[index] + centers[index + 1]) / 2
+                for index in range(len(centers) - 1)
+            )
+            bounds.append(float(page.width))
+            header_top = min(float(word["top"]) for word in header_words.values())
+
+            horizontal_counts: dict[float, int] = {}
+            for line in getattr(page, "lines", []):
+                top = round(float(line.get("top", 0.0)), 1)
+                width = float(line.get("width", 0.0))
+                height = abs(float(line.get("height", 0.0)))
+                if top > header_top and width > 20 and height < 0.5:
+                    horizontal_counts[top] = horizontal_counts.get(top, 0) + 1
+            row_boundaries = sorted(
+                top
+                for top, count in horizontal_counts.items()
+                if count >= len(LINED_HISTORY_HEADERS)
+            )
+
+            for row_top, row_bottom in zip(row_boundaries, row_boundaries[1:]):
+                row_words = [
+                    word
+                    for word in words
+                    if row_top < float(word["top"]) < row_bottom
+                ]
+                if not row_words:
+                    continue
+                raw_fields: list[str] = []
+                for column_index in range(len(LINED_HISTORY_HEADERS)):
+                    column_words = [
+                        word
+                        for word in row_words
+                        if bounds[column_index]
+                        <= float(word["x0"])
+                        < bounds[column_index + 1]
+                    ]
+                    column_words.sort(
+                        key=lambda word: (
+                            round(float(word["top"]), 1),
+                            float(word["x0"]),
+                        )
+                    )
+                    separator = " " if column_index == 0 else ""
+                    raw_fields.append(
+                        separator.join(str(word["text"]) for word in column_words).strip()
+                    )
+
+                tx_time = _parse_history_time(raw_fields[0])
+                income = money_to_decimal(raw_fields[1]) or Decimal("0.00")
+                expense = money_to_decimal(raw_fields[2]) or Decimal("0.00")
+                balance = money_to_decimal(raw_fields[3])
+                if tx_time is None or balance is None or (income == 0 and expense == 0):
+                    continue
+
+                order_index += 1
+                parsed_rows.append(
+                    ParsedRow(
+                        tx_time=tx_time,
+                        amount=income if income else expense,
+                        balance=balance,
+                        raw_time=raw_fields[0],
+                        raw_amount=f"{raw_fields[1]}|{raw_fields[2]}",
+                        raw_text=" | ".join(raw_fields),
+                        order_index=order_index,
+                        same_time_order=order_index,
+                        income=income,
+                        expense=expense,
+                        raw_headers=LINED_HISTORY_HEADERS,
+                        raw_fields=raw_fields,
+                    )
+                )
+
+    return parsed_rows
+
+
 def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
     parsed_rows: list[ParsedRow] = []
     order_index = 0
@@ -307,6 +429,10 @@ def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
                 income_text = _joined_text(row_words, 72, 128)
                 expense_text = _joined_text(row_words, 128, 184)
                 balance_text = _joined_text(row_words, 184, 240)
+                counterparty_account = _joined_text(row_words, 240, 296)
+                counterparty_name = _joined_text(row_words, 296, 352)
+                counterparty_bank = _joined_text(row_words, 352, 416)
+                purpose = _joined_text(row_words, 416, 520)
                 income = _first_money(income_text) or Decimal("0.00")
                 expense = _first_money(expense_text) or Decimal("0.00")
                 balance = _first_money(balance_text)
@@ -321,9 +447,10 @@ def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
                         income_text,
                         expense_text,
                         balance_text,
-                        _joined_text(row_words, 240, 296),
-                        _joined_text(row_words, 296, 352),
-                        _joined_text(row_words, 416, 520),
+                        counterparty_account,
+                        counterparty_name,
+                        counterparty_bank,
+                        purpose,
                     ]
                 )
                 parsed_rows.append(
@@ -338,6 +465,26 @@ def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
                         same_time_order=order_index,
                         income=income,
                         expense=expense,
+                        raw_headers=[
+                            "交易时间",
+                            "收入金额",
+                            "支出金额",
+                            "账户余额",
+                            "对方账号",
+                            "对方户名",
+                            "对方开户行",
+                            "交易用途",
+                        ],
+                        raw_fields=[
+                            f"{raw_date} {raw_time}",
+                            income_text,
+                            expense_text,
+                            balance_text,
+                            counterparty_account,
+                            counterparty_name,
+                            counterparty_bank,
+                            purpose,
+                        ],
                     )
                 )
 
@@ -437,6 +584,8 @@ def _statement_metadata(pdf_path: str) -> StatementMetadata:
 def extract_abc_corp(pdf_path: str) -> TransactionList:
     parsed_rows = _parse_table_rows(pdf_path)
     if not parsed_rows:
+        parsed_rows = _parse_lined_history_rows(pdf_path)
+    if not parsed_rows:
         parsed_rows = _parse_text_rows(pdf_path)
     if not parsed_rows:
         parsed_rows = _parse_coordinate_rows(pdf_path)
@@ -476,6 +625,8 @@ def extract_abc_corp(pdf_path: str) -> TransactionList:
                 raw_amount=row.raw_amount,
                 raw_balance=str(row.balance),
                 raw_text=row.raw_text,
+                raw_headers=row.raw_headers,
+                raw_fields=row.raw_fields,
                 status="ok" if not issues else "review",
                 issues=issues,
             )

@@ -37,7 +37,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.4")
+        self.assertEqual(result["schema_version"], "1.5")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -56,6 +56,16 @@ class ResultExportTests(unittest.TestCase):
                     "field_coverage",
                 }.issubset(indicator)
             )
+        for observation in result["result"]["observations"]:
+            self.assertTrue(
+                {
+                    "observation_type",
+                    "value",
+                    "parameters",
+                    "evidence_transaction_ids",
+                    "field_coverage",
+                }.issubset(observation)
+            )
         self.assertEqual(
             result["result"]["facts"],
             [
@@ -70,6 +80,174 @@ class ResultExportTests(unittest.TestCase):
             ],
         )
         self.assertFalse(result["manual_review"]["required"])
+
+    def test_reports_own_account_observation_unavailable_without_context(self):
+        observation = build_bankflow_result([transaction()])["result"]["observations"][0]
+
+        self.assertEqual(
+            observation["observation_type"],
+            "confirmed_own_account_transfer_candidates",
+        )
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["reason"],
+            "confirmed_owned_accounts_unavailable",
+        )
+        self.assertEqual(observation["evidence_transaction_ids"], [])
+
+    def test_reports_own_account_observation_unavailable_without_reliable_accounts(self):
+        context = {
+            "confirmed_owned_accounts": [
+                {
+                    "account_ref": "owned:salary-card",
+                    "account_number": "6222000000001234",
+                    "verification_status": "confirmed",
+                    "ownership_evidence_ref": "case-file:account-proof-1",
+                }
+            ]
+        }
+        observation = build_bankflow_result(
+            [transaction()],
+            verification_context=context,
+        )["result"]["observations"][0]
+
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["reason"],
+            "reliable_counterparty_accounts_unavailable",
+        )
+        self.assertEqual(
+            observation["field_coverage"]["covered_transaction_count"],
+            0,
+        )
+
+    def test_matches_only_confirmed_full_reliable_counterparty_accounts(self):
+        matched_income = transaction()
+        matched_income.transaction_id = "tx:matched-income"
+        matched_income.counterparty_account = "6222 0000 0000 1234"
+        matched_income.field_confidence["counterparty_account"] = 1.0
+
+        matched_expense = transaction()
+        matched_expense.transaction_id = "tx:matched-expense"
+        matched_expense.transaction_time = datetime(2026, 7, 27, 10, 30)
+        matched_expense.income = Decimal("0.00")
+        matched_expense.expense = Decimal("40.00")
+        matched_expense.counterparty_account = "6222-0000-0000-1234"
+        matched_expense.field_confidence["counterparty_account"] = 1.0
+
+        context = {
+            "confirmed_owned_accounts": [
+                {
+                    "account_ref": "owned:salary-card",
+                    "account_number": "6222000000001234",
+                    "verification_status": "confirmed",
+                    "ownership_evidence_ref": "case-file:account-proof-1",
+                }
+            ]
+        }
+        observation = build_bankflow_result(
+            [matched_income, matched_expense],
+            verification_context=context,
+        )["result"]["observations"][0]
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(observation["value"]["matched_transaction_count"], 2)
+        self.assertEqual(observation["value"]["matched_income"], "100.00")
+        self.assertEqual(observation["value"]["matched_expense"], "40.00")
+        self.assertEqual(
+            observation["value"]["candidates"],
+            [
+                {
+                    "transaction_id": "tx:matched-income",
+                    "confirmed_account_ref": "owned:salary-card",
+                    "ownership_evidence_ref": "case-file:account-proof-1",
+                    "direction": "income_from_confirmed_owned_account",
+                    "transaction_time": "2026-07-26T10:30:00",
+                    "amount": "100.00",
+                },
+                {
+                    "transaction_id": "tx:matched-expense",
+                    "confirmed_account_ref": "owned:salary-card",
+                    "ownership_evidence_ref": "case-file:account-proof-1",
+                    "direction": "expense_to_confirmed_owned_account",
+                    "transaction_time": "2026-07-27T10:30:00",
+                    "amount": "40.00",
+                },
+            ],
+        )
+        self.assertEqual(
+            observation["evidence_transaction_ids"],
+            ["tx:matched-income", "tx:matched-expense"],
+        )
+        self.assertEqual(
+            observation["parameters"]["matching_rule"],
+            "normalized_full_account_exact_match",
+        )
+        self.assertIn(
+            "不表示资金来源、资金闭环或账户实际控制关系",
+            observation["parameters"]["interpretation"],
+        )
+
+    def test_rejects_unconfirmed_masked_unreliable_neutral_and_name_only_matches(self):
+        unreliable = transaction()
+        unreliable.transaction_id = "tx:unreliable"
+        unreliable.counterparty_account = "6222000000001234"
+        unreliable.field_confidence["counterparty_account"] = 0.99
+
+        masked = transaction()
+        masked.transaction_id = "tx:masked"
+        masked.counterparty_account = "****1234"
+        masked.field_confidence["counterparty_account"] = 1.0
+
+        neutral = transaction()
+        neutral.transaction_id = "tx:neutral"
+        neutral.counterparty_account = "6222000000001234"
+        neutral.field_confidence["counterparty_account"] = 1.0
+        neutral.neutral = True
+
+        name_only = transaction()
+        name_only.transaction_id = "tx:name-only"
+        name_only.counterparty_name = "张三"
+        name_only.field_confidence["counterparty_name"] = 1.0
+
+        pending_account = transaction()
+        pending_account.transaction_id = "tx:pending-account"
+        pending_account.counterparty_account = "9558800000000000"
+        pending_account.field_confidence["counterparty_account"] = 1.0
+
+        context = {
+            "confirmed_owned_accounts": [
+                {
+                    "account_ref": "owned:confirmed",
+                    "account_number": "6222000000001234",
+                    "verification_status": "confirmed",
+                    "ownership_evidence_ref": "case-file:confirmed",
+                },
+                {
+                    "account_ref": "owned:unconfirmed",
+                    "account_number": "9558800000000000",
+                    "verification_status": "pending",
+                    "ownership_evidence_ref": "case-file:pending",
+                },
+            ]
+        }
+        observation = build_bankflow_result(
+            [unreliable, masked, neutral, name_only, pending_account],
+            verification_context=context,
+        )["result"]["observations"][0]
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(observation["value"]["matched_transaction_count"], 0)
+        self.assertEqual(observation["value"]["candidates"], [])
+        self.assertEqual(observation["evidence_transaction_ids"], [])
+        self.assertEqual(
+            observation["field_coverage"]["eligible_transaction_count"],
+            4,
+        )
+        self.assertEqual(
+            observation["field_coverage"]["covered_transaction_count"],
+            1,
+        )
 
     def test_exports_neutral_flag_needed_to_reproduce_indicator_eligibility(self):
         counted = transaction()

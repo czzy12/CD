@@ -27,6 +27,7 @@ STANDARD_TEXT_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "counterparty_account": (
         "对方账号",
+        "对方帐号",
         "对方账户",
         "对方卡号/账号",
         "对方卡号账号",

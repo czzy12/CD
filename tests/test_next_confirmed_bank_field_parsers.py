@@ -8,7 +8,7 @@ from bankflow_v2.changsha_bank_corp import extract_changsha_bank_corp
 from bankflow_v2.cmb_corp import extract_cmb_corp
 from bankflow_v2.customer_detail_corp import extract_customer_detail_corp
 from bankflow_v2.hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detail, extract_hebei_personal
-from bankflow_v2.icbc_corp import extract_icbc_corp
+from bankflow_v2.icbc_corp import _statement_metadata as icbc_corp_metadata, extract_icbc_corp
 
 
 class _Pdf:
@@ -55,6 +55,22 @@ def _word(text, x0, top):
 
 
 class NextConfirmedBankFieldParserTests(unittest.TestCase):
+    def test_icbc_corp_header_metadata_requires_unique_full_labeled_account(self):
+        metadata = icbc_corp_metadata("中国工商银行企业存款对账单 户名：甲公司 账号：2606053809000150943")
+
+        self.assertEqual(metadata.account_name, "甲公司")
+        self.assertEqual(metadata.account_number, "2606053809000150943")
+        self.assertEqual(metadata.field_confidence["account_number"], 1.0)
+
+        for text in (
+            "户名：甲公司 账号：2606053811*********",
+            "户名：甲公司 账号：12345678901",
+            "户名：甲公司 账号：2606053809000150943 账号：2606053809000150944",
+        ):
+            metadata = icbc_corp_metadata(text)
+            self.assertEqual(metadata.account_name, "")
+            self.assertEqual(metadata.account_number, "")
+
     def test_changsha_keeps_summary_remark_as_one_source_field(self):
         page = _WordPage(
             "单位账户明细对账单 账户名称 客户账号 账单期初余额 账单期末余额 交易日期交易金额账户余额摘要/备注编号",
@@ -85,12 +101,12 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(transactions[1].summary, "网上企业银行服务费")
         self.assertEqual(transactions[1].field_sources["summary"], "raw_headers[2]:票据号/摘要")
 
-    def test_hebei_personal_keeps_counterparty_account_only_as_raw_evidence(self):
+    def test_hebei_personal_maps_counterparty_account_and_keeps_raw_evidence(self):
         text = "20260101 贷 20.00 120.00 6222 甲公司 001 转账 备注"
         with patch("bankflow_v2.hebei_bazhou._extract_text", return_value=text):
             tx = extract_hebei_personal("sample.pdf")[0]
 
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "6222")
         self.assertEqual(tx.source_fields["counterparty_account_raw"], "6222")
         self.assertEqual(tx.counterparty_name, "甲公司")
 
@@ -109,7 +125,7 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.summary, "转账")
         self.assertEqual(tx.remark, "备注")
 
-    def test_bazhou_table_maps_confirmed_columns_and_excludes_account(self):
+    def test_bazhou_table_maps_confirmed_columns_and_account(self):
         table = [
             ["交易日期", "对方账户", "对方户名", "对方开户行名", "汇出金额", "汇入金额", "余额", "摘要", "用途"],
             ["2026-01-01", "6222", "甲公司", "示例银行", "20.00", "", "80.00", "转账", "货款"],
@@ -122,10 +138,10 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_bank, "示例银行")
         self.assertEqual(tx.summary, "转账")
         self.assertEqual(tx.purpose, "货款")
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "6222")
         self.assertEqual(tx.source_fields["counterparty_account_raw"], "6222")
 
-    def test_customer_detail_keeps_remark_whole_and_excludes_counterparty_account(self):
+    def test_customer_detail_keeps_remark_whole_and_maps_counterparty_account(self):
         page = _WordPage("", [
             _word("20260101", 46, 182),
             _word("-20.00", 89, 182),
@@ -141,10 +157,10 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_name, "甲公司")
         self.assertEqual(tx.summary, "网银转账")
         self.assertEqual(tx.remark, "普通汇兑;附言:货款;")
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "6222")
         self.assertEqual(tx.source_fields["counterparty_account_raw"], "6222")
 
-    def test_icbc_account_detail_maps_only_confirmed_fields(self):
+    def test_icbc_account_detail_maps_confirmed_fields_and_counterparty_account(self):
         header = ["凭证号", "对方账号", "交易时间", "借贷标志", "对方单位", "对方行号", "用途", "摘要", "附言", "回单个性化信息", "发生额", "余额"]
         row = ["1", "6222", "2026-01-01 10:00:00", "借", "甲公司", "", "货款", "转账", "", "补充摘要", "20.00", "80.00"]
         page = _TablePage("", [[header, row]])
@@ -154,7 +170,7 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_name, "甲公司")
         self.assertEqual(tx.summary, "转账")
         self.assertEqual(tx.purpose, "货款")
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "6222")
         self.assertNotIn("card_number", tx.source_fields)
 
     def test_abc_corp_extracts_confirmed_file_metadata(self):

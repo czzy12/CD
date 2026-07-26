@@ -113,9 +113,8 @@ def extract_spdb(pdf_path: str) -> TransactionList:
                                 else {}
                             ),
                     )
-                    transaction.counterparty_account = ""
                     transaction.summary = ""
-                    for field_name in ("counterparty_account", "summary"):
+                    for field_name in ("summary",):
                         transaction.field_sources.pop(field_name, None)
                         transaction.field_confidence.pop(field_name, None)
                     transactions.append(transaction)

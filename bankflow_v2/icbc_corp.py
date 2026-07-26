@@ -4,11 +4,13 @@ from decimal import Decimal
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import money_to_decimal
 
 
 BANK_NAME = "中国工商银行对公"
+HEADER_NAME_RE = re.compile(r"(?<![对交])户名\s*[:：]\s*(?P<value>\S+)")
+HEADER_ACCOUNT_RE = re.compile(r"(?<![对交])账号\s*[:：]\s*(?P<value>[0-9][0-9\s-]*)")
 
 
 def _clean_cell(value) -> str:
@@ -39,6 +41,29 @@ def _cell(row: list, index: dict[str, int], name: str) -> str:
 def _ordered_fields(row: list, index: dict[str, int]) -> tuple[list[str], list[str]]:
     headers = [name for name, _ in sorted(index.items(), key=lambda item: item[1])]
     return [_clean_cell(row[index[name]]) if index[name] < len(row) else "" for name in headers], headers
+
+
+def _statement_metadata(first_page_text: str) -> StatementMetadata:
+    metadata = StatementMetadata()
+    name_matches = HEADER_NAME_RE.findall(first_page_text or "")
+    account_matches = HEADER_ACCOUNT_RE.findall(first_page_text or "")
+    if len(name_matches) != 1 or len(account_matches) != 1:
+        return metadata
+
+    account_raw = account_matches[0].strip()
+    account_number = re.sub(r"[\s-]+", "", account_raw)
+    if not re.fullmatch(r"[0-9]{12,32}", account_number):
+        return metadata
+
+    metadata.account_name = name_matches[0].strip()
+    metadata.account_number = account_number
+    metadata.raw_fields = {"户名": metadata.account_name, "账号": account_raw}
+    metadata.field_sources = {
+        "account_name": "page=1:document_header:户名",
+        "account_number": "page=1:document_header:账号",
+    }
+    metadata.field_confidence = {"account_name": 1.0, "account_number": 1.0}
+    return metadata
 
 
 def _apply_account_detail_fields(tx: Transaction, row: list, index: dict[str, int]) -> None:
@@ -76,8 +101,7 @@ def _apply_account_detail_fields(tx: Transaction, row: list, index: dict[str, in
             tx.field_sources[field_name] = f"raw_headers[{index[header]}]:{header}"
             tx.field_confidence[field_name] = 1.0
 
-    tx.counterparty_account = ""
-    for field_name in ("counterparty_account", "card_number"):
+    for field_name in ("card_number",):
         tx.field_sources.pop(field_name, None)
         tx.field_confidence.pop(field_name, None)
         tx.source_fields.pop(field_name, None)
@@ -305,10 +329,13 @@ def _restore_same_time_order(transactions: list[Transaction]) -> list[Transactio
     return transactions
 
 
-def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
+def extract_icbc_corp(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
+    metadata = StatementMetadata()
 
     with pdfplumber.open(pdf_path) as pdf:
+        if pdf.pages:
+            metadata = _statement_metadata(pdf.pages[0].extract_text() or "")
         for page_index, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
                 index: dict[str, int] | None = None
@@ -335,4 +362,4 @@ def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
                     if tx is not None:
                         transactions.append(tx)
 
-    return _restore_same_time_order(transactions)
+    return TransactionList(_restore_same_time_order(transactions), metadata=metadata)

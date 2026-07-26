@@ -63,7 +63,7 @@ def _extract_xingtai_legacy(pdf_path: str) -> list[Transaction]:
 
 def extract_xingtai(pdf_path: str) -> list[Transaction]:
     headers = ["交易时间", "收入/支出", "交易金额（元）", "余额（元）", "对方账号", "对方账户名称", "交易户名", "交易账号", "交易渠道", "交易摘要"]
-    excluded_headers = {"对方账号", "交易账号", "交易渠道"}
+    excluded_headers = {"交易账号", "交易渠道"}
     kept_headers = [header for header in headers if header not in excluded_headers]
     transactions: list[Transaction] = []
     sequence = 0

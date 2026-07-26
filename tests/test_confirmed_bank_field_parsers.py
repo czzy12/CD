@@ -40,7 +40,7 @@ class _Pdf:
 
 
 class ConfirmedBankFieldParserTests(unittest.TestCase):
-    def test_icbc_preserves_confirmed_fields_and_excludes_accounts(self):
+    def test_icbc_preserves_confirmed_fields_and_maps_counterparty_account(self):
         table = [["header"] * 13, [
             "2026-01-01 10:20:30", "本方账号", "活期", "7", "人民币", "钞", "转账", "北京",
             "+100.00", "100.00", "甲公司", "对方账号", "网银",
@@ -50,7 +50,8 @@ class ConfirmedBankFieldParserTests(unittest.TestCase):
 
         self.assertEqual(tx.summary, "转账")
         self.assertEqual(tx.counterparty_name, "甲公司")
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "对方账号")
+        self.assertEqual(tx.field_sources["counterparty_account"], "raw_headers[11]:对方账号")
         self.assertEqual(tx.source_sequence, "7")
         self.assertEqual(tx.source_fields, {"storage_type": "活期", "transaction_channel": "网银"})
 
@@ -130,14 +131,14 @@ class ConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.source_fields["transaction_location"], "平安银行")
         self.assertEqual(tx.source_fields["counterparty_info_raw"], "示例银行-甲公司-6222")
 
-    def test_spdb_personal_excludes_account_and_empty_summary_columns(self):
+    def test_spdb_personal_maps_account_and_excludes_empty_summary_column(self):
         table = [["header"] * 9, ["20260101", "102030", "本方账号", "工资", "100.00", "100.00", "甲公司", "对手账号", "****"]]
         with patch("bankflow_v2.spdb.pdfplumber.open", return_value=_Pdf([_Page([table])])):
             tx = extract_spdb("sample.pdf")[0]
 
         self.assertEqual(tx.transaction_type, "工资")
         self.assertEqual(tx.counterparty_name, "甲公司")
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "对手账号")
         self.assertEqual(tx.summary, "")
 
     def test_spdb_corp_maps_confirmed_fields_and_keeps_abstract_code(self):

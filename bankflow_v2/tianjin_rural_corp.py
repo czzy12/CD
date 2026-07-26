@@ -23,7 +23,7 @@ PERSONAL_HEADERS = [
     "对手账号",
     "交易渠道",
 ]
-PERSONAL_EXCLUDED_HEADERS = {"交易附言", "对手账号"}
+PERSONAL_EXCLUDED_HEADERS = {"交易附言"}
 
 
 def _cell(row: list[Any], index: int) -> str:

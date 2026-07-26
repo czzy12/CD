@@ -467,7 +467,7 @@ def extract_lanzhou(pdf_path: str) -> list[Transaction]:
         pdf_path,
         "兰州银行",
         ["序号", "交易日期", "收/支金额", "余额", "对方户名", "对方帐号", "对方行名", "现转标识", "交易渠道", "交易摘要"],
-        {"序号", "对方帐号"},
+        {"序号"},
         date_header="交易日期",
         amount_header="收/支金额",
         balance_header="余额",

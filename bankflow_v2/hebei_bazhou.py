@@ -102,9 +102,6 @@ def extract_hebei_personal(pdf_path: str) -> list[Transaction]:
             raw_headers=PERSONAL_HEADERS,
         )
         raw_counterparty_account = fields[4] if len(fields) > 4 else ""
-        tx.counterparty_account = ""
-        tx.field_sources.pop("counterparty_account", None)
-        tx.field_confidence.pop("counterparty_account", None)
         if raw_counterparty_account:
             tx.source_fields["counterparty_account_raw"] = raw_counterparty_account
             tx.field_sources["counterparty_account_raw"] = "raw_headers[4]:对方账户"
@@ -269,9 +266,6 @@ def _bazhou_table_rows(page, page_no: int) -> list[Transaction]:
             account_index = index.get("对方账户")
             if account_index is not None:
                 raw_account = _cell(row, account_index)
-                tx.counterparty_account = ""
-                tx.field_sources.pop("counterparty_account", None)
-                tx.field_confidence.pop("counterparty_account", None)
                 if raw_account:
                     tx.source_fields["counterparty_account_raw"] = raw_account
                     tx.field_sources["counterparty_account_raw"] = f"raw_headers[{account_index}]:对方账户"

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import money_to_decimal
 
 
@@ -21,10 +21,42 @@ CHANNEL_RE = re.compile(
     r"(?P<channel>掌上银行|电子商务|超级网银)(?:\s+(?P<remark>.*))?$"
 )
 RAW_HEADERS = ["交易日期", "交易时间", "交易摘要", "交易金额", "本次余额", "对手信息", "日志号", "交易渠道", "交易附言"]
+HEADER_NAME_RE = re.compile(r"(?<![\u4e00-\u9fff])户名\s*[:：]\s*(?P<value>\S+)")
+HEADER_ACCOUNT_RE = re.compile(r"(?<![\u4e00-\u9fff])账户\s*[:：]\s*(?P<value>[0-9][0-9\s-]*)")
 
 
 def _clean_cell(value) -> str:
     return str(value or "").replace("\n", "").strip()
+
+
+def _statement_metadata(first_page_text: str) -> StatementMetadata:
+    """Extract the confirmed personal-statement header without using transaction text."""
+    metadata = StatementMetadata()
+    name_matches = HEADER_NAME_RE.findall(first_page_text or "")
+    account_matches = HEADER_ACCOUNT_RE.findall(first_page_text or "")
+    if len(name_matches) != 1 or len(account_matches) != 1:
+        return metadata
+
+    account_raw = account_matches[0].strip()
+    account_number = re.sub(r"[\s-]+", "", account_raw)
+    if not re.fullmatch(r"[0-9]{12,32}", account_number):
+        return metadata
+
+    metadata.account_name = name_matches[0].strip()
+    metadata.account_number = account_number
+    metadata.raw_fields = {"户名": metadata.account_name, "账户": account_raw}
+    metadata.field_sources = {
+        "account_name": "page=1:document_header:户名",
+        "account_number": "page=1:document_header:账户",
+    }
+    metadata.field_confidence = {"account_name": 1.0, "account_number": 1.0}
+    return metadata
+
+
+def _header_metadata(pdf_path: str) -> StatementMetadata:
+    with pdfplumber.open(pdf_path) as pdf:
+        first_page_text = pdf.pages[0].extract_text() if pdf.pages else ""
+    return _statement_metadata(first_page_text or "")
 
 
 def _remark_text(value: str) -> str:
@@ -162,10 +194,11 @@ def _parse_personal_table(pdf_path: str) -> list[Transaction]:
     return transactions
 
 
-def extract_abc(pdf_path: str) -> list[Transaction]:
+def extract_abc(pdf_path: str) -> TransactionList:
+    metadata = _header_metadata(pdf_path)
     table_transactions = _parse_personal_table(pdf_path)
     if table_transactions:
-        return table_transactions
+        return TransactionList(table_transactions, metadata=metadata)
 
     transactions: list[Transaction] = []
     previous_balance: Decimal | None = None
@@ -252,4 +285,4 @@ def extract_abc(pdf_path: str) -> list[Transaction]:
                 if balance is not None:
                     previous_balance = balance
 
-    return transactions
+    return TransactionList(transactions, metadata=metadata)

@@ -106,7 +106,7 @@ class FieldConfirmationBatchEightTests(unittest.TestCase):
         self.assertEqual(tx.source_fields["counterparty_info_raw"], "甲公司")
         self.assertNotIn("货币", tx.raw_headers)
 
-    def test_xingtai_excludes_accounts_and_channel_but_maps_counterparty_name(self):
+    def test_xingtai_maps_counterparty_account_and_excludes_channel(self):
         headers = ["交易时间", "收入/支出", "交易金额（元）", "余额（元）", "对方账号", "对方账户名称", "交易户名", "交易账号", "交易渠道", "交易摘要"]
         row = ["2026-01-02\n10:20:30", "收入", "20.00", "80.00", "6222", "甲公司", "本方公司", "1111", "企业网银", "货款"]
         with patch("bankflow_v2.xingtai.pdfplumber.open", return_value=_Pdf([_Page(tables=[[headers, row]])])):
@@ -114,7 +114,7 @@ class FieldConfirmationBatchEightTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_name, "甲公司")
         self.assertEqual(tx.summary, "货款")
         self.assertEqual(tx.source_fields["transaction_account_name_raw"], "本方公司")
-        self.assertNotIn("对方账号", tx.raw_headers)
+        self.assertIn("对方账号", tx.raw_headers)
         self.assertNotIn("交易账号", tx.raw_headers)
         self.assertNotIn("交易渠道", tx.raw_headers)
 

@@ -111,9 +111,6 @@ def _coordinate_rows(pdf_path: str) -> list[Transaction]:
                         field_sources=field_sources,
                         field_confidence=field_confidence,
                     )
-                tx.counterparty_account = ""
-                tx.field_sources.pop("counterparty_account", None)
-                tx.field_confidence.pop("counterparty_account", None)
                 transactions.append(tx)
     return transactions
 

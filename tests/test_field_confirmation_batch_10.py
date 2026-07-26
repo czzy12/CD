@@ -84,7 +84,7 @@ class FieldConfirmationBatchTenTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_name, "上海市闵行区财政局")
         self.assertEqual(tx.source_fields["transaction_location"], "03404600040028454")
 
-    def test_icbc_corp_marks_bank_code_as_evidence_and_retains_receipt_customization(self):
+    def test_icbc_corp_maps_account_and_retains_bank_code_and_receipt_customization(self):
         table = [[
             ["凭证号", "对方账号", "交易时间", "借贷标志", "对方单位", "对方行号", "用途", "摘要", "附言", "回单个性化信息", "发生额", "余额"],
             ["000000000", "773175862334", "2026-03-30 14:48:49", "借", "深圳市宝安区沙井建诚精密机械配件行", "104584079053", "货款", "货款", "", "附言: 指令编号:HQP928041592841 提交人", "2,720.00", "533,799.24"],
@@ -92,7 +92,8 @@ class FieldConfirmationBatchTenTests(unittest.TestCase):
         with patch("bankflow_v2.icbc_corp.pdfplumber.open", return_value=_Pdf([_Page(tables=table)])):
             tx = extract_icbc_corp("sample.pdf")[0]
 
-        self.assertEqual(tx.counterparty_account, "")
+        self.assertEqual(tx.counterparty_account, "773175862334")
+        self.assertEqual(tx.field_sources["counterparty_account"], "raw_headers[1]:对方账号")
         self.assertEqual(tx.source_fields["counterparty_bank_code"], "104584079053")
         self.assertEqual(tx.source_fields["receipt_customization"], "附言: 指令编号:HQP928041592841 提交人")
 

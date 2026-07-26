@@ -37,7 +37,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.2")
+        self.assertEqual(result["schema_version"], "1.3")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -150,6 +150,141 @@ class ResultExportTests(unittest.TestCase):
         self.assertEqual(income["evidence_transaction_ids"], [])
         self.assertFalse(expense["value"]["available"])
         self.assertIsNone(expense["field_coverage"]["transaction_coverage_rate"])
+
+    def test_income_continuity_uses_inclusive_calendar_months(self):
+        rows = []
+        for index, (month, income, expense) in enumerate(
+            [
+                (1, "100.00", "0.00"),
+                (2, "0.00", "10.00"),
+                (3, "200.00", "0.00"),
+                (4, "300.00", "0.00"),
+            ],
+            start=1,
+        ):
+            row = transaction()
+            row.transaction_time = datetime(2026, month, 10, 9, 0)
+            row.transaction_id = f"tx:month-{index}"
+            row.income = Decimal(income)
+            row.expense = Decimal(expense)
+            rows.append(row)
+
+        indicator = next(
+            item
+            for item in build_bankflow_result(rows)["result"]["indicators"]
+            if item["indicator_type"] == "income_continuity"
+        )
+
+        self.assertEqual(indicator["value"]["period_month_count"], 4)
+        self.assertEqual(indicator["value"]["income_month_count"], 3)
+        self.assertEqual(indicator["value"]["income_month_coverage_rate"], "0.7500")
+        self.assertEqual(indicator["value"]["longest_consecutive_income_month_count"], 2)
+        self.assertEqual(indicator["value"]["months_without_income"], ["2026-02"])
+        self.assertEqual(
+            indicator["evidence_transaction_ids"],
+            ["tx:month-1", "tx:month-3", "tx:month-4"],
+        )
+
+    def test_balance_observation_uses_last_balance_per_source_file_and_day(self):
+        rows = []
+        for index, (day, hour, balance, source_id) in enumerate(
+            [
+                (1, 9, "100.00", "sha256:first"),
+                (1, 15, "80.00", "sha256:first"),
+                (2, 12, "70.00", "sha256:first"),
+                (3, 8, "50.00", "sha256:second"),
+            ],
+            start=1,
+        ):
+            row = transaction()
+            row.transaction_time = datetime(2026, 1, day, hour, 0)
+            row.transaction_id = f"tx:balance-{index}"
+            row.source_file_id = source_id
+            row.balance = Decimal(balance)
+            rows.append(row)
+
+        indicator = next(
+            item
+            for item in build_bankflow_result(rows)["result"]["indicators"]
+            if item["indicator_type"] == "balance_observation"
+        )
+
+        self.assertEqual(indicator["value"]["daily_snapshot_count"], 3)
+        self.assertEqual(indicator["value"]["source_file_count"], 2)
+        self.assertEqual(indicator["value"]["minimum_balance"], "50.00")
+        self.assertEqual(indicator["value"]["median_balance"], "70.00")
+        self.assertEqual(indicator["value"]["average_balance"], "66.67")
+        self.assertEqual(indicator["value"]["latest_snapshot_balance"], "50.00")
+        self.assertEqual(
+            indicator["evidence_transaction_ids"],
+            ["tx:balance-2", "tx:balance-3", "tx:balance-4"],
+        )
+
+    def test_amount_shape_reports_fixed_rounding_units_without_classification(self):
+        rows = []
+        for index, (income, expense) in enumerate(
+            [
+                ("1000.00", "0.00"),
+                ("0.00", "125.00"),
+                ("10.50", "0.00"),
+            ],
+            start=1,
+        ):
+            row = transaction()
+            row.transaction_time = datetime(2026, 1, index, 9, 0)
+            row.transaction_id = f"tx:amount-{index}"
+            row.income = Decimal(income)
+            row.expense = Decimal(expense)
+            rows.append(row)
+
+        indicator = next(
+            item
+            for item in build_bankflow_result(rows)["result"]["indicators"]
+            if item["indicator_type"] == "amount_shape"
+        )
+
+        self.assertEqual(
+            indicator["value"]["rounding_units"],
+            {
+                "1": {"transaction_count": 2, "transaction_share": "0.6667"},
+                "100": {"transaction_count": 1, "transaction_share": "0.3333"},
+                "1000": {"transaction_count": 1, "transaction_share": "0.3333"},
+            },
+        )
+        self.assertEqual(
+            indicator["evidence_transaction_ids"],
+            ["tx:amount-1", "tx:amount-2", "tx:amount-3"],
+        )
+
+    def test_cashflow_scale_compares_latest_three_months_with_previous_three(self):
+        rows = []
+        for month in range(1, 7):
+            row = transaction()
+            row.transaction_time = datetime(2026, month, 10, 9, 0)
+            row.transaction_id = f"tx:scale-{month}"
+            row.income = Decimal(month * 100)
+            row.expense = Decimal(month * 10)
+            rows.append(row)
+
+        indicator = next(
+            item
+            for item in build_bankflow_result(rows)["result"]["indicators"]
+            if item["indicator_type"] == "cashflow_scale_and_recent_change"
+        )
+        comparison = indicator["value"]["recent_comparison"]
+
+        self.assertEqual(indicator["value"]["full_period"]["month_count"], 6)
+        self.assertEqual(indicator["value"]["full_period"]["monthly_average_income"], "350.00")
+        self.assertEqual(indicator["value"]["full_period"]["monthly_average_expense"], "35.00")
+        self.assertTrue(comparison["available"])
+        self.assertEqual(comparison["previous_window_income"], "600.00")
+        self.assertEqual(comparison["recent_window_income"], "1500.00")
+        self.assertEqual(comparison["income_change"], "900.00")
+        self.assertEqual(comparison["income_change_rate"], "1.5000")
+        self.assertEqual(comparison["previous_window_expense"], "60.00")
+        self.assertEqual(comparison["recent_window_expense"], "150.00")
+        self.assertEqual(comparison["expense_change"], "90.00")
+        self.assertEqual(comparison["expense_change_rate"], "1.5000")
 
     def test_marks_missing_evidence_for_manual_review(self):
         row = transaction()

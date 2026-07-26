@@ -12,7 +12,7 @@ from .models import Transaction, get_statement_metadata
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -185,6 +185,31 @@ def _directional_transactions(
     ]
 
 
+def _month_key(value: date | datetime) -> tuple[int, int]:
+    return value.year, value.month
+
+
+def _month_text(value: tuple[int, int]) -> str:
+    return f"{value[0]:04d}-{value[1]:02d}"
+
+
+def _next_month(value: tuple[int, int]) -> tuple[int, int]:
+    year, month = value
+    return (year + 1, 1) if month == 12 else (year, month + 1)
+
+
+def _calendar_months(
+    start: date | datetime, end: date | datetime
+) -> list[tuple[int, int]]:
+    current = _month_key(start)
+    end_month = _month_key(end)
+    months: list[tuple[int, int]] = []
+    while current <= end_month:
+        months.append(current)
+        current = _next_month(current)
+    return months
+
+
 def _time_proximity_indicator(
     transactions: list[Transaction], window_days: int
 ) -> dict[str, object]:
@@ -243,6 +268,383 @@ def _time_proximity_indicator(
             "interpretation": "仅表示时间窗口内先收入后支出共现，不表示支出资金来源于某笔收入。",
         },
         evidence,
+        _coverage(
+            ["transaction_time", "income", "expense", "transaction_id"],
+            eligible,
+            covered,
+        ),
+    )
+
+
+def _income_continuity_indicator(
+    transactions: list[Transaction],
+) -> dict[str, object]:
+    ordered = [
+        transaction
+        for transaction in sort_transactions(transactions)
+        if not getattr(transaction, "neutral", False)
+    ]
+    income_transactions = [
+        transaction
+        for transaction in ordered
+        if transaction.income != Decimal("0.00")
+    ]
+    covered = [transaction for transaction in ordered if transaction.transaction_id]
+
+    if not ordered:
+        return _indicator(
+            "income_continuity",
+            {
+                "available": False,
+                "reason": "no_transactions",
+                "period_month_count": 0,
+                "income_month_count": 0,
+                "income_month_coverage_rate": None,
+                "longest_consecutive_income_month_count": 0,
+                "income_months": [],
+                "months_without_income": [],
+            },
+            {
+                "bucket": "calendar_month",
+                "period_start_month_inclusive": True,
+                "period_end_month_inclusive": True,
+                "interpretation": "仅表示数据期内非零收入的月份分布，不表示工资稳定性、经营真实性或还款能力。",
+            },
+            [],
+            _coverage(
+                ["transaction_time", "income", "transaction_id"],
+                ordered,
+                covered,
+            ),
+        )
+
+    months = _calendar_months(
+        ordered[0].transaction_time, ordered[-1].transaction_time
+    )
+    income_month_set = {
+        _month_key(transaction.transaction_time)
+        for transaction in income_transactions
+    }
+    longest_run = 0
+    current_run = 0
+    for month in months:
+        if month in income_month_set:
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+
+    return _indicator(
+        "income_continuity",
+        {
+            "available": True,
+            "reason": "",
+            "period_month_count": len(months),
+            "income_month_count": len(income_month_set),
+            "income_month_coverage_rate": _ratio(
+                len(income_month_set), len(months)
+            ),
+            "longest_consecutive_income_month_count": longest_run,
+            "income_months": [
+                _month_text(month) for month in months if month in income_month_set
+            ],
+            "months_without_income": [
+                _month_text(month) for month in months if month not in income_month_set
+            ],
+        },
+        {
+            "bucket": "calendar_month",
+            "period_start_month_inclusive": True,
+            "period_end_month_inclusive": True,
+            "interpretation": "仅表示数据期内非零收入的月份分布，不表示工资稳定性、经营真实性或还款能力。",
+        },
+        income_transactions,
+        _coverage(
+            ["transaction_time", "income", "transaction_id"],
+            ordered,
+            covered,
+        ),
+    )
+
+
+def _median(values: list[Decimal]) -> Decimal:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / Decimal("2")
+
+
+def _balance_observation_indicator(
+    transactions: list[Transaction],
+) -> dict[str, object]:
+    ordered = sort_transactions(transactions)
+    balance_transactions = [
+        transaction for transaction in ordered if transaction.balance is not None
+    ]
+    covered = [
+        transaction
+        for transaction in ordered
+        if transaction.balance is not None
+        and transaction.source_file_id
+        and transaction.transaction_id
+    ]
+    daily_snapshots: dict[tuple[str, date], Transaction] = {}
+    for transaction in balance_transactions:
+        if not transaction.source_file_id:
+            continue
+        daily_snapshots[
+            (transaction.source_file_id, transaction.transaction_time.date())
+        ] = transaction
+
+    snapshots = sort_transactions(list(daily_snapshots.values()))
+    balances = [
+        transaction.balance
+        for transaction in snapshots
+        if transaction.balance is not None
+    ]
+    available = bool(balances)
+    value: dict[str, object] = {
+        "available": available,
+        "reason": "" if available else "traceable_balance_snapshots_unavailable",
+        "balance_transaction_count": len(balance_transactions),
+        "daily_snapshot_count": len(snapshots),
+        "source_file_count": len(
+            {transaction.source_file_id for transaction in snapshots}
+        ),
+        "minimum_balance": None,
+        "median_balance": None,
+        "average_balance": None,
+        "latest_snapshot_balance": None,
+        "positive_balance_snapshot_count": 0,
+        "positive_balance_snapshot_share": None,
+    }
+    if balances:
+        positive_count = sum(balance > Decimal("0.00") for balance in balances)
+        value.update(
+            {
+                "minimum_balance": _decimal(min(balances)),
+                "median_balance": _decimal(_median(balances)),
+                "average_balance": _decimal(
+                    sum(balances, Decimal("0.00")) / Decimal(len(balances))
+                ),
+                "latest_snapshot_balance": _decimal(balances[-1]),
+                "positive_balance_snapshot_count": positive_count,
+                "positive_balance_snapshot_share": _ratio(
+                    positive_count, len(balances)
+                ),
+            }
+        )
+
+    return _indicator(
+        "balance_observation",
+        value,
+        {
+            "group_by": ["source_file_id", "calendar_date"],
+            "snapshot_selection": "last_transaction_with_balance",
+            "aggregation_is_not": ["daily_average_balance", "merged_account_balance"],
+            "interpretation": "仅描述逐来源文件的日末交易后余额快照，不表示资金充足或账户日均余额。",
+        },
+        snapshots,
+        _coverage(
+            [
+                "transaction_time",
+                "balance",
+                "source_file_id",
+                "transaction_id",
+            ],
+            ordered,
+            covered,
+        ),
+    )
+
+
+def _amount_shape_indicator(
+    transactions: list[Transaction],
+) -> dict[str, object]:
+    eligible = [
+        transaction
+        for transaction in sort_transactions(transactions)
+        if not getattr(transaction, "neutral", False)
+        and (
+            transaction.income != Decimal("0.00")
+            or transaction.expense != Decimal("0.00")
+        )
+    ]
+    covered = [transaction for transaction in eligible if transaction.transaction_id]
+    amounts = [
+        abs(transaction.income) + abs(transaction.expense)
+        for transaction in eligible
+    ]
+    units = (1, 100, 1000)
+    rounding_units: dict[str, dict[str, object]] = {}
+    for unit in units:
+        count = sum(amount % Decimal(unit) == Decimal("0.00") for amount in amounts)
+        rounding_units[str(unit)] = {
+            "transaction_count": count,
+            "transaction_share": _ratio(count, len(amounts)),
+        }
+
+    return _indicator(
+        "amount_shape",
+        {
+            "available": bool(amounts),
+            "reason": "" if amounts else "no_income_or_expense_transactions",
+            "transaction_count": len(amounts),
+            "rounding_units": rounding_units,
+        },
+        {
+            "rounding_units_yuan": list(units),
+            "amount_basis": "absolute_income_plus_absolute_expense_per_transaction",
+            "units_are_cumulative": True,
+            "interpretation": "仅表示金额能否被固定单位整除，不表示流水包装或异常。",
+        },
+        eligible,
+        _coverage(
+            ["income", "expense", "transaction_id"],
+            eligible,
+            covered,
+        ),
+    )
+
+
+def _cashflow_scale_and_recent_change_indicator(
+    transactions: list[Transaction],
+) -> dict[str, object]:
+    ordered = [
+        transaction
+        for transaction in sort_transactions(transactions)
+        if not getattr(transaction, "neutral", False)
+    ]
+    eligible = [
+        transaction
+        for transaction in ordered
+        if transaction.income != Decimal("0.00")
+        or transaction.expense != Decimal("0.00")
+    ]
+    covered = [transaction for transaction in eligible if transaction.transaction_id]
+    if not ordered:
+        return _indicator(
+            "cashflow_scale_and_recent_change",
+            {
+                "available": False,
+                "reason": "no_transactions",
+                "full_period": {
+                    "month_count": 0,
+                    "monthly_average_income": None,
+                    "monthly_average_expense": None,
+                },
+                "recent_comparison": {
+                    "available": False,
+                    "reason": "insufficient_six_calendar_month_period",
+                },
+            },
+            {
+                "bucket": "calendar_month",
+                "window_months": 3,
+                "anchor": "last_transaction_calendar_month",
+                "zero_transaction_months_included": True,
+                "boundary_months_may_be_partial": True,
+                "interpretation": "仅表示本次数据覆盖期内的收支规模和数值变化，不表示业务趋势或风险。",
+            },
+            [],
+            _coverage(
+                ["transaction_time", "income", "expense", "transaction_id"],
+                eligible,
+                covered,
+            ),
+        )
+
+    months = _calendar_months(
+        ordered[0].transaction_time, ordered[-1].transaction_time
+    )
+    monthly = {
+        month: {"income": Decimal("0.00"), "expense": Decimal("0.00")}
+        for month in months
+    }
+    for transaction in ordered:
+        bucket = monthly[_month_key(transaction.transaction_time)]
+        bucket["income"] += transaction.income
+        bucket["expense"] += transaction.expense
+
+    total_income = sum(
+        (monthly[month]["income"] for month in months), Decimal("0.00")
+    )
+    total_expense = sum(
+        (monthly[month]["expense"] for month in months), Decimal("0.00")
+    )
+    full_period = {
+        "month_count": len(months),
+        "period_start_month": _month_text(months[0]),
+        "period_end_month": _month_text(months[-1]),
+        "monthly_average_income": _decimal(
+            total_income / Decimal(len(months))
+        ),
+        "monthly_average_expense": _decimal(
+            total_expense / Decimal(len(months))
+        ),
+    }
+    comparison: dict[str, object] = {
+        "available": False,
+        "reason": "insufficient_six_calendar_month_period",
+    }
+    if len(months) >= 6:
+        previous_months = months[-6:-3]
+        recent_months = months[-3:]
+        previous_income = sum(
+            (monthly[month]["income"] for month in previous_months),
+            Decimal("0.00"),
+        )
+        recent_income = sum(
+            (monthly[month]["income"] for month in recent_months),
+            Decimal("0.00"),
+        )
+        previous_expense = sum(
+            (monthly[month]["expense"] for month in previous_months),
+            Decimal("0.00"),
+        )
+        recent_expense = sum(
+            (monthly[month]["expense"] for month in recent_months),
+            Decimal("0.00"),
+        )
+        comparison = {
+            "available": True,
+            "reason": "",
+            "previous_window_start_month": _month_text(previous_months[0]),
+            "previous_window_end_month": _month_text(previous_months[-1]),
+            "recent_window_start_month": _month_text(recent_months[0]),
+            "recent_window_end_month": _month_text(recent_months[-1]),
+            "previous_window_income": _decimal(previous_income),
+            "recent_window_income": _decimal(recent_income),
+            "income_change": _decimal(recent_income - previous_income),
+            "income_change_rate": _ratio(
+                recent_income - previous_income, previous_income
+            ),
+            "previous_window_expense": _decimal(previous_expense),
+            "recent_window_expense": _decimal(recent_expense),
+            "expense_change": _decimal(recent_expense - previous_expense),
+            "expense_change_rate": _ratio(
+                recent_expense - previous_expense, previous_expense
+            ),
+        }
+
+    return _indicator(
+        "cashflow_scale_and_recent_change",
+        {
+            "available": True,
+            "reason": "",
+            "full_period": full_period,
+            "recent_comparison": comparison,
+        },
+        {
+            "bucket": "calendar_month",
+            "window_months": 3,
+            "anchor": "last_transaction_calendar_month",
+            "zero_transaction_months_included": True,
+            "boundary_months_may_be_partial": True,
+            "interpretation": "仅表示本次数据覆盖期内的收支规模和数值变化，不表示业务趋势或风险。",
+        },
+        eligible,
         _coverage(
             ["transaction_time", "income", "expense", "transaction_id"],
             eligible,
@@ -380,6 +782,14 @@ def _availability_and_evidence_indicator(
                 "fund_time_proximity": bool(incomes and expenses),
                 "income_counterparty_concentration": bool(income_counterparties),
                 "expense_counterparty_concentration": bool(expense_counterparties),
+                "income_continuity": bool(ordered),
+                "balance_observation": any(
+                    transaction.balance is not None
+                    and transaction.source_file_id
+                    for transaction in ordered
+                ),
+                "amount_shape": bool(incomes or expenses),
+                "cashflow_scale_and_recent_change": bool(ordered),
             },
             "evidence_coverage": {
                 "transaction_count": len(ordered),
@@ -421,6 +831,10 @@ def _indicators(transactions: list[Transaction]) -> list[dict[str, object]]:
         ],
         _counterparty_concentration_indicator(transactions, "income"),
         _counterparty_concentration_indicator(transactions, "expense"),
+        _income_continuity_indicator(transactions),
+        _balance_observation_indicator(transactions),
+        _amount_shape_indicator(transactions),
+        _cashflow_scale_and_recent_change_indicator(transactions),
         _availability_and_evidence_indicator(transactions),
     ]
 
@@ -507,6 +921,7 @@ def build_bankflow_result(
         "notes": [
             "仅包含原始标准交易、确定性事实、确定性指标和待人工核实事项；未应用流水调整或风险定性。",
             "资金时间邻近指标仅表示先收入后支出的时间共现，不表示支出资金来源于某笔收入。",
+            "收入连续性、余额快照、金额形态和近期变化均为中性数值观察，不表示工资稳定、资金充足、流水包装或业务趋势。",
         ],
     }
 

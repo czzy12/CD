@@ -123,11 +123,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.2"` JSON 必须包含：
+当前实现的 `schema_version: "1.3"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -155,7 +155,14 @@ GUI 已新增：
 - 收入和支出交易对手集中度；对手身份优先使用可靠账号，其次使用可靠名称，只接受非空且 `field_confidence == 1.0` 的现有字段。
 - 指标可用性与交易 ID、来源文件 ID、页/行定位的证据覆盖。
 
-对手字段缺失或置信度不足时必须输出不可用状态和覆盖率，不得从摘要、备注、原始混合文本或 `generic_pdf` 猜测。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
+v1B 固定包含：
+
+- 收入连续性：按首末交易所在自然月的连续月桶，输出有收入月份、无收入月份、覆盖率和最长连续收入月份数；含两端月份，不解释为工资稳定性或经营真实性。
+- 余额观察：按 `source_file_id + 自然日` 选择当日最后一笔有余额交易，输出余额快照分布；不得解释为账户日均余额或资金充足。
+- 金额形态：输出非零收支绝对金额可被 1/100/1000 元整除的笔数与占比；不得解释为流水包装。
+- 收支规模与近期变化：以末笔交易所在月为锚，比较最近 3 个自然月与此前 3 个自然月；不足连续 6 个月时比较不可用，边界月可能不完整。
+
+对手字段缺失或置信度不足时必须输出不可用状态和覆盖率，不得从摘要、备注、原始混合文本或 `generic_pdf` 猜测。可靠文字观察、外部 `event` / `case_context` 参数和跨资料比对不属于当前 `result.indicators[]`，其边界登记于 `docs/流水事实指标字典_v1.md`。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
 
 字段变化必须更新 `schema_version`。
 

@@ -363,6 +363,10 @@ class Worker(QThread):
 
             try:
                 transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
+                from bankflow_v2.evidence import attach_source_evidence
+
+                if not all(getattr(transaction, "source_file_id", "") for transaction in transactions):
+                    attach_source_evidence(transactions, path)
                 statement_metadata = get_statement_metadata(transactions)
                 account_name = statement_metadata.account_name or extract_account_name(path)
                 account_no = statement_metadata.account_number or extract_account_no(path)

@@ -26,7 +26,7 @@ D:\OneDrive\应用\remotely-save\Note Data\车贷\自动化项目\05-子项目�
 - 月度统计。
 - 流水调整测算。
 - Excel 导出。
-- 后续标准 JSON 导出。
+- 标准 JSON 导出。
 - 后续收入佐证 Word 填写。
 
 本项目不负责：
@@ -67,19 +67,19 @@ GUI、Excel 导出、未来 JSON 导出和 Word 填写都应复用这里的统�
 
 调整结果不得覆盖原始统计，必须和原始结果并存。
 
-## 推荐新增接口
+## 标准结果导出接口
 
-后续新增标准结果导出时，建议新增：
+已实现：
 
 ```text
 bankflow_v2/result_export.py
 ```
 
-建议提供：
+对外提供：
 
 ```python
-build_bankflow_result(transactions, adjustment_result, metadata) -> dict
-write_bankflow_json(result, path) -> None
+build_bankflow_result(transactions, metadata=None) -> dict
+write_bankflow_json(result, path) -> Path
 ```
 
 后续新增收入佐证 Word 填写时，建议新增：
@@ -123,15 +123,19 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-未来导出的 JSON 必须包含：
+当前实现的 `schema_version: "1.0"` JSON 必须包含：
 
 ```json
 {
   "schema_version": "1.0",
   "module": "bankflow",
+  "analysis_source": "original_transactions",
   "created_at": "",
   "source_files": [],
-  "result": {},
+  "result": {
+    "summary": {},
+    "original_transactions": []
+  },
   "manual_review": {
     "required": true,
     "items": []
@@ -140,6 +144,8 @@ GUI 已新增：
   "notes": []
 }
 ```
+
+每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。该接口不读取调整结果，也不输出事实或风险结论。
 
 字段变化必须更新 `schema_version`。
 

@@ -26,6 +26,7 @@ from .cib import extract_cib
 from .customer_account_corp import extract_customer_account_corp
 from .customer_detail_corp import extract_customer_detail_corp
 from .everbright import extract_everbright, extract_everbright_corp
+from .evidence import attach_source_evidence
 from .fudian import extract_fudian
 from .generic_pdf import extract_generic_pdf
 from .guilin_corp import extract_guilin, extract_guilin_corp
@@ -53,6 +54,10 @@ from .zhongyuan import extract_zhongyuan
 
 
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
+    return attach_source_evidence(_extract_transactions(pdf_path, bank), pdf_path)
+
+
+def _extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
     if bank == "alipay":
         return extract_alipay(pdf_path)
     if bank == "icbc":

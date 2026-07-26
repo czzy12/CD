@@ -236,6 +236,10 @@ class Transaction:
     manual_review: dict[str, str] = field(default_factory=dict)
     source_sequence: str = ""
     source_fields: dict[str, object] = field(default_factory=dict)
+    source_file: str = ""
+    source_file_id: str = ""
+    evidence_locator: str = ""
+    transaction_id: str = ""
 
     def __post_init__(self) -> None:
         mapped_fields = map_standard_text_fields(self.raw_headers, self.raw_fields)

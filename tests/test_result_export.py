@@ -37,7 +37,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.3")
+        self.assertEqual(result["schema_version"], "1.4")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -70,6 +70,31 @@ class ResultExportTests(unittest.TestCase):
             ],
         )
         self.assertFalse(result["manual_review"]["required"])
+
+    def test_exports_neutral_flag_needed_to_reproduce_indicator_eligibility(self):
+        counted = transaction()
+        counted.transaction_id = "tx:counted"
+
+        neutral = transaction()
+        neutral.transaction_id = "tx:neutral"
+        neutral.income = Decimal("0.00")
+        neutral.neutral = True
+
+        result = build_bankflow_result([counted, neutral])
+        exported = {
+            row["transaction_id"]: row
+            for row in result["result"]["original_transactions"]
+        }
+
+        self.assertFalse(exported["tx:counted"]["neutral"])
+        self.assertTrue(exported["tx:neutral"]["neutral"])
+        amount_shape = next(
+            item
+            for item in result["result"]["indicators"]
+            if item["indicator_type"] == "amount_shape"
+        )
+        self.assertEqual(amount_shape["field_coverage"]["eligible_transaction_count"], 1)
+        self.assertEqual(amount_shape["evidence_transaction_ids"], ["tx:counted"])
 
     def test_time_proximity_windows_are_inclusive_and_link_evidence(self):
         first = transaction()

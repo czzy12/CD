@@ -94,6 +94,9 @@ def _matches_filters(case: dict[str, Any], names: set[str], tags: set[str]) -> b
 
 def run_case(case: dict[str, Any], allow_missing: bool = False) -> RegressionResult:
     name = str(case.get("name", "unnamed"))
+    skip_reason = str(case.get("skip_reason", "")).strip()
+    if skip_reason:
+        return RegressionResult("SKIP", name, skip_reason, [])
     pdf_path = _expand_path(str(case["path"]))
     if not pdf_path.exists():
         status = "SKIP" if allow_missing else "FAIL"

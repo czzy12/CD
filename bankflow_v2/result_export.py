@@ -12,7 +12,7 @@ from .models import Transaction, get_statement_metadata
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -34,6 +34,7 @@ def _transaction_record(transaction: Transaction) -> dict[str, object]:
         "income": _decimal(transaction.income),
         "expense": _decimal(transaction.expense),
         "balance": _decimal(transaction.balance),
+        "neutral": bool(getattr(transaction, "neutral", False)),
         "status": transaction.status,
         "issues": list(transaction.issues),
         "original": {

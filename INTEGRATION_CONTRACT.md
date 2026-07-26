@@ -123,11 +123,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.3"` JSON 必须包含：
+当前实现的 `schema_version: "1.4"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -147,7 +147,7 @@ GUI 已新增：
 }
 ```
 
-每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。
+每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、`neutral`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`neutral` 是复算事实和指标参与范围所需的布尔值：`true` 表示该原始交易不进入收支统计及 v1B 非中性交易指标，不能仅凭金额为零或文字方向推断。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。
 
 `result.indicators[]` 只读取 `original_transactions`，每项必须包含 `indicator_type`、`value`、`parameters`、`evidence_transaction_ids` 与 `field_coverage`。v1A 固定包含：
 

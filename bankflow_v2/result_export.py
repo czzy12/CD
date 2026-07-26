@@ -8,10 +8,10 @@ from decimal import Decimal
 from pathlib import Path
 
 from .models import Transaction, get_statement_metadata
-from .summary import Summary, summarize
+from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -90,16 +90,56 @@ def _source_files(transactions: list[Transaction]) -> list[dict[str, object]]:
     ]
 
 
-def build_bankflow_result(
-    transactions: list[Transaction], metadata: object | None = None
-) -> dict[str, object]:
-    """Build a verification result without applying adjustment or analysis logic."""
-    original_transactions = list(transactions)
-    statement_metadata = metadata or get_statement_metadata(transactions)
-    summary = summarize(original_transactions)
-    review_items: list[dict[str, object]] = []
+def _transaction_ids(transactions: list[Transaction]) -> list[str]:
+    return [transaction.transaction_id for transaction in transactions if transaction.transaction_id]
 
-    for transaction in original_transactions:
+
+def _fact(
+    fact_type: str, value: str | int, evidence_transactions: list[Transaction]
+) -> dict[str, object]:
+    return {
+        "fact_type": fact_type,
+        "value": value,
+        "evidence_transaction_ids": _transaction_ids(evidence_transactions),
+    }
+
+
+def _facts(transactions: list[Transaction], summary: Summary) -> list[dict[str, object]]:
+    ordered = sort_transactions(transactions)
+    counted = [transaction for transaction in ordered if not getattr(transaction, "neutral", False)]
+    facts = [
+        _fact("transaction_count", summary.count, counted),
+        _fact(
+            "income_total",
+            _decimal(summary.income_sum) or "0.00",
+            [transaction for transaction in counted if transaction.income != Decimal("0.00")],
+        ),
+        _fact(
+            "expense_total",
+            _decimal(summary.expense_sum) or "0.00",
+            [transaction for transaction in counted if transaction.expense != Decimal("0.00")],
+        ),
+        _fact("net_amount", _decimal(summary.net) or "0.00", counted),
+    ]
+    if ordered:
+        facts.extend(
+            [
+                _fact("period_start", ordered[0].transaction_time.isoformat(), [ordered[0]]),
+                _fact("period_end", ordered[-1].transaction_time.isoformat(), [ordered[-1]]),
+            ]
+        )
+    if summary.opening_balance is not None and ordered:
+        facts.append(_fact("opening_balance", _decimal(summary.opening_balance) or "0.00", [ordered[0]]))
+    if summary.closing_balance is not None and ordered:
+        facts.append(_fact("closing_balance", _decimal(summary.closing_balance) or "0.00", [ordered[-1]]))
+    return facts
+
+
+def _review_items(transactions: list[Transaction], summary: Summary) -> list[dict[str, object]]:
+    review_items: list[dict[str, object]] = []
+    transaction_issue_messages = {message for transaction in transactions for message in transaction.issues}
+
+    for transaction in transactions:
         reasons = list(transaction.issues) + list(transaction.manual_review.values())
         if transaction.status != "ok":
             reasons.append(f"解析状态：{transaction.status}")
@@ -110,12 +150,46 @@ def build_bankflow_result(
         if reasons:
             review_items.append(
                 {
+                    "scope": "transaction",
                     "transaction_id": transaction.transaction_id,
                     "source_file_id": transaction.source_file_id,
                     "evidence_locator": transaction.evidence_locator,
+                    "evidence_transaction_ids": _transaction_ids([transaction]),
                     "reasons": reasons,
                 }
             )
+
+    ordered = sort_transactions(transactions)
+    for issue in summary.issues:
+        if issue.message in transaction_issue_messages:
+            continue
+        evidence = [
+            transaction
+            for transaction in ordered
+            if transaction.transaction_time.strftime("%Y-%m-%d %H:%M:%S") == issue.time
+            and transaction.raw_amount == issue.raw_amount
+            and transaction.raw_balance == issue.raw_balance
+        ]
+        if not evidence and not issue.time:
+            evidence = [transaction for transaction in ordered if not getattr(transaction, "neutral", False)]
+        review_items.append(
+            {
+                "scope": "summary",
+                "evidence_transaction_ids": _transaction_ids(evidence),
+                "reasons": [issue.message],
+            }
+        )
+    return review_items
+
+
+def build_bankflow_result(
+    transactions: list[Transaction], metadata: object | None = None
+) -> dict[str, object]:
+    """Build a verification result without applying adjustment or analysis logic."""
+    original_transactions = list(transactions)
+    statement_metadata = metadata or get_statement_metadata(transactions)
+    summary = summarize(original_transactions)
+    review_items = _review_items(original_transactions, summary)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -135,10 +209,11 @@ def build_bankflow_result(
         "result": {
             "summary": _summary_record(summary),
             "original_transactions": [_transaction_record(transaction) for transaction in original_transactions],
+            "facts": _facts(original_transactions, summary),
         },
         "manual_review": {"required": bool(review_items), "items": review_items},
         "warnings": [],
-        "notes": ["仅包含原始标准交易；未应用流水调整或核实分析。"],
+        "notes": ["仅包含原始标准交易、确定性事实和待人工核实事项；未应用流水调整或风险定性。"],
     }
 
 

@@ -123,18 +123,19 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.0"` JSON 必须包含：
+当前实现的 `schema_version: "1.1"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
   "source_files": [],
   "result": {
     "summary": {},
-    "original_transactions": []
+    "original_transactions": [],
+    "facts": []
   },
   "manual_review": {
     "required": true,
@@ -145,7 +146,7 @@ GUI 已新增：
 }
 ```
 
-每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。该接口不读取调整结果，也不输出事实或风险结论。
+每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。`manual_review.items[]` 必须包含 `scope`、`reasons` 与 `evidence_transaction_ids`；交易范围项目保留交易、来源文件和页/行定位。该接口不读取调整结果，不输出风险定性或调查结论。
 
 字段变化必须更新 `schema_version`。
 

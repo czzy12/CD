@@ -37,7 +37,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.6")
+        self.assertEqual(result["schema_version"], "1.7")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -632,6 +632,229 @@ class ResultExportTests(unittest.TestCase):
         review = result["manual_review"]["items"]
         self.assertEqual(review[0]["scope"], "summary")
         self.assertEqual(review[0]["evidence_transaction_ids"], ["tx:source:second"])
+
+    def test_links_unique_wechat_payment_to_confirmed_bank_debit(self):
+        wallet = transaction()
+        wallet.bank = "微信流水"
+        wallet.transaction_id = "tx:wechat-payment"
+        wallet.source_file_id = "sha256:wechat"
+        wallet.income = Decimal("0.00")
+        wallet.expense = Decimal("395.98")
+        wallet.transaction_method = "建设银行储蓄卡(2404)"
+        wallet.counterparty_name = "小白房子·White House"
+        wallet.field_confidence.update({"transaction_method": 1.0, "counterparty_name": 1.0})
+
+        bank = transaction()
+        bank.bank = "建设银行个人"
+        bank.transaction_id = "tx:bank-debit"
+        bank.source_file_id = "sha256:ccb"
+        bank.income = Decimal("0.00")
+        bank.expense = Decimal("395.98")
+        bank.summary = "财付通-微信支付-小白房子"
+
+        result = build_bankflow_result(
+            [wallet, bank],
+            verification_context={
+                "confirmed_owned_accounts": [
+                    {
+                        "account_ref": "account:ccb-2404",
+                        "account_number": "6217000480002792404",
+                        "verification_status": "confirmed",
+                        "ownership_evidence_ref": "source:ccb-header",
+                        "source_file_ids": ["sha256:ccb"],
+                    }
+                ],
+                "confirmed_owned_payment_sources": [
+                    {
+                        "payment_account_type": "wechat_account",
+                        "account_ref": "payment:wechat-client",
+                        "source_file_id": "sha256:wechat",
+                        "verification_status": "confirmed",
+                        "ownership_evidence_ref": "source:wechat-header",
+                        "identity_owner_name": "\u5f20\u4e09",
+                        "identity_number": "110101199001011234",
+                        "payment_account_id": "wechat:client",
+                    }
+                ],
+            },
+        )
+        observation = next(
+            item for item in result["result"]["observations"]
+            if item["observation_type"] == "wechat_payment_bank_debit_link_candidates"
+        )
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["paired"],
+            [{
+                "wallet_transaction_id": "tx:wechat-payment",
+                "bank_transaction_id": "tx:bank-debit",
+                "wechat_account_ref": "payment:wechat-client",
+                "wechat_ownership_evidence_ref": "source:wechat-header",
+                "funding_account_ref": "account:ccb-2404",
+                "calendar_date": "2026-07-26",
+                "amount": "395.98",
+            }],
+        )
+        self.assertEqual(observation["value"]["ambiguous_candidates"], [])
+        self.assertIn("不表示本人账户互转", observation["parameters"]["interpretation"])
+
+    def test_marks_multiple_bank_debits_as_ambiguous_wechat_payment_links(self):
+        wallet = transaction()
+        wallet.bank = "微信流水"
+        wallet.transaction_id = "tx:wechat-payment"
+        wallet.source_file_id = "sha256:wechat"
+        wallet.income = Decimal("0.00")
+        wallet.expense = Decimal("12.25")
+        wallet.transaction_method = "建设银行储蓄卡(2404)"
+        wallet.counterparty_name = "滴滴出行"
+        wallet.field_confidence.update({"transaction_method": 1.0, "counterparty_name": 1.0})
+
+        bank_rows = []
+        for suffix in ("one", "two"):
+            bank = transaction()
+            bank.bank = "建设银行个人"
+            bank.transaction_id = f"tx:bank-{suffix}"
+            bank.source_file_id = "sha256:ccb"
+            bank.income = Decimal("0.00")
+            bank.expense = Decimal("12.25")
+            bank.summary = "财付通-微信支付-滴滴出行"
+            bank_rows.append(bank)
+
+        result = build_bankflow_result(
+            [wallet, *bank_rows],
+            verification_context={
+                "confirmed_owned_accounts": [
+                    {
+                        "account_ref": "account:ccb-2404",
+                        "account_number": "6217000480002792404",
+                        "verification_status": "confirmed",
+                        "ownership_evidence_ref": "source:ccb-header",
+                        "source_file_ids": ["sha256:ccb"],
+                    }
+                ],
+                "confirmed_owned_payment_sources": [
+                    {
+                        "payment_account_type": "wechat_account",
+                        "account_ref": "payment:wechat-client",
+                        "source_file_id": "sha256:wechat",
+                        "verification_status": "confirmed",
+                        "ownership_evidence_ref": "source:wechat-header",
+                        "identity_owner_name": "\u5f20\u4e09",
+                        "identity_number": "110101199001011234",
+                        "payment_account_id": "wechat:client",
+                    }
+                ],
+            },
+        )
+        observation = next(
+            item for item in result["result"]["observations"]
+            if item["observation_type"] == "wechat_payment_bank_debit_link_candidates"
+        )
+
+        self.assertEqual(observation["value"]["paired"], [])
+        self.assertEqual(len(observation["value"]["ambiguous_candidates"]), 2)
+
+    def test_rejects_nonunique_card_tail_for_wechat_payment_links(self):
+        wallet = transaction()
+        wallet.bank = "微信流水"
+        wallet.transaction_id = "tx:wechat-payment"
+        wallet.source_file_id = "sha256:wechat"
+        wallet.income = Decimal("0.00")
+        wallet.expense = Decimal("12.25")
+        wallet.transaction_method = "建设银行储蓄卡(2404)"
+        wallet.counterparty_name = "滴滴出行"
+        wallet.field_confidence.update({"transaction_method": 1.0, "counterparty_name": 1.0})
+
+        observation = next(
+            item for item in build_bankflow_result(
+                [wallet],
+                verification_context={
+                    "confirmed_owned_accounts": [
+                        {
+                            "account_ref": "account:first-2404",
+                            "account_number": "6217000480002792404",
+                            "verification_status": "confirmed",
+                            "ownership_evidence_ref": "source:first",
+                        },
+                        {
+                            "account_ref": "account:second-2404",
+                            "account_number": "6222000000000002404",
+                            "verification_status": "confirmed",
+                            "ownership_evidence_ref": "source:second",
+                        },
+                    ],
+                    "confirmed_owned_payment_sources": [
+                        {
+                            "payment_account_type": "wechat_account",
+                            "account_ref": "payment:wechat-client",
+                            "source_file_id": "sha256:wechat",
+                            "verification_status": "confirmed",
+                            "ownership_evidence_ref": "source:wechat-header",
+                            "identity_owner_name": "\u5f20\u4e09",
+                            "identity_number": "110101199001011234",
+                            "payment_account_id": "wechat:client",
+                        }
+                    ],
+                },
+            )["result"]["observations"]
+            if item["observation_type"] == "wechat_payment_bank_debit_link_candidates"
+        )
+
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(observation["value"]["reason"], "reliable_wechat_card_tail_or_merchant_unavailable")
+
+    def test_rejects_wechat_link_without_identity_triplet(self):
+        wallet = transaction()
+        wallet.bank = "\u5fae\u4fe1\u6d41\u6c34"
+        wallet.transaction_id = "tx:wechat-payment"
+        wallet.source_file_id = "sha256:wechat"
+        wallet.income = Decimal("0.00")
+        wallet.expense = Decimal("395.98")
+        wallet.transaction_method = "\u5efa\u8bbe\u94f6\u884c\u50a8\u84c4\u5361(2404)"
+        wallet.counterparty_name = "\u5c0f\u767d\u623f\u5b50"
+        wallet.field_confidence.update({"transaction_method": 1.0, "counterparty_name": 1.0})
+
+        observation = next(
+            item for item in build_bankflow_result(
+                [wallet],
+                verification_context={
+                    "confirmed_owned_accounts": [
+                        {
+                            "account_ref": "account:ccb-2404",
+                            "account_number": "6217000480002792404",
+                            "verification_status": "confirmed",
+                            "ownership_evidence_ref": "source:ccb-header",
+                        }
+                    ],
+                    "confirmed_owned_payment_sources": [
+                        {
+                            "payment_account_type": "wechat_account",
+                            "account_ref": "payment:wechat-client",
+                            "source_file_id": "sha256:wechat",
+                            "verification_status": "confirmed",
+                            "ownership_evidence_ref": "source:wechat-header",
+                        }
+                    ],
+                },
+            )["result"]["observations"]
+            if item["observation_type"] == "wechat_payment_bank_debit_link_candidates"
+        )
+
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(observation["value"]["reason"], "confirmed_owned_wechat_sources_unavailable")
+
+    def test_marks_alipay_linking_pending_confirmation(self):
+        observation = next(
+            item for item in build_bankflow_result([transaction()])["result"]["observations"]
+            if item["observation_type"] == "alipay_payment_bank_debit_link_pending_field_confirmation"
+        )
+
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["reason"],
+            "alipay_payment_bank_debit_link_fields_pending_confirmation",
+        )
 
     def test_writes_utf8_json(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -13,7 +13,7 @@ from .models import Transaction, get_statement_metadata
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.6"
+SCHEMA_VERSION = "1.7"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -1002,6 +1002,235 @@ def _masked_case_account_observation(verification_context: dict[str, object] | N
     }
 
 
+_WECHAT_CARD_TAIL_RE = re.compile(r"(?:储蓄卡|信用卡|银行卡)\s*[（(]\s*(\d{4})\s*[）)]")
+_IDENTITY_NUMBER_RE = re.compile(r"(?:\d{15}|\d{17}[\dXx])$")
+
+
+def _wechat_card_tail(transaction: Transaction) -> str | None:
+    if transaction.field_confidence.get("transaction_method") != 1.0:
+        return None
+    match = _WECHAT_CARD_TAIL_RE.search(transaction.transaction_method)
+    return match.group(1) if match else None
+
+
+def _normalized_merchant_parts(value: str) -> set[str]:
+    parts = re.split(r"[·•|/\\\\]", value or "")
+    return {
+        re.sub(r"[\s\-_.()（）]+", "", part).casefold()
+        for part in parts
+        if len(re.sub(r"[\s\-_.()（）]+", "", part)) >= 2
+    }
+
+
+def _wechat_merchant_matches_bank_text(merchant: str, bank_text: str) -> bool:
+    bank_normalized = re.sub(r"[\s\-_.()（）]+", "", bank_text or "").casefold()
+    return any(part in bank_normalized for part in _normalized_merchant_parts(merchant))
+
+
+def _bank_transaction_text(transaction: Transaction) -> str:
+    return " ".join(
+        value
+        for value in (
+            transaction.summary,
+            transaction.remark,
+            transaction.counterparty_name,
+            transaction.raw_text,
+        )
+        if value
+    )
+
+
+def _wechat_payment_bank_debit_observation(
+    transactions: list[Transaction],
+    verification_context: dict[str, object] | None,
+) -> dict[str, object]:
+    """Link a confirmed bank debit to a WeChat expense without treating it as a transfer."""
+    confirmed_accounts = _confirmed_owned_accounts(verification_context)
+    confirmed_wechat_sources: dict[str, dict[str, str]] = {}
+    ambiguous_wechat_source_ids: set[str] = set()
+    payment_sources = verification_context.get("confirmed_owned_payment_sources", []) if verification_context else []
+    if isinstance(payment_sources, list):
+        for source in payment_sources:
+            if not isinstance(source, dict) or source.get("verification_status") != "confirmed":
+                continue
+            if source.get("payment_account_type") != "wechat_account":
+                continue
+            source_file_id = str(source.get("source_file_id", "")).strip()
+            account_ref = str(source.get("account_ref", "")).strip()
+            evidence_ref = str(source.get("ownership_evidence_ref", "")).strip()
+            owner_name = str(source.get("identity_owner_name", "")).strip()
+            identity_number = str(source.get("identity_number", "")).strip()
+            payment_account_id = str(source.get("payment_account_id", "")).strip()
+            if (
+                source_file_id
+                and account_ref
+                and evidence_ref
+                and owner_name
+                and _IDENTITY_NUMBER_RE.fullmatch(identity_number)
+                and payment_account_id
+            ):
+                current = confirmed_wechat_sources.get(source_file_id)
+                candidate = {"account_ref": account_ref, "ownership_evidence_ref": evidence_ref}
+                if current is not None and current != candidate:
+                    ambiguous_wechat_source_ids.add(source_file_id)
+                else:
+                    confirmed_wechat_sources[source_file_id] = candidate
+    for source_file_id in ambiguous_wechat_source_ids:
+        confirmed_wechat_sources.pop(source_file_id, None)
+    accounts_by_tail: dict[str, list[dict[str, object]]] = {}
+    source_accounts: dict[str, dict[str, object]] = {}
+    ambiguous_source_ids: set[str] = set()
+    for account_number, account in confirmed_accounts.items():
+        accounts_by_tail.setdefault(account_number[-4:], []).append(account)
+        for source_file_id in account["source_file_ids"]:
+            current = source_accounts.get(source_file_id)
+            if current is not None and current["account_ref"] != account["account_ref"]:
+                ambiguous_source_ids.add(source_file_id)
+            else:
+                source_accounts[source_file_id] = account
+    for source_file_id in ambiguous_source_ids:
+        source_accounts.pop(source_file_id, None)
+
+    wallet_candidates: list[tuple[Transaction, dict[str, object]]] = []
+    for transaction in sort_transactions(transactions):
+        tail = _wechat_card_tail(transaction)
+        if (
+            transaction.bank != "微信流水"
+            or getattr(transaction, "neutral", False)
+            or transaction.income != Decimal("0.00")
+            or transaction.expense == Decimal("0.00")
+            or not transaction.transaction_id
+            or not tail
+            or transaction.source_file_id not in confirmed_wechat_sources
+            or transaction.field_confidence.get("counterparty_name") != 1.0
+            or not transaction.counterparty_name.strip()
+        ):
+            continue
+        accounts = accounts_by_tail.get(tail, [])
+        if len(accounts) == 1:
+            wallet_candidates.append((transaction, accounts[0]))
+
+    edges: list[dict[str, object]] = []
+    for wallet_transaction, funding_account in wallet_candidates:
+        for bank_transaction in sort_transactions(transactions):
+            if (
+                bank_transaction.bank == "微信流水"
+                or getattr(bank_transaction, "neutral", False)
+                or bank_transaction.income != Decimal("0.00")
+                or bank_transaction.expense != wallet_transaction.expense
+                or bank_transaction.transaction_time.date() != wallet_transaction.transaction_time.date()
+                or source_accounts.get(bank_transaction.source_file_id, {}).get("account_ref")
+                != funding_account["account_ref"]
+            ):
+                continue
+            bank_text = _bank_transaction_text(bank_transaction)
+            if (
+                "财付通" not in bank_text
+                or "微信支付" not in bank_text
+                or not _wechat_merchant_matches_bank_text(wallet_transaction.counterparty_name, bank_text)
+            ):
+                continue
+            edges.append(
+                {
+                    "wallet_transaction": wallet_transaction,
+                    "bank_transaction": bank_transaction,
+                    "funding_account": funding_account,
+                }
+            )
+
+    by_wallet: dict[str, list[dict[str, object]]] = {}
+    by_bank: dict[str, list[dict[str, object]]] = {}
+    for edge in edges:
+        by_wallet.setdefault(edge["wallet_transaction"].transaction_id, []).append(edge)
+        by_bank.setdefault(edge["bank_transaction"].transaction_id, []).append(edge)
+
+    paired: list[dict[str, object]] = []
+    ambiguous: list[dict[str, object]] = []
+    paired_wallet_ids: set[str] = set()
+    for edge in edges:
+        wallet_transaction = edge["wallet_transaction"]
+        bank_transaction = edge["bank_transaction"]
+        evidence = {
+            "wallet_transaction_id": wallet_transaction.transaction_id,
+            "bank_transaction_id": bank_transaction.transaction_id,
+            "wechat_account_ref": confirmed_wechat_sources[wallet_transaction.source_file_id]["account_ref"],
+            "wechat_ownership_evidence_ref": confirmed_wechat_sources[wallet_transaction.source_file_id][
+                "ownership_evidence_ref"
+            ],
+            "funding_account_ref": edge["funding_account"]["account_ref"],
+            "calendar_date": wallet_transaction.transaction_time.date().isoformat(),
+            "amount": _decimal(wallet_transaction.expense),
+        }
+        if len(by_wallet[wallet_transaction.transaction_id]) == 1 and len(by_bank[bank_transaction.transaction_id]) == 1:
+            if wallet_transaction.transaction_id not in paired_wallet_ids:
+                paired_wallet_ids.add(wallet_transaction.transaction_id)
+                paired.append(evidence)
+        else:
+            ambiguous.append(
+                {
+                    **evidence,
+                    "candidate_bank_transaction_ids": sorted(
+                        item["bank_transaction"].transaction_id
+                        for item in by_wallet[wallet_transaction.transaction_id]
+                    ),
+                }
+            )
+
+    available = bool(confirmed_accounts) and bool(confirmed_wechat_sources) and bool(wallet_candidates)
+    value: dict[str, object] = {
+        "available": available,
+        "paired": paired,
+        "ambiguous_candidates": ambiguous,
+    }
+    if not confirmed_accounts:
+        value["reason"] = "confirmed_owned_accounts_unavailable"
+    elif not confirmed_wechat_sources:
+        value["reason"] = "confirmed_owned_wechat_sources_unavailable"
+    elif not wallet_candidates:
+        value["reason"] = "reliable_wechat_card_tail_or_merchant_unavailable"
+
+    evidence_transactions = [
+        transaction
+        for edge in edges
+        for transaction in (edge["wallet_transaction"], edge["bank_transaction"])
+    ]
+    return {
+        "observation_type": "wechat_payment_bank_debit_link_candidates",
+        "value": value,
+        "parameters": {
+            "matching_rule": "unique_card_tail_same_day_exact_amount_literal_wechat_channel_unique_merchant_component",
+            "wallet_fields": ["transaction_method", "counterparty_name"],
+            "wallet_source_rule": (
+                "confirmed_owned_payment_sources:wechat_account source_file_id exact match; "
+                "identity_owner_name + identity_number + payment_account_id all required"
+            ),
+            "bank_marker": "财付通 + 微信支付",
+            "account_rule": "wallet_card_tail_matches_exactly_one_confirmed_full_bank_account",
+            "amount_rule": "exact_same_currency_amount",
+            "date_rule": "same_calendar_date",
+            "interpretation": "仅表示微信消费与已确认银行账户扣款的可复核关联候选；不表示本人账户互转、资金来源、资金闭环或账户实际控制关系。",
+        },
+        "evidence_transaction_ids": _transaction_ids(evidence_transactions),
+        "field_coverage": _coverage(
+            ["transaction_method", "counterparty_name", "transaction_id"],
+            [transaction for transaction in transactions if transaction.bank == "微信流水"],
+            [transaction for transaction, _ in wallet_candidates],
+        ),
+    }
+
+
+def _alipay_payment_bank_debit_observation() -> dict[str, object]:
+    return {
+        "observation_type": "alipay_payment_bank_debit_link_pending_field_confirmation",
+        "value": {"available": False, "reason": "alipay_payment_bank_debit_link_fields_pending_confirmation"},
+        "parameters": {
+            "interpretation": "支付宝支付扣款银行流水关联尚待原件字段确认；当前不进行自动匹配。",
+        },
+        "evidence_transaction_ids": [],
+        "field_coverage": {"eligible_transaction_count": 0, "covered_transaction_count": 0, "transaction_coverage_rate": None},
+    }
+
+
 def _cross_account_pair_observation(
     transactions: list[Transaction],
     verification_context: dict[str, object] | None,
@@ -1247,6 +1476,11 @@ def build_bankflow_result(
                     verification_context,
                 ),
                 _masked_case_account_observation(verification_context),
+                _wechat_payment_bank_debit_observation(
+                    original_transactions,
+                    verification_context,
+                ),
+                _alipay_payment_bank_debit_observation(),
             ],
         },
         "manual_review": {"required": bool(review_items), "items": review_items},
@@ -1257,6 +1491,7 @@ def build_bankflow_result(
             "收入连续性、余额快照、金额形态和近期变化均为中性数值观察，不表示工资稳定、资金充足、流水包装或业务趋势。",
             "本人账户转账候选仅基于外部已确认账户集合与可靠完整对手账号精确匹配，不表示资金来源、资金闭环或账户实际控制关系。",
             "跨账户双边候选仅基于已确认账户来源文件、可靠完整对手账号、同日同额和相反方向匹配，不表示资金来源、资金闭环或账户实际控制关系。",
+            "微信支付扣款关联候选仅在唯一银行卡尾号、已确认银行账户、同日同额、文字渠道和唯一商户内容同时满足时输出；不表示本人账户互转。",
         ],
     }
 

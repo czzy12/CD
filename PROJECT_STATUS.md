@@ -272,3 +272,9 @@ PDF / Excel / 微信流水
 - 对延长重跑后完成的 5 份来源所在目录刷新账户发现：3 个目录各仅有一个可靠账户；2 个目录各有建行个人与建行对公两个可靠账户，但双方均缺少相互完整对手账号覆盖。新增合格 v1D 高价值候选为 0。
 - 未修改解析器、去重、统计或 v1C/v1D 边界；全量测试继续以 `chg-20260727-03` 的 99 项单元测试通过和 71 PASS / 0 FAIL / 21 SKIP 为基线。
 - 产物：`D:\Investigator PDF\outputs\verification-runs\2026-07-27\history-customers-extended-timeout-rerun\remaining-timeout-feasibility.json` 与 `post-timeout-case-refresh\post-timeout-case-refresh-summary.json`。
+
+# 2026-07-27 微信支付扣款银行流水独立关联（chg-20260727-05）
+
+- 标准 JSON 升至 schema 1.7，新增独立观察 `wechat_payment_bank_debit_link_candidates`：微信侧必须有姓名、完整身份证号、微信号三项已确认归属和来源证据；银行侧必须有可靠完整抬头账户。微信支付银行卡尾号唯一对应、同日、精确同额、银行文字同时含“财付通/微信支付”及唯一商户组成部分时，才输出可复核候选；歧义不强配。
+- 该观察不进入 v1C/v1D，也不表示本人账户互转、资金来源、资金闭环、实际控制或案件结论；输出不回显完整银行卡号、身份证号或微信号。支付宝关联固定保持“原件字段待确认、不自动匹配”。
+- 已完成编译和 29 项相关单元测试；按本轮指令未运行全量单元测试和统一回归。截图构造的同额商户样例仅验证规则，真实双源 PDF 原件验收待用户提供可定位的成对来源。

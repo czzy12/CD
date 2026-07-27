@@ -142,11 +142,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.6"` JSON 必须包含：
+当前实现的 `schema_version: "1.7"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.6",
+  "schema_version": "1.7",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -201,6 +201,15 @@ v1D 新增 `confirmed_own_account_transfer_pair_candidates`：
 - 双方交易必须各自来自对应已确认账户的来源文件、可靠完整对手账号相互精确匹配、同一自然日、金额完全相等且方向相反；不会按姓名、摘要、备注、尾号、掩码、金额容差、拆分或合并推测。
 - 输出唯一双边配对、单边候选、歧义候选和不可用原因，并保留双方交易 ID、账户引用和金额日期证据；不回显完整账号。
 - 配对结果仅为可复核候选，不表示资金来源、资金闭环、实际控制、风险或案件结论。
+
+微信支付扣款银行流水关联新增独立 `wechat_payment_bank_debit_link_candidates`，不属于 v1C 或 v1D：
+
+- 微信来源文件须在外部上下文 `confirmed_owned_payment_sources` 中以 `wechat_account` 记录确认归属，并同时具备稳定 `account_ref`、归属证据引用、姓名、完整身份证号和微信号；交易来源文件 ID 必须精确对应该记录。
+- 银行扣款来源文件必须精确映射到一个已确认完整银行账户；微信交易方式中的银行卡尾号须唯一对应该账户。
+- 仅匹配同一自然日、精确同额的支出，且银行交易文字同时含“财付通”和“微信支付”、微信交易对方的规范化商户组成部分唯一命中银行文字。多候选只输出歧义，绝不强配。
+- 输出只保留交易 ID、账户引用和证据引用，不回显完整银行卡号、身份证号或微信号；它不表示本人账户互转、资金来源、资金闭环、实际控制或案件结论。
+
+支付宝银行扣款关联当前固定输出 `alipay_payment_bank_debit_link_pending_field_confirmation`；未取得支付宝原件字段确认前，不进行自动匹配。
 
 字段变化必须更新 `schema_version`。
 

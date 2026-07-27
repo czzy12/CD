@@ -265,3 +265,10 @@ PDF / Excel / 微信流水
 - 产物：`D:\Investigator PDF\outputs\verification-runs\2026-07-27\history-customers-targeted-header-refresh\`、`history-customers-extended-timeout-rerun\`、`high-value-multi-account-layout-verification\`。
 - 验证：`python -m unittest discover -s tests` 为 99 项通过；`python tools\regression.py --all --allow-missing` 为 71 PASS / 0 FAIL / 21 SKIP（20 个既有路径缺失、佛山农村商业银行 1 项主动暂缓）。
 - 外部 Obsidian《阶段进展与续接记录》顶部快照已同步本轮结论；下一窗口仍以该快照和实际 Git 状态共同核验。
+
+# 2026-07-27 延长超时来源可行性复核与补充候选筛选（chg-20260727-04）
+
+- 3 份仍超时的微信来源均具有文字层，但页数分别为 1798、808、694；完整解析超过 120 秒，继续保持 `source_processing_timeout`。除非另行授权更大逐文件预算或外部转换路线，不再自动重跑。
+- 对延长重跑后完成的 5 份来源所在目录刷新账户发现：3 个目录各仅有一个可靠账户；2 个目录各有建行个人与建行对公两个可靠账户，但双方均缺少相互完整对手账号覆盖。新增合格 v1D 高价值候选为 0。
+- 未修改解析器、去重、统计或 v1C/v1D 边界；全量测试继续以 `chg-20260727-03` 的 99 项单元测试通过和 71 PASS / 0 FAIL / 21 SKIP 为基线。
+- 产物：`D:\Investigator PDF\outputs\verification-runs\2026-07-27\history-customers-extended-timeout-rerun\remaining-timeout-feasibility.json` 与 `post-timeout-case-refresh\post-timeout-case-refresh-summary.json`。

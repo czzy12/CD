@@ -7,7 +7,7 @@ from bankflow_v2.citic import extract_citic
 from bankflow_v2.cmb import extract_cmb
 from bankflow_v2.cmbc_corp import extract_cmbc_corp
 from bankflow_v2.huaxia import extract_huaxia
-from bankflow_v2.icbc import extract_icbc
+from bankflow_v2.icbc import _standard_channel, extract_icbc
 from bankflow_v2.pingan import extract_pingan
 from bankflow_v2.spdb import extract_spdb, extract_spdb_corp
 
@@ -40,6 +40,12 @@ class _Pdf:
 
 
 class ConfirmedBankFieldParserTests(unittest.TestCase):
+    def test_icbc_maps_only_unique_confirmed_channel_from_noisy_cell(self):
+        self.assertEqual(_standard_channel("70A快捷支付"), "快捷支付")
+        self.assertEqual(_standard_channel("批量业B务"), "批量业务")
+        self.assertEqual(_standard_channel("ATM交易"), "ATM交易")
+        self.assertEqual(_standard_channel("手机银行/柜面"), "")
+
     def test_icbc_preserves_confirmed_fields_and_maps_counterparty_account(self):
         table = [["header"] * 13, [
             "2026-01-01 10:20:30", "本方账号", "活期", "7", "人民币", "钞", "转账", "北京",
@@ -52,6 +58,8 @@ class ConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_name, "甲公司")
         self.assertEqual(tx.counterparty_account, "对方账号")
         self.assertEqual(tx.field_sources["counterparty_account"], "raw_headers[11]:对方账号")
+        self.assertEqual(tx.transaction_method, "网银")
+        self.assertEqual(tx.field_sources["transaction_method"], "raw_headers[12]:渠道")
         self.assertEqual(tx.source_sequence, "7")
         self.assertEqual(tx.source_fields, {"storage_type": "活期", "transaction_channel": "网银"})
 

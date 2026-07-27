@@ -1,0 +1,133 @@
+"""Run one guarded AI sample batch against a real, user-authorized case."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from bankflow_v2.ai_business_observation import (
+    build_ai_business_observation,
+    select_ai_input_sample,
+)
+from bankflow_v2.ai_sample_acceptance import render_ai_sample_markdown
+from bankflow_v2.auto_detect import detect_bank_type
+from bankflow_v2.case_context import (
+    SOURCE_ROLE_RISK_INVESTIGATION_REPORT,
+    SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+    build_case_context,
+)
+from bankflow_v2.deepseek_adapter import (
+    load_deepseek_runtime,
+    load_deepseek_settings,
+)
+from bankflow_v2.pipeline import extract_transactions
+
+
+def _sources(case_dir: Path) -> list[dict[str, str]]:
+    sources: list[dict[str, str]] = []
+    for text_path in sorted(case_dir.glob("*.txt")):
+        role = (
+            SOURCE_ROLE_RISK_INVESTIGATION_REPORT
+            if "调查报告" in text_path.name
+            else SOURCE_ROLE_SYSTEM_CUSTOMER_DATA
+        )
+        sources.append(
+            {
+                "source_ref": text_path.name,
+                "source_role": role,
+                "text": text_path.read_text(encoding="utf-8"),
+            }
+        )
+    return sources
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("case_dir", type=Path)
+    parser.add_argument("output_path", type=Path)
+    parser.add_argument("--sample-size", type=int, default=50)
+    parser.add_argument("--confirm-real-data", action="store_true")
+    args = parser.parse_args()
+
+    if not args.confirm_real_data:
+        print("status=not_started")
+        print("reason=confirm_real_data_required")
+        return 2
+    if not args.case_dir.is_dir():
+        print("status=not_started")
+        print("reason=case_directory_not_found")
+        return 2
+
+    settings = load_deepseek_settings()
+    ai_config, evaluator = load_deepseek_runtime()
+    if evaluator is None:
+        print("status=not_started")
+        print("reason=ai_configuration_or_authorization_incomplete")
+        return 2
+    if args.sample_size <= 0 or args.sample_size > settings.batch_size:
+        print("status=not_started")
+        print("reason=sample_size_must_fit_one_configured_batch")
+        return 2
+
+    case_context = build_case_context(args.case_dir.name, _sources(args.case_dir))
+    transactions = []
+    for pdf_path in sorted(args.case_dir.glob("*.pdf")):
+        detection = detect_bank_type(str(pdf_path))
+        if not detection.bank_id:
+            print(f"ignored_unrecognized_pdf={pdf_path.name}")
+            continue
+        print(f"parsing={pdf_path.name}")
+        transactions.extend(extract_transactions(str(pdf_path), detection.bank_id))
+
+    sampled_transactions, eligible_count = select_ai_input_sample(
+        transactions,
+        case_context,
+        allow_business_names=settings.allow_business_names,
+        sample_size=args.sample_size,
+        source_balanced=True,
+        unique_semantic_signatures=True,
+    )
+    print(f"parsed_transactions={len(transactions)}")
+    print(f"eligible_ai_candidates={eligible_count}")
+    print(f"sampled_transactions={len(sampled_transactions)}")
+    if not sampled_transactions:
+        print("status=not_started")
+        print("reason=no_eligible_ai_candidates")
+        return 2
+
+    observation = build_ai_business_observation(
+        sampled_transactions,
+        case_context,
+        ai_config,
+        evaluator,
+    )
+    args.output_path.parent.mkdir(parents=True, exist_ok=True)
+    args.output_path.write_text(
+        render_ai_sample_markdown(
+            case_name=args.case_dir.name,
+            provider=str(ai_config.get("provider", "")),
+            model=str(ai_config.get("model", "")),
+            eligible_count=eligible_count,
+            sampled_transactions=sampled_transactions,
+            observation=observation,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    if not observation["value"]["available"]:
+        print("status=failed_closed")
+        print(f"reason={observation['value']['reason']}")
+        print(f"report={args.output_path}")
+        return 1
+
+    print("status=ok")
+    print(f"accepted_ai_results={len(observation['value']['ai_candidates'])}")
+    print(f"report={args.output_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -30,6 +31,51 @@ def transaction() -> Transaction:
 
 
 class ResultExportTests(unittest.TestCase):
+    def test_loads_default_ai_runtime_when_no_adapter_is_injected(self):
+        row = transaction()
+        row.purpose = "环保设备采购"
+        row.field_confidence["purpose"] = 1.0
+        config = {
+            "enabled": True,
+            "data_authorized": True,
+            "retention_policy_confirmed": True,
+            "allow_business_names": True,
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "api_key_available": True,
+        }
+        evaluator = lambda payload: [{
+            "transaction_id": "tx:source:transaction",
+            "classification": "possibly_related",
+            "reason": "用途字段需人工复核",
+            "used_fields": ["purpose"],
+        }]
+
+        with patch(
+            "bankflow_v2.result_export.load_deepseek_runtime",
+            return_value=(config, evaluator),
+        ) as loader:
+            result = build_bankflow_result(
+                [row],
+                case_context={
+                    "search_context": {
+                        "declared_industries": ["环保工程"],
+                    }
+                },
+            )
+
+        loader.assert_called_once_with()
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item["observation_type"] == "ai_business_relevance_candidates"
+        )
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["ai_candidates"][0]["transaction_id"],
+            "tx:source:transaction",
+        )
+
     def test_exports_only_original_transactions_with_evidence(self):
         row = transaction()
         transactions = TransactionList([row], metadata=StatementMetadata(account_name="张三", account_number="6222"))
@@ -37,7 +83,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.7")
+        self.assertEqual(result["schema_version"], "1.12")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -390,6 +436,52 @@ class ResultExportTests(unittest.TestCase):
         )
         self.assertEqual(amount_shape["field_coverage"]["eligible_transaction_count"], 1)
         self.assertEqual(amount_shape["evidence_transaction_ids"], ["tx:counted"])
+
+    def test_includes_deterministic_text_observations_from_case_context(self):
+        purchase = transaction()
+        purchase.transaction_id = "tx:purchase"
+        purchase.income = Decimal("0.00")
+        purchase.expense = Decimal("10000.00")
+        purchase.counterparty_name = "重庆问界汽车销售有限公司"
+        purchase.field_confidence["counterparty_name"] = 1.0
+
+        result = build_bankflow_result(
+            [purchase],
+            case_context={
+                "search_context": {
+                    "vehicle_models": ["问界M9"],
+                    "work_units": [],
+                    "declared_industries": [],
+                    "work_locations": [],
+                    "residence_locations": [],
+                    "vehicle_registration_locations": [],
+                    "dealer_names": [],
+                }
+            },
+        )
+        observations = {
+            item["observation_type"]: item
+            for item in result["result"]["observations"]
+        }
+
+        self.assertEqual(result["schema_version"], "1.12")
+        self.assertIn("controlled_keyword_candidates", observations)
+        self.assertIn("industry_text_search_coverage", observations)
+        self.assertIn("purchase_prepayment_funding_candidates", observations)
+        self.assertIn("ai_business_relevance_candidates", observations)
+        self.assertIn("large_transaction_candidates", observations)
+        self.assertIn("large_inflow_balance_paths", observations)
+        self.assertIn("end_of_day_balance_and_interest", observations)
+        self.assertIn("top_counterparties", observations)
+        self.assertIn("cross_source_counterparty_occurrences", observations)
+        self.assertIn("explicit_purpose_candidates", observations)
+        self.assertIn("declaration_flow_cross_checks", observations)
+        self.assertEqual(
+            observations["controlled_keyword_candidates"]["value"]["hits"][0][
+                "transaction_id"
+            ],
+            "tx:purchase",
+        )
 
     def test_time_proximity_windows_are_inclusive_and_link_evidence(self):
         first = transaction()

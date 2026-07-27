@@ -5,15 +5,21 @@ from __future__ import annotations
 import json
 import re
 from bisect import bisect_left, bisect_right
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
+from .ai_business_observation import build_ai_business_observation
+from .deepseek_adapter import load_deepseek_runtime
 from .models import Transaction, get_statement_metadata
+from .mvp_fund_observations import build_fund_observations
+from .mvp_observations import build_deterministic_text_observations
+from .mvp_report import build_declaration_flow_cross_check
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.7"
+SCHEMA_VERSION = "1.12"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -1474,12 +1480,51 @@ def build_bankflow_result(
     transactions: list[Transaction],
     metadata: object | None = None,
     verification_context: dict[str, object] | None = None,
+    case_context: dict[str, object] | None = None,
+    ai_config: dict[str, object] | None = None,
+    ai_evaluator: Callable[[dict[str, object]], object] | None = None,
 ) -> dict[str, object]:
     """Build a verification result without applying adjustment or analysis logic."""
+    if ai_config is None and ai_evaluator is None:
+        ai_config, ai_evaluator = load_deepseek_runtime()
     original_transactions = list(transactions)
     statement_metadata = metadata or get_statement_metadata(transactions)
     summary = summarize(original_transactions)
     review_items = _review_items(original_transactions, summary)
+    observations = [
+        _own_account_transfer_observation(
+            original_transactions,
+            verification_context,
+        ),
+        _cross_account_pair_observation(
+            original_transactions,
+            verification_context,
+        ),
+        _masked_case_account_observation(verification_context),
+        _wechat_payment_bank_debit_observation(
+            original_transactions,
+            verification_context,
+        ),
+        _alipay_payment_bank_debit_observation(),
+        *build_deterministic_text_observations(
+            original_transactions,
+            case_context,
+        ),
+        build_ai_business_observation(
+            original_transactions,
+            case_context,
+            ai_config,
+            ai_evaluator,
+        ),
+        *build_fund_observations(original_transactions),
+    ]
+    observations.append(
+        build_declaration_flow_cross_check(
+            original_transactions,
+            case_context,
+            observations,
+        )
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1501,22 +1546,7 @@ def build_bankflow_result(
             "original_transactions": [_transaction_record(transaction) for transaction in original_transactions],
             "facts": _facts(original_transactions, summary),
             "indicators": _indicators(original_transactions),
-            "observations": [
-                _own_account_transfer_observation(
-                    original_transactions,
-                    verification_context,
-                ),
-                _cross_account_pair_observation(
-                    original_transactions,
-                    verification_context,
-                ),
-                _masked_case_account_observation(verification_context),
-                _wechat_payment_bank_debit_observation(
-                    original_transactions,
-                    verification_context,
-                ),
-                _alipay_payment_bank_debit_observation(),
-            ],
+            "observations": observations,
         },
         "manual_review": {"required": bool(review_items), "items": review_items},
         "warnings": [],
@@ -1524,6 +1554,11 @@ def build_bankflow_result(
             "仅包含原始标准交易、确定性事实、确定性指标和待人工核实事项；未应用流水调整或风险定性。",
             "资金时间邻近指标仅表示先收入后支出的时间共现，不表示支出资金来源于某笔收入。",
             "收入连续性、余额快照、金额形态和近期变化均为中性数值观察，不表示工资稳定、资金充足、流水包装或业务趋势。",
+            "受控关键词和下定前资金观察均只输出可复核候选；关键词命中不等于异常，时间金额并列不表示资金来源。",
+            "行业搜索覆盖率只表示可靠且有信息量的文字字段覆盖，不是行业相关交易占比或解析准确率。",
+            "AI经营关联默认不调用外部模型；数据授权、留存策略或模型配置缺失时明确降级，且不影响确定性关键词和证据输出。",
+            "大额、拆分转出、余额留存、结息和跨来源同名出现均为确定性观察；只报告时间金额与字段共现，不作资金来源、关系或闭环推断。",
+            "申报与流水对照区分直接命中、候选命中、可靠字段内未发现和不可用；未发现或不可用不等于客户陈述虚假。",
             "本人账户转账候选仅基于外部已确认账户集合与可靠完整对手账号精确匹配，不表示资金来源、资金闭环或账户实际控制关系。",
             "跨账户双边候选仅基于已确认账户来源文件、可靠完整对手账号、同日同额和相反方向匹配，不表示资金来源、资金闭环或账户实际控制关系。",
             "微信支付扣款关联候选仅在唯一银行卡尾号、已确认银行账户、同日同额、文字渠道和唯一商户内容同时满足时输出；不表示本人账户互转。",

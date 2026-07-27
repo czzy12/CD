@@ -15,15 +15,67 @@ BALANCE_COL = 9
 RAW_HEADERS = ["交易日期", "账号", "储种", "序号", "币种", "钞汇", "摘要", "地区", "收入/支出金额", "余额", "对方户名", "对方账号", "渠道"]
 HEADER_NAME_RE = re.compile(r"(?<![\u4e00-\u9fff])户名\s*[:：]?\s*(?P<value>\S+)")
 HEADER_ACCOUNT_RE = re.compile(r"(?<![\u4e00-\u9fff])卡号\s*[:：]?\s*(?P<value>[0-9][0-9\s-]*)")
+HEADER_PERIOD_RE = re.compile(
+    r"起止[^\d]{0,4}日期\s*[:：]?\s*"
+    r"(?P<start>20\d{2}[-/]\d{1,2}[-/]\d{1,2})\s*"
+    r"[—–~-]\s*"
+    r"(?P<end>20\d{2}[-/]\d{1,2}[-/]\d{1,2})"
+)
+CONFIRMED_TRANSACTION_CHANNELS = (
+    "手机银行",
+    "网上银行",
+    "快捷支付",
+    "批量业务",
+    "ATM交易",
+    "柜面",
+    "其他",
+    "网银",
+)
 
 
 def _clean_cell(value) -> str:
     return str(value or "").replace("\n", "").strip()
 
 
+def _standard_channel(value: object) -> str:
+    """Map a noisy ICBC channel cell only when one confirmed value is unique."""
+    text = _clean_cell(value)
+    compact = re.sub(r"[^A-Za-z\u4e00-\u9fff]", "", text)
+    chinese_only = re.sub(r"[^\u4e00-\u9fff]", "", compact)
+    matches = {
+        channel
+        for channel in CONFIRMED_TRANSACTION_CHANNELS
+        if (
+            channel == "ATM交易"
+            and "ATM交易" in compact.upper()
+        ) or (
+            channel != "ATM交易"
+            and channel in chinese_only
+        )
+    }
+    return next(iter(matches)) if len(matches) == 1 else ""
+
+
 def _statement_metadata(first_page_text: str) -> StatementMetadata:
     """Extract the confirmed personal-statement header without using transaction text."""
     metadata = StatementMetadata()
+    period_matches = list(HEADER_PERIOD_RE.finditer(first_page_text or ""))
+    if len(period_matches) == 1:
+        period_match = period_matches[0]
+        start_raw = period_match.group("start")
+        end_raw = period_match.group("end")
+        metadata.statement_period_start = datetime.strptime(start_raw.replace("/", "-"), "%Y-%m-%d").date()
+        metadata.statement_period_end = datetime.strptime(end_raw.replace("/", "-"), "%Y-%m-%d").date()
+        metadata.raw_fields["起止日期"] = f"{start_raw} — {end_raw}"
+        metadata.field_sources.update({
+            "statement_period_start": "page=1:document_header:起止日期",
+            "statement_period_end": "page=1:document_header:起止日期",
+        })
+        metadata.field_confidence.update({
+            "statement_period_start": 1.0,
+            "statement_period_end": 1.0,
+        })
+
     name_matches = HEADER_NAME_RE.findall(first_page_text or "")
     account_matches = HEADER_ACCOUNT_RE.findall(first_page_text or "")
     if len(name_matches) != 1 or len(account_matches) != 1:
@@ -36,12 +88,12 @@ def _statement_metadata(first_page_text: str) -> StatementMetadata:
 
     metadata.account_name = name_matches[0].strip()
     metadata.account_number = account_number
-    metadata.raw_fields = {"户名": metadata.account_name, "卡号": account_raw}
-    metadata.field_sources = {
+    metadata.raw_fields.update({"户名": metadata.account_name, "卡号": account_raw})
+    metadata.field_sources.update({
         "account_name": "page=1:document_header:户名",
         "account_number": "page=1:document_header:卡号",
-    }
-    metadata.field_confidence = {"account_name": 1.0, "account_number": 1.0}
+    })
+    metadata.field_confidence.update({"account_name": 1.0, "account_number": 1.0})
     return metadata
 
 
@@ -132,6 +184,16 @@ def extract_icbc(pdf_path: str) -> TransactionList:
             for field_name, index in (("storage_type", 2), ("transaction_channel", 12))
             if index < len(raw_fields) and raw_fields[index]
         }
+        field_sources = {
+            field_name: f"raw_headers[{index}]:{RAW_HEADERS[index]}"
+            for field_name, index in (("storage_type", 2), ("transaction_channel", 12))
+            if field_name in source_fields
+        }
+        field_confidence = {field_name: 1.0 for field_name in source_fields}
+        transaction_method = _standard_channel(source_fields.get("transaction_channel", ""))
+        if transaction_method:
+            field_sources["transaction_method"] = "raw_headers[12]:渠道"
+            field_confidence["transaction_method"] = 1.0
         tx = Transaction(
             transaction_time=tx_time,
             income=income,
@@ -148,13 +210,10 @@ def extract_icbc(pdf_path: str) -> TransactionList:
             raw_headers=RAW_HEADERS,
             status=status,
             issues=issues,
+            transaction_method=transaction_method,
             source_fields=source_fields,
-            field_sources={
-                field_name: f"raw_headers[{index}]:{RAW_HEADERS[index]}"
-                for field_name, index in (("storage_type", 2), ("transaction_channel", 12))
-                if field_name in source_fields
-            },
-            field_confidence={field_name: 1.0 for field_name in source_fields},
+            field_sources=field_sources,
+            field_confidence=field_confidence,
         )
         transactions.append(tx)
 

@@ -32,13 +32,20 @@ class WechatAlipayTextFieldTests(unittest.TestCase):
     def test_wechat_identity_metadata_requires_explicit_complete_triplet(self):
         metadata = _wechat_identity_metadata(
             "兹证明：张三（居民身份证：110101199001011234），在其微信号：zhangsan_01中的交易明细信息如下："
+            "交易明细对应时间段 2025-01-16 00:00:00 至 2026-01-16 10:13:44"
         )
 
         self.assertEqual(metadata.account_name, "张三")
         self.assertEqual(metadata.account_number, "")
+        self.assertEqual(str(metadata.statement_period_start), "2025-01-16")
+        self.assertEqual(str(metadata.statement_period_end), "2026-01-16")
         self.assertEqual(metadata.raw_fields["payment_account_type"], "wechat_account")
         self.assertEqual(metadata.raw_fields["identity_number"], "110101199001011234")
         self.assertEqual(metadata.field_sources["payment_account_id"], "page=1:wechat_proof_header")
+        self.assertEqual(
+            metadata.field_sources["statement_period_end"],
+            "page=1:wechat_proof_header:交易明细对应时间段",
+        )
         self.assertEqual(metadata.field_confidence["identity_owner_name"], 1.0)
 
     def test_wechat_identity_metadata_rejects_masked_or_ambiguous_triplet(self):

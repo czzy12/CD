@@ -15,6 +15,13 @@ TIME_RE = re.compile(r"20\d{2}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2
 WECHAT_OWNER_RE = re.compile(r"兹证明\s*[：:]\s*([^\s（(，,：:]{1,50})\s*[（(]")
 WECHAT_IDENTITY_NUMBER_RE = re.compile(r"(?:居民身份证|身份证(?:号码|号)?)\s*[：:]\s*(\d{17}[\dXx]|\d{15})")
 WECHAT_ACCOUNT_ID_RE = re.compile(r"微信号\s*[：:]\s*([A-Za-z][A-Za-z0-9_.@-]{4,63})")
+WECHAT_PERIOD_RE = re.compile(
+    r"交易明细对应时间段\s*"
+    r"(?P<start>20\d{2}[-/]\d{1,2}[-/]\d{1,2})"
+    r"(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?\s*至\s*"
+    r"(?P<end>20\d{2}[-/]\d{1,2}[-/]\d{1,2})"
+    r"(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?"
+)
 AMOUNT_RE = re.compile(r"[￥¥]?\s*[+-]?\d[\d,]*\.\d{2}")
 
 
@@ -77,37 +84,55 @@ def _unique_matches(pattern: re.Pattern[str], text: str) -> set[str]:
 
 def _wechat_identity_metadata(first_page_text: str) -> StatementMetadata:
     """Extract only explicit first-page WeChat proof identity labels."""
+    metadata = StatementMetadata()
+    period_matches = list(WECHAT_PERIOD_RE.finditer(first_page_text or ""))
+    if len(period_matches) == 1:
+        period_match = period_matches[0]
+        start_raw = period_match.group("start")
+        end_raw = period_match.group("end")
+        metadata.statement_period_start = datetime.strptime(start_raw.replace("/", "-"), "%Y-%m-%d").date()
+        metadata.statement_period_end = datetime.strptime(end_raw.replace("/", "-"), "%Y-%m-%d").date()
+        metadata.raw_fields["交易明细对应时间段"] = period_match.group(0)
+        source = "page=1:wechat_proof_header:交易明细对应时间段"
+        metadata.field_sources.update({
+            "statement_period_start": source,
+            "statement_period_end": source,
+        })
+        metadata.field_confidence.update({
+            "statement_period_start": 1.0,
+            "statement_period_end": 1.0,
+        })
+
     owners = _unique_matches(WECHAT_OWNER_RE, first_page_text)
     identity_numbers = _unique_matches(WECHAT_IDENTITY_NUMBER_RE, first_page_text)
     payment_account_ids = _unique_matches(WECHAT_ACCOUNT_ID_RE, first_page_text)
     if not (len(owners) == len(identity_numbers) == len(payment_account_ids) == 1):
-        return StatementMetadata()
+        return metadata
 
     owner = next(iter(owners))
     identity_number = next(iter(identity_numbers)).upper()
     payment_account_id = next(iter(payment_account_ids))
     source = "page=1:wechat_proof_header"
-    return StatementMetadata(
-        account_name=owner,
-        raw_fields={
+    metadata.account_name = owner
+    metadata.raw_fields.update({
             "payment_account_type": "wechat_account",
             "identity_owner_name": owner,
             "identity_number": identity_number,
             "payment_account_id": payment_account_id,
-        },
-        field_sources={
+        })
+    metadata.field_sources.update({
             "account_name": source,
             "identity_owner_name": source,
             "identity_number": source,
             "payment_account_id": source,
-        },
-        field_confidence={
+        })
+    metadata.field_confidence.update({
             "account_name": 1.0,
             "identity_owner_name": 1.0,
             "identity_number": 1.0,
             "payment_account_id": 1.0,
-        },
-    )
+        })
+    return metadata
 
 
 def extract_wechat_identity_metadata(pdf_path: str) -> StatementMetadata:

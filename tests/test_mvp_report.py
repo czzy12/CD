@@ -1,0 +1,89 @@
+import unittest
+from datetime import datetime
+from decimal import Decimal
+
+from bankflow_v2.case_context import (
+    SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+    build_case_context,
+)
+from bankflow_v2.models import Transaction
+from bankflow_v2.mvp_report import (
+    build_declaration_flow_cross_check,
+    render_mvp_markdown,
+)
+from bankflow_v2.result_export import build_bankflow_result
+
+
+def transaction(
+    transaction_id: str,
+    *,
+    counterparty_name: str,
+    expense: str = "10",
+) -> Transaction:
+    row = Transaction(
+        datetime(2026, 1, 9, 10),
+        expense=Decimal(expense),
+        transaction_id=transaction_id,
+        source_file_id="source:wechat",
+        source_file="wechat.pdf",
+        evidence_locator="page=3;row=2",
+        counterparty_name=counterparty_name,
+    )
+    row.field_confidence["counterparty_name"] = 1.0
+    return row
+
+
+def context() -> dict[str, object]:
+    return build_case_context(
+        "测试客户",
+        [{
+            "source_ref": "客户资料.txt",
+            "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+            "text": (
+                "客户姓名：测试客户\n"
+                "工作单位全称：甲装修工程有限公司\n"
+                "家庭住址：河南省郑州市二七区\n"
+                "购买车型：问界M9\n"
+                "下定人及试驾情况：本人微信下定\n"
+            ),
+        }],
+    )
+
+
+class MvpReportTests(unittest.TestCase):
+    def test_cross_check_distinguishes_direct_candidate_and_no_evidence(self):
+        rows = [
+            transaction("tx:unit", counterparty_name="甲装修工程有限公司"),
+            transaction("tx:purchase", counterparty_name="重庆问界汽车销售有限公司", expense="10000"),
+        ]
+        case = context()
+        result = build_bankflow_result(rows, case_context=case)
+        cross_check = build_declaration_flow_cross_check(
+            rows,
+            case,
+            result["result"]["observations"],
+        )
+        items = {item["check_type"]: item for item in cross_check["value"]["items"]}
+
+        self.assertEqual(items["work_unit"]["status"], "direct_match")
+        self.assertEqual(items["purchase"]["status"], "candidate_match")
+        self.assertEqual(items["residence_location"]["status"], "no_evidence_in_reliable_fields")
+        self.assertIn("tx:unit", items["work_unit"]["evidence_transaction_ids"])
+
+    def test_markdown_contains_boundaries_and_evidence(self):
+        rows = [
+            transaction("tx:unit", counterparty_name="甲装修工程有限公司"),
+            transaction("tx:purchase", counterparty_name="重庆问界汽车销售有限公司", expense="10000"),
+        ]
+        case = context()
+        result = build_bankflow_result(rows, case_context=case)
+        markdown = render_mvp_markdown(result, case)
+
+        self.assertIn("# 流水核查 MVP 验收报告：测试客户", markdown)
+        self.assertIn("申报与流水对照", markdown)
+        self.assertIn("tx:purchase", markdown)
+        self.assertIn("不输出欺诈、包装、资金来源、实际控制、通过或拒绝结论", markdown)
+
+
+if __name__ == "__main__":
+    unittest.main()

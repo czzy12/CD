@@ -43,12 +43,21 @@ class StatementMetadataHeaderTests(unittest.TestCase):
         self.assertEqual(metadata.field_confidence["account_number"], 1.0)
 
     def test_icbc_maps_one_labeled_name_and_full_card(self):
-        metadata = icbc_metadata("卡号 6222 0000-0000 1234 567 户名：姚志国 起止日期：2025-03-16")
+        metadata = icbc_metadata(
+            "卡号 6222 0000-0000 1234 567 户名：姚志国 "
+            "起止D日期：2025-03-16 — 2026-01-16"
+        )
 
         self.assertEqual(metadata.account_name, "姚志国")
         self.assertEqual(metadata.account_number, "6222000000001234567")
+        self.assertEqual(str(metadata.statement_period_start), "2025-03-16")
+        self.assertEqual(str(metadata.statement_period_end), "2026-01-16")
         self.assertEqual(metadata.raw_fields["卡号"], "6222 0000-0000 1234 567")
         self.assertEqual(metadata.field_sources["account_number"], "page=1:document_header:卡号")
+        self.assertEqual(
+            metadata.field_sources["statement_period_start"],
+            "page=1:document_header:起止日期",
+        )
         self.assertEqual(metadata.field_confidence["account_name"], 1.0)
         self.assertEqual(metadata.field_confidence["account_number"], 1.0)
 

@@ -886,6 +886,41 @@ def _confirmed_owned_accounts(
     return confirmed
 
 
+def _wechat_funding_accounts(
+    verification_context: dict[str, object] | None,
+) -> dict[str, dict[str, object]]:
+    """Include reliable bank headers for WeChat debits without widening v1C/v1D."""
+    accounts = _confirmed_owned_accounts(verification_context)
+    if not verification_context:
+        return accounts
+    reliable_headers = verification_context.get("reliable_header_bank_accounts", [])
+    if not isinstance(reliable_headers, list):
+        return accounts
+    for account in reliable_headers:
+        if not isinstance(account, dict):
+            continue
+        account_ref = str(account.get("account_ref", "")).strip()
+        evidence_ref = str(account.get("ownership_evidence_ref", "")).strip()
+        account_number = _normalize_full_account(account.get("account_number"))
+        if not account_ref or not evidence_ref or account_number is None:
+            continue
+        accounts.setdefault(
+            account_number,
+            {
+                "account_ref": account_ref,
+                "ownership_evidence_ref": evidence_ref,
+                "source_file_ids": [
+                    str(source_file_id).strip()
+                    for source_file_id in account.get("source_file_ids", [])
+                    if str(source_file_id).strip()
+                ]
+                if isinstance(account.get("source_file_ids", []), list)
+                else [],
+            },
+        )
+    return accounts
+
+
 def _own_account_transfer_observation(
     transactions: list[Transaction],
     verification_context: dict[str, object] | None,
@@ -1002,7 +1037,7 @@ def _masked_case_account_observation(verification_context: dict[str, object] | N
     }
 
 
-_WECHAT_CARD_TAIL_RE = re.compile(r"(?:储蓄卡|信用卡|银行卡)\s*[（(]\s*(\d{4})\s*[）)]")
+_WECHAT_CARD_TAIL_RE = re.compile(r"(?:储\s*蓄\s*卡|信\s*用\s*卡|银\s*行\s*卡)\s*[（(]\s*(\d{4})\s*[）)]")
 _IDENTITY_NUMBER_RE = re.compile(r"(?:\d{15}|\d{17}[\dXx])$")
 
 
@@ -1045,7 +1080,7 @@ def _wechat_payment_bank_debit_observation(
     verification_context: dict[str, object] | None,
 ) -> dict[str, object]:
     """Link a confirmed bank debit to a WeChat expense without treating it as a transfer."""
-    confirmed_accounts = _confirmed_owned_accounts(verification_context)
+    confirmed_accounts = _wechat_funding_accounts(verification_context)
     confirmed_wechat_sources: dict[str, dict[str, str]] = {}
     ambiguous_wechat_source_ids: set[str] = set()
     payment_sources = verification_context.get("confirmed_owned_payment_sources", []) if verification_context else []
@@ -1183,7 +1218,7 @@ def _wechat_payment_bank_debit_observation(
         "ambiguous_candidates": ambiguous,
     }
     if not confirmed_accounts:
-        value["reason"] = "confirmed_owned_accounts_unavailable"
+        value["reason"] = "reliable_header_funding_accounts_unavailable"
     elif not confirmed_wechat_sources:
         value["reason"] = "confirmed_owned_wechat_sources_unavailable"
     elif not wallet_candidates:
@@ -1205,8 +1240,8 @@ def _wechat_payment_bank_debit_observation(
                 "identity_owner_name + identity_number + payment_account_id all required"
             ),
             "bank_marker": "财付通 + 微信支付",
-            "account_rule": "wallet_card_tail_matches_exactly_one_confirmed_full_bank_account",
-            "amount_rule": "exact_same_currency_amount",
+            "account_rule": "wallet_card_tail_matches_exactly_one_reliable_full_bank_header_account",
+            "amount_rule": "exact_amount",
             "date_rule": "same_calendar_date",
             "interpretation": "仅表示微信消费与已确认银行账户扣款的可复核关联候选；不表示本人账户互转、资金来源、资金闭环或账户实际控制关系。",
         },

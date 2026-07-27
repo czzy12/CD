@@ -640,7 +640,7 @@ class ResultExportTests(unittest.TestCase):
         wallet.source_file_id = "sha256:wechat"
         wallet.income = Decimal("0.00")
         wallet.expense = Decimal("395.98")
-        wallet.transaction_method = "建设银行储蓄卡(2404)"
+        wallet.transaction_method = "建设银行储 蓄卡 (2404)"
         wallet.counterparty_name = "小白房子·White House"
         wallet.field_confidence.update({"transaction_method": 1.0, "counterparty_name": 1.0})
 
@@ -655,7 +655,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(
             [wallet, bank],
             verification_context={
-                "confirmed_owned_accounts": [
+                "reliable_header_bank_accounts": [
                     {
                         "account_ref": "account:ccb-2404",
                         "account_number": "6217000480002792404",

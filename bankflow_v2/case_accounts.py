@@ -15,9 +15,10 @@ from .auto_detect import detect_bank_type
 from .evidence import source_file_id
 from .models import get_statement_metadata
 from .pipeline import extract_transactions
+from .wechat import extract_wechat_identity_metadata
 
 
-MANIFEST_SCHEMA_VERSION = "1.1"
+MANIFEST_SCHEMA_VERSION = "1.2"
 CONFIRMABLE_ROLES = {
     "primary_borrower",
     "co_borrower",
@@ -41,6 +42,35 @@ def _normalize_masked_account(value: object) -> str | None:
 def _stable_ref(prefix: str, *parts: str) -> str:
     payload = "\x1f".join(parts).encode("utf-8")
     return f"{prefix}:{hashlib.sha256(payload).hexdigest()[:16]}"
+
+
+def _wechat_payment_source_record(
+    metadata,
+    source_file_id_value: str,
+) -> dict[str, str] | None:
+    raw_fields = metadata.raw_fields
+    owner = str(raw_fields.get("identity_owner_name", "")).strip()
+    identity_number = str(raw_fields.get("identity_number", "")).strip().upper()
+    payment_account_id = str(raw_fields.get("payment_account_id", "")).strip()
+    if not (
+        metadata.field_confidence.get("identity_owner_name") == 1.0
+        and metadata.field_confidence.get("identity_number") == 1.0
+        and metadata.field_confidence.get("payment_account_id") == 1.0
+        and owner
+        and re.fullmatch(r"(?:\d{15}|\d{17}[\dX])", identity_number)
+        and payment_account_id
+    ):
+        return None
+    return {
+        "payment_account_type": "wechat_account",
+        "account_ref": _stable_ref("payment-account", "wechat", identity_number, payment_account_id),
+        "identity_owner_name": owner,
+        "identity_number": identity_number,
+        "payment_account_id": payment_account_id,
+        "source_file_id": source_file_id_value,
+        "verification_status": "confirmed",
+        "ownership_evidence_ref": f"{source_file_id_value}#wechat_proof_header.identity_triplet",
+    }
 
 
 def _scan_case_file(path_text: str) -> dict[str, object]:
@@ -284,6 +314,7 @@ def discover_case_accounts(case_folder: str | Path) -> dict[str, object]:
         raise ValueError(f"案件文件夹不存在: {root}")
 
     accounts_by_ref: dict[str, dict[str, object]] = {}
+    payment_sources: list[dict[str, str]] = []
     files: list[dict[str, object]] = []
     pdf_paths = [
         path
@@ -303,6 +334,27 @@ def discover_case_accounts(case_folder: str | Path) -> dict[str, object]:
         }
         if not detection.bank_id or detection.bank_id == "generic_pdf":
             file_record["account_discovery_status"] = "unsupported_or_unconfirmed"
+            files.append(file_record)
+            continue
+
+        if detection.bank_id == "wechat":
+            try:
+                payment_source = _wechat_payment_source_record(
+                    extract_wechat_identity_metadata(str(path)),
+                    file_id,
+                )
+            except Exception as exc:
+                file_record["account_discovery_status"] = "payment_identity_unavailable"
+                file_record["reason"] = str(exc)
+                files.append(file_record)
+                continue
+            if payment_source is None:
+                file_record["account_discovery_status"] = "payment_identity_unavailable"
+                file_record["reason"] = "reliable_wechat_identity_triplet_unavailable"
+            else:
+                file_record["account_discovery_status"] = "payment_identity_confirmed"
+                file_record["payment_account_ref"] = payment_source["account_ref"]
+                payment_sources.append(payment_source)
             files.append(file_record)
             continue
 
@@ -361,6 +413,7 @@ def discover_case_accounts(case_folder: str | Path) -> dict[str, object]:
         "role_confirmation_status": "required",
         "subjects": [],
         "accounts": list(accounts_by_ref.values()),
+        "payment_sources": payment_sources,
         "files": files,
     }
 
@@ -425,14 +478,49 @@ def confirm_case_roles(
 
 
 def verification_context_from_manifest(manifest: dict[str, object]) -> dict[str, object]:
-    """Build the v1C context from confirmed manifest accounts."""
+    """Build confirmed bank-account and WeChat-payment-source context."""
     confirmed_accounts: list[dict[str, str]] = []
+    reliable_header_bank_accounts: list[dict[str, str]] = []
+    confirmed_payment_sources: list[dict[str, str]] = []
+    payment_sources = manifest.get("payment_sources", [])
+    if isinstance(payment_sources, list):
+        for source in payment_sources:
+            if not isinstance(source, dict) or source.get("verification_status") != "confirmed":
+                continue
+            required = (
+                "payment_account_type",
+                "account_ref",
+                "identity_owner_name",
+                "identity_number",
+                "payment_account_id",
+                "source_file_id",
+                "ownership_evidence_ref",
+            )
+            if source.get("payment_account_type") != "wechat_account" or any(
+                not str(source.get(field, "")).strip() for field in required
+            ):
+                continue
+            identity_number = str(source["identity_number"]).strip().upper()
+            if not re.fullmatch(r"(?:\d{15}|\d{17}[\dX])", identity_number):
+                continue
+            confirmed_payment_sources.append(
+                {
+                    field: identity_number if field == "identity_number" else str(source[field]).strip()
+                    for field in required
+                }
+                | {"verification_status": "confirmed"}
+            )
     accounts = manifest.get("accounts", [])
     if not isinstance(accounts, list):
-        return {"confirmed_owned_accounts": confirmed_accounts, "masked_case_accounts": manifest.get("masked_accounts", [])}
+        return {
+            "confirmed_owned_accounts": confirmed_accounts,
+            "reliable_header_bank_accounts": reliable_header_bank_accounts,
+            "confirmed_owned_payment_sources": confirmed_payment_sources,
+            "masked_case_accounts": manifest.get("masked_accounts", []),
+        }
 
     for account in accounts:
-        if not isinstance(account, dict) or account.get("verification_status") != "confirmed":
+        if not isinstance(account, dict):
             continue
         evidence_refs = account.get("ownership_evidence_refs", [])
         evidence_ref = (
@@ -447,20 +535,25 @@ def verification_context_from_manifest(manifest: dict[str, object]) -> dict[str,
         source_file_ids = account.get("source_file_ids", [])
         if not isinstance(source_file_ids, list):
             source_file_ids = []
-        confirmed_accounts.append(
-            {
-                "account_ref": account_ref,
-                "account_number": normalized_account,
-                "verification_status": "confirmed",
-                "ownership_evidence_ref": evidence_ref,
-                "source_file_ids": [
-                    str(source_file_id).strip()
-                    for source_file_id in source_file_ids
-                    if str(source_file_id).strip()
-                ],
-            }
-        )
-    return {"confirmed_owned_accounts": confirmed_accounts, "masked_case_accounts": manifest.get("masked_accounts", [])}
+        account_record = {
+            "account_ref": account_ref,
+            "account_number": normalized_account,
+            "ownership_evidence_ref": evidence_ref,
+            "source_file_ids": [
+                str(source_file_id).strip()
+                for source_file_id in source_file_ids
+                if str(source_file_id).strip()
+            ],
+        }
+        reliable_header_bank_accounts.append(account_record)
+        if account.get("verification_status") == "confirmed":
+            confirmed_accounts.append({**account_record, "verification_status": "confirmed"})
+    return {
+        "confirmed_owned_accounts": confirmed_accounts,
+        "reliable_header_bank_accounts": reliable_header_bank_accounts,
+        "confirmed_owned_payment_sources": confirmed_payment_sources,
+        "masked_case_accounts": manifest.get("masked_accounts", []),
+    }
 
 
 def write_case_manifest(manifest: dict[str, object], path: str | Path) -> Path:

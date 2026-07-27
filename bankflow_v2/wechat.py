@@ -5,13 +5,16 @@ from typing import Any
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import money_to_decimal
 
 
 BANK_NAME = "微信流水"
 RAW_HEADERS = ["交易单号", "交易时间", "交易类型", "收/支/其他", "交易方式", "金额(元)", "交易对方", "商户单号"]
 TIME_RE = re.compile(r"20\d{2}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?")
+WECHAT_OWNER_RE = re.compile(r"兹证明\s*[：:]\s*([^\s（(，,：:]{1,50})\s*[（(]")
+WECHAT_IDENTITY_NUMBER_RE = re.compile(r"(?:居民身份证|身份证(?:号码|号)?)\s*[：:]\s*(\d{17}[\dXx]|\d{15})")
+WECHAT_ACCOUNT_ID_RE = re.compile(r"微信号\s*[：:]\s*([A-Za-z][A-Za-z0-9_.@-]{4,63})")
 AMOUNT_RE = re.compile(r"[￥¥]?\s*[+-]?\d[\d,]*\.\d{2}")
 
 
@@ -66,6 +69,53 @@ def _find_col(headers: list[str], names: tuple[str, ...]) -> int | None:
             if name in header:
                 return index
     return None
+
+
+def _unique_matches(pattern: re.Pattern[str], text: str) -> set[str]:
+    return {value.strip() for value in pattern.findall(text or "") if value.strip()}
+
+
+def _wechat_identity_metadata(first_page_text: str) -> StatementMetadata:
+    """Extract only explicit first-page WeChat proof identity labels."""
+    owners = _unique_matches(WECHAT_OWNER_RE, first_page_text)
+    identity_numbers = _unique_matches(WECHAT_IDENTITY_NUMBER_RE, first_page_text)
+    payment_account_ids = _unique_matches(WECHAT_ACCOUNT_ID_RE, first_page_text)
+    if not (len(owners) == len(identity_numbers) == len(payment_account_ids) == 1):
+        return StatementMetadata()
+
+    owner = next(iter(owners))
+    identity_number = next(iter(identity_numbers)).upper()
+    payment_account_id = next(iter(payment_account_ids))
+    source = "page=1:wechat_proof_header"
+    return StatementMetadata(
+        account_name=owner,
+        raw_fields={
+            "payment_account_type": "wechat_account",
+            "identity_owner_name": owner,
+            "identity_number": identity_number,
+            "payment_account_id": payment_account_id,
+        },
+        field_sources={
+            "account_name": source,
+            "identity_owner_name": source,
+            "identity_number": source,
+            "payment_account_id": source,
+        },
+        field_confidence={
+            "account_name": 1.0,
+            "identity_owner_name": 1.0,
+            "identity_number": 1.0,
+            "payment_account_id": 1.0,
+        },
+    )
+
+
+def extract_wechat_identity_metadata(pdf_path: str) -> StatementMetadata:
+    """Read page one only; do not parse transaction pages for identity discovery."""
+    with pdfplumber.open(pdf_path) as pdf:
+        if not pdf.pages:
+            return StatementMetadata()
+        return _wechat_identity_metadata(pdf.pages[0].extract_text() or "")
 
 
 def _parse_table(table: list[list[Any]], page_no: int) -> list[Transaction]:
@@ -180,10 +230,15 @@ def _parse_text_line(line: str, page_no: int, row_no: int) -> Transaction | None
     return tx
 
 
-def extract_wechat(pdf_path: str) -> list[Transaction]:
+def extract_wechat(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
 
     with pdfplumber.open(pdf_path) as pdf:
+        metadata = (
+            _wechat_identity_metadata(pdf.pages[0].extract_text() or "")
+            if pdf.pages
+            else StatementMetadata()
+        )
         for page_no, page in enumerate(pdf.pages, start=1):
             before = len(transactions)
             for table in page.extract_tables():
@@ -197,4 +252,4 @@ def extract_wechat(pdf_path: str) -> list[Transaction]:
                 if tx is not None:
                     transactions.append(tx)
 
-    return transactions
+    return TransactionList(transactions, metadata=metadata)

@@ -168,6 +168,82 @@ class CaseAccountTests(unittest.TestCase):
             "unsupported_or_unconfirmed",
         )
 
+    def test_exports_confirmed_wechat_payment_source_to_verification_context(self):
+        context = verification_context_from_manifest(
+            {
+                "accounts": [],
+                "payment_sources": [
+                    {
+                        "payment_account_type": "wechat_account",
+                        "account_ref": "payment:wechat-client",
+                        "identity_owner_name": "张三",
+                        "identity_number": "110101199001011234",
+                        "payment_account_id": "zhangsan_01",
+                        "source_file_id": "sha256:wechat",
+                        "verification_status": "confirmed",
+                        "ownership_evidence_ref": "sha256:wechat#wechat_proof_header.identity_triplet",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(context["confirmed_owned_accounts"], [])
+        self.assertEqual(
+            context["confirmed_owned_payment_sources"],
+            [
+                {
+                    "payment_account_type": "wechat_account",
+                    "account_ref": "payment:wechat-client",
+                    "identity_owner_name": "张三",
+                    "identity_number": "110101199001011234",
+                    "payment_account_id": "zhangsan_01",
+                    "source_file_id": "sha256:wechat",
+                    "ownership_evidence_ref": "sha256:wechat#wechat_proof_header.identity_triplet",
+                    "verification_status": "confirmed",
+                }
+            ],
+        )
+
+    def test_discovers_wechat_identity_without_parsing_transaction_pages(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            case_folder = Path(temp_dir)
+            (case_folder / "wechat.pdf").write_bytes(b"wechat")
+            metadata = StatementMetadata(
+                account_name="张三",
+                raw_fields={
+                    "payment_account_type": "wechat_account",
+                    "identity_owner_name": "张三",
+                    "identity_number": "110101199001011234",
+                    "payment_account_id": "zhangsan_01",
+                },
+                field_confidence={
+                    "identity_owner_name": 1.0,
+                    "identity_number": 1.0,
+                    "payment_account_id": 1.0,
+                },
+            )
+            with (
+                patch(
+                    "bankflow_v2.case_accounts.detect_bank_type",
+                    return_value=Detection("wechat", "微信流水", 98, "test"),
+                ),
+                patch(
+                    "bankflow_v2.case_accounts.extract_wechat_identity_metadata",
+                    return_value=metadata,
+                ),
+                patch("bankflow_v2.case_accounts.extract_transactions") as extract_transactions,
+            ):
+                discovery = discover_case_accounts(case_folder)
+
+        self.assertEqual(discovery["accounts"], [])
+        self.assertEqual(discovery["files"][0]["account_discovery_status"], "payment_identity_confirmed")
+        self.assertEqual(len(discovery["payment_sources"]), 1)
+        self.assertEqual(
+            discovery["payment_sources"][0]["payment_account_id"],
+            "zhangsan_01",
+        )
+        extract_transactions.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

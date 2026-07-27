@@ -2,15 +2,19 @@ import unittest
 from unittest.mock import patch
 
 from bankflow_v2.alipay import extract_alipay
-from bankflow_v2.wechat import _parse_table
+from bankflow_v2.wechat import _parse_table, _wechat_identity_metadata
 
 
 class _Page:
-    def __init__(self, table):
+    def __init__(self, table, text=""):
         self.table = table
+        self.text = text
 
     def extract_tables(self):
         return [self.table]
+
+    def extract_text(self):
+        return self.text
 
 
 class _Pdf:
@@ -25,6 +29,30 @@ class _Pdf:
 
 
 class WechatAlipayTextFieldTests(unittest.TestCase):
+    def test_wechat_identity_metadata_requires_explicit_complete_triplet(self):
+        metadata = _wechat_identity_metadata(
+            "兹证明：张三（居民身份证：110101199001011234），在其微信号：zhangsan_01中的交易明细信息如下："
+        )
+
+        self.assertEqual(metadata.account_name, "张三")
+        self.assertEqual(metadata.account_number, "")
+        self.assertEqual(metadata.raw_fields["payment_account_type"], "wechat_account")
+        self.assertEqual(metadata.raw_fields["identity_number"], "110101199001011234")
+        self.assertEqual(metadata.field_sources["payment_account_id"], "page=1:wechat_proof_header")
+        self.assertEqual(metadata.field_confidence["identity_owner_name"], 1.0)
+
+    def test_wechat_identity_metadata_rejects_masked_or_ambiguous_triplet(self):
+        masked = _wechat_identity_metadata(
+            "兹证明：张三（居民身份证：110101********1234），在其微信号：zhangsan_01中的交易明细信息如下："
+        )
+        ambiguous = _wechat_identity_metadata(
+            "兹证明：张三（居民身份证：110101199001011234），在其微信号：zhangsan_01中。"
+            "微信号：zhangsan_02"
+        )
+
+        self.assertEqual(masked.raw_fields, {})
+        self.assertEqual(ambiguous.raw_fields, {})
+
     def test_wechat_maps_confirmed_fields_and_keeps_orders_raw(self):
         table = [
             ["交易单号", "交易时间", "交易类型", "收/支/其他", "交易方式", "金额(元)", "交易对方", "商户单号"],

@@ -264,3 +264,4 @@ PDF / Excel / 微信流水
 - 按 `StatementMetadata` 覆盖清单归并并优先核验两组同案多可靠抬头账户版式：工行对公 + 建行个人得到 7 组唯一双边候选、1 笔单边、3 笔歧义；农行个人 + 建行个人 + 中信个人得到 1 组唯一双边候选、17 笔单边、0 笔歧义。均仅为可复核候选，不作姓名、目录、摘要、掩码或资金关系推断。
 - 产物：`D:\Investigator PDF\outputs\verification-runs\2026-07-27\history-customers-targeted-header-refresh\`、`history-customers-extended-timeout-rerun\`、`high-value-multi-account-layout-verification\`。
 - 验证：`python -m unittest discover -s tests` 为 99 项通过；`python tools\regression.py --all --allow-missing` 为 71 PASS / 0 FAIL / 21 SKIP（20 个既有路径缺失、佛山农村商业银行 1 项主动暂缓）。
+- 外部 Obsidian《阶段进展与续接记录》顶部快照已同步本轮结论；下一窗口仍以该快照和实际 Git 状态共同核验。

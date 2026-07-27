@@ -953,6 +953,7 @@ def _own_account_transfer_observation(
         ),
         "candidates": candidates,
     }
+
     if not confirmed_accounts:
         value["reason"] = "confirmed_owned_accounts_unavailable"
     elif not covered:
@@ -982,6 +983,22 @@ def _own_account_transfer_observation(
             eligible,
             covered,
         ),
+    }
+
+
+def _masked_case_account_observation(verification_context: dict[str, object] | None) -> dict[str, object]:
+    accounts = verification_context.get("masked_case_accounts", []) if verification_context else []
+    included = [account for account in accounts if isinstance(account, dict)] if isinstance(accounts, list) else []
+    return {
+        "observation_type": "masked_case_account_included_with_warning",
+        "value": {"available": bool(included), "accounts": included},
+        "parameters": {
+            "account_rule": "same_case_masked_header_account",
+            "excluded_from": ["confirmed_own_account_transfer_candidates", "confirmed_own_account_transfer_pair_candidates"],
+            "interpretation": "掩码账号仅作为同案分析来源候选，不能用于完整账号精确匹配、唯一双边配对或账户归属结论。",
+        },
+        "evidence_transaction_ids": [],
+        "field_coverage": {"eligible_transaction_count": 0, "covered_transaction_count": 0, "transaction_coverage_rate": None},
     }
 
 
@@ -1229,6 +1246,7 @@ def build_bankflow_result(
                     original_transactions,
                     verification_context,
                 ),
+                _masked_case_account_observation(verification_context),
             ],
         },
         "manual_review": {"required": bool(review_items), "items": review_items},

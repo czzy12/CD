@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from bankflow_v2.auto_detect import Detection
 from bankflow_v2.case_accounts import (
+    _candidate_manifest,
     confirm_case_roles,
     discover_case_accounts,
     verification_context_from_manifest,
@@ -31,6 +32,64 @@ def _transactions(name: str, account: str) -> TransactionList:
 
 
 class CaseAccountTests(unittest.TestCase):
+    def test_candidate_scan_auto_includes_reliable_header_accounts_and_attempts_v1d(self):
+        files = [
+            {
+                "scan_status": "scanned",
+                "source_file_id": "file-a",
+                "account_ref": "account:a",
+                "account_number": "6222000000000001",
+                "account_name": "甲",
+                "bank_id": "ccb",
+                "bank_label": "建设银行个人",
+                "ownership_evidence_ref": "file-a#header",
+                "reliable_counterparty_accounts": ["6222000000000002"],
+            },
+            {
+                "scan_status": "scanned",
+                "source_file_id": "file-b",
+                "account_ref": "account:b",
+                "account_number": "6222000000000002",
+                "account_name": "乙",
+                "bank_id": "abc_corp",
+                "bank_label": "农业银行对公",
+                "ownership_evidence_ref": "file-b#header",
+                "reliable_counterparty_accounts": ["6222000000000001"],
+            },
+            {"scan_status": "unusable", "source_file_id": "file-c", "reason": "file_timeout"},
+        ]
+
+        manifest = _candidate_manifest(Path("case"), files)
+
+        self.assertEqual(manifest["candidate_status"], "ready_to_run")
+        self.assertEqual(manifest["role_confirmation_status"], "not_required_reliable_header_accounts_auto_included")
+        self.assertEqual(manifest["v1d_status"], "ready_to_run")
+        self.assertEqual(manifest["candidate_pairs"], [{"account_refs": ["account:a", "account:b"], "v1d_status": "to_run", "reliable_counterparty_coverage": {"left_to_right": True, "right_to_left": True}}])
+        self.assertTrue(all(account["verification_status"] == "confirmed" for account in manifest["accounts"]))
+        self.assertEqual(manifest["files"][2]["reason"], "file_timeout")
+
+    def test_candidate_scan_attempts_v1d_with_one_sided_counterparty_coverage(self):
+        files = [
+            {
+                "scan_status": "scanned", "source_file_id": "file-a", "account_ref": "account:a",
+                "account_number": "6222000000000001", "account_name": "甲", "bank_id": "ccb",
+                "bank_label": "建设银行个人", "ownership_evidence_ref": "file-a#header",
+                "reliable_counterparty_accounts": ["6222000000000002"],
+            },
+            {
+                "scan_status": "scanned", "source_file_id": "file-b", "account_ref": "account:b",
+                "account_number": "6222000000000002", "account_name": "乙", "bank_id": "abc_corp",
+                "bank_label": "农业银行对公", "ownership_evidence_ref": "file-b#header",
+                "reliable_counterparty_accounts": [],
+            },
+        ]
+
+        manifest = _candidate_manifest(Path("case"), files)
+
+        self.assertEqual(manifest["candidate_status"], "ready_to_run")
+        self.assertEqual(manifest["reason"], "mutual_reliable_counterparty_accounts_unavailable")
+        self.assertEqual(len(manifest["candidate_accounts"]), 2)
+        self.assertEqual(manifest["candidate_pairs"][0]["reliable_counterparty_coverage"], {"left_to_right": True, "right_to_left": False})
     def test_discovers_header_accounts_and_requires_role_confirmation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             case_folder = Path(temp_dir)

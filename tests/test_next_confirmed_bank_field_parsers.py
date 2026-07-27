@@ -3,9 +3,10 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from bankflow_v2.abc_corp import _statement_metadata as abc_metadata
-from bankflow_v2.ccb_corp import _statement_metadata as ccb_metadata
+from bankflow_v2.ccb_corp import _statement_metadata as ccb_metadata, extract_ccb_corp
 from bankflow_v2.changsha_bank_corp import extract_changsha_bank_corp
-from bankflow_v2.cmb_corp import extract_cmb_corp
+from bankflow_v2.boc_corp import extract_boc_corp
+from bankflow_v2.cmb_corp import _statement_metadata as cmb_corp_metadata, extract_cmb_corp
 from bankflow_v2.customer_detail_corp import extract_customer_detail_corp
 from bankflow_v2.hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detail, extract_hebei_personal
 from bankflow_v2.icbc_corp import _statement_metadata as icbc_corp_metadata, extract_icbc_corp
@@ -55,6 +56,18 @@ def _word(text, x0, top):
 
 
 class NextConfirmedBankFieldParserTests(unittest.TestCase):
+    def test_boc_corp_header_metadata_requires_unique_full_labeled_account(self):
+        page = _TextPage("账号 213044379038 账户名称 山东圣鲁医药科技有限公司 开户行 中国银行济宁分行营业部")
+        with patch("bankflow_v2.boc_corp.pdfplumber.open", return_value=_Pdf([page])):
+            metadata = extract_boc_corp("sample.pdf").metadata
+        self.assertEqual(metadata.account_number, "213044379038")
+        self.assertEqual(metadata.account_name, "山东圣鲁医药科技有限公司")
+
+    def test_cmb_corp_header_metadata_requires_unique_full_labeled_account(self):
+        metadata = cmb_corp_metadata("账号: 121921313810903 账户名称: 上海励升汽车有限公司 上页余额: 51,311.95")
+        self.assertEqual(metadata.account_number, "121921313810903")
+        self.assertEqual(metadata.account_name, "上海励升汽车有限公司")
+
     def test_icbc_corp_header_metadata_requires_unique_full_labeled_account(self):
         metadata = icbc_corp_metadata("中国工商银行企业存款对账单 户名：甲公司 账号：2606053809000150943")
 
@@ -192,6 +205,49 @@ class NextConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(metadata.account_number, "510501")
         self.assertEqual(str(metadata.statement_period_start), "2026-01-18")
         self.assertEqual(str(metadata.statement_period_end), "2026-03-19")
+
+    def test_ccb_corp_fixed_format_requires_one_complete_cross_page_account(self):
+        header = ["账号", "交易时间", "借方发生额", "贷方发生额", "余额"]
+        first_page = _TablePage(
+            "中国建设银行账户明细信息\n本方户名：甲公司",
+            [[header, ["6222 0000-0000 0001", "20260101 10:00:00", "", "20.00", "20.00"]]],
+        )
+        second_page = _TablePage(
+            "中国建设银行账户明细信息",
+            [[header, ["6222000000000001", "20260102 10:00:00", "10.00", "", "10.00"]]],
+        )
+        with patch("bankflow_v2.ccb_corp.pdfplumber.open", return_value=_Pdf([first_page, second_page])):
+            metadata = ccb_metadata("sample.pdf")
+
+        self.assertEqual(metadata.account_name, "甲公司")
+        self.assertEqual(metadata.account_number, "6222000000000001")
+        self.assertEqual(metadata.field_confidence["account_number"], 1.0)
+
+        with patch("bankflow_v2.ccb_corp.pdfplumber.open", return_value=_Pdf([first_page, second_page])):
+            transactions = extract_ccb_corp("sample.pdf")
+        self.assertEqual(len(transactions), 2)
+        self.assertEqual([transaction.income for transaction in transactions], [Decimal("20.00"), Decimal("0.00")])
+        self.assertEqual([transaction.expense for transaction in transactions], [Decimal("0.00"), Decimal("10.00")])
+        self.assertEqual(transactions.metadata.account_number, "6222000000000001")
+
+    def test_ccb_corp_fixed_format_rejects_missing_masked_multiple_or_inconsistent_accounts(self):
+        header = ["账号", "交易时间", "借方发生额", "贷方发生额", "余额"]
+        bad_tables = [
+            [[header, ["6222000000000001", "20260101 10:00:00", "", "20.00", "20.00"]],
+             [["序号", "交易时间", "借方发生额", "贷方发生额", "余额"], ["1", "20260102 10:00:00", "", "20.00", "20.00"]]],
+            [[header, ["62220000****0001", "20260101 10:00:00", "", "20.00", "20.00"]]],
+            [[header, ["6222000000000001", "20260101 10:00:00", "", "20.00", "20.00"], ["6222000000000002", "20260102 10:00:00", "", "20.00", "40.00"]]],
+        ]
+        for tables in bad_tables:
+            pages = [_TablePage("本方户名：甲公司", [tables[0]])]
+            if len(tables) > 1:
+                pages.append(_TablePage("", [tables[1]]))
+            with self.subTest(tables=tables), patch(
+                "bankflow_v2.ccb_corp.pdfplumber.open", return_value=_Pdf(pages)
+            ):
+                metadata = ccb_metadata("sample.pdf")
+            self.assertEqual(metadata.account_name, "")
+            self.assertEqual(metadata.account_number, "")
 
 
 if __name__ == "__main__":

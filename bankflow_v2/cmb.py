@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import choose_amount_and_balance, money_to_decimal
 
 
@@ -17,6 +17,25 @@ LINE_RE = re.compile(
 )
 RAW_HEADERS = ["交易日期", "币种", "交易金额", "余额", "交易摘要", "对手信息"]
 COUNTERPARTY_ACCOUNT_RE = re.compile(r"[0-9*Xx-]+")
+MASKED_HEADER_RE = re.compile(r"账\s*号[：:\s]*([0-9]{4}[*Xx]{4,}[0-9]{4})")
+ACCOUNT_NAME_RE = re.compile(r"户\s*名[：:\s]*([^\n\r]+)")
+
+
+def _statement_metadata(text: str) -> StatementMetadata:
+    masked = {value.replace("X", "*").replace("x", "*") for value in MASKED_HEADER_RE.findall(text)}
+    names = {re.split(r"账\s*号", value)[0].strip() for value in ACCOUNT_NAME_RE.findall(text) if value.strip()}
+    if len(masked) != 1 or len(names) != 1:
+        return StatementMetadata()
+    return StatementMetadata(
+        account_name=next(iter(names)),
+        raw_fields={"masked_account_number": next(iter(masked))},
+        field_sources={
+            "account_name": "page=1:document_header:户名",
+            "masked_account_number": "page=1:document_header:账号",
+        },
+        field_confidence={"account_name": 1.0, "masked_account_number": 1.0},
+        manual_review={"account_number": "账号已掩码，仅作同案分析来源候选，不能作完整账号精确匹配。"},
+    )
 
 
 def _parse_date(raw: str) -> datetime | None:
@@ -48,13 +67,17 @@ def _split_counterparty(raw: str) -> tuple[str, str]:
     return parts[0].strip(), parts[1].strip()
 
 
-def extract_cmb(pdf_path: str) -> list[Transaction]:
+def extract_cmb(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
     previous_balance: Decimal | None = None
+    metadata = StatementMetadata()
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages, start=1):
-            for line_no, raw_line in enumerate((page.extract_text() or "").splitlines(), start=1):
+            text = page.extract_text() or ""
+            if page_index == 1:
+                metadata = _statement_metadata(text)
+            for line_no, raw_line in enumerate(text.splitlines(), start=1):
                 line = raw_line.strip()
                 match = LINE_RE.match(line)
                 if not match:
@@ -127,4 +150,4 @@ def extract_cmb(pdf_path: str) -> list[Transaction]:
                 if balance is not None:
                     previous_balance = balance
 
-    return transactions
+    return TransactionList(transactions, metadata=metadata)

@@ -4,13 +4,37 @@ import re
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import money_to_decimal
 
 
 BANK_NAME = "中国银行对公"
 OPENING_MARKER = "承前页余额"
 DATE_RE = re.compile(r"\d{6}|\d{8}")
+
+
+def _statement_metadata(text: str) -> StatementMetadata:
+    account_matches = re.findall(r"(?:账号|Account\s*No\.?)[：:\s]*([0-9][0-9\s-]{10,31})", text)
+    name_matches = re.findall(r"(?:账户名称|Account\s*Name)[：:\s]*([^\n\r]+)", text)
+    accounts = {re.sub(r"[\s-]+", "", value) for value in account_matches}
+    names = {
+        re.split(r"(?:开户行|Bank\s*Name|起始日期|From\s*\(YYYYMMDD\))", value)[0].strip()
+        for value in name_matches
+    }
+    accounts = {value for value in accounts if value.isdigit() and 12 <= len(value) <= 32}
+    names = {value for value in names if value and not re.search(r"(?:账户类型|Account\s*Type)", value)}
+    if len(accounts) != 1 or len(names) != 1:
+        return StatementMetadata()
+    return StatementMetadata(
+        account_name=next(iter(names)),
+        account_number=next(iter(accounts)),
+        raw_fields=[f"账号: {next(iter(accounts))}", f"账户名称: {next(iter(names))}"],
+        field_sources={
+            "account_name": "page=1:document_header:账户名称",
+            "account_number": "page=1:document_header:账号",
+        },
+        field_confidence={"account_name": 1.0, "account_number": 1.0},
+    )
 
 
 def _parse_money(raw: str | None) -> Decimal:
@@ -153,13 +177,16 @@ def _parse_transaction_line(line: str, page_no: int, row_no: int) -> Transaction
     return tx
 
 
-def extract_boc_corp(pdf_path: str) -> list[Transaction]:
+def extract_boc_corp(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
     first_opening: Decimal | None = None
+    metadata = StatementMetadata()
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
+            if page_no == 1:
+                metadata = _statement_metadata(text)
             if first_opening is None:
                 first_opening = _opening_balance(text)
 
@@ -183,4 +210,4 @@ def extract_boc_corp(pdf_path: str) -> list[Transaction]:
     if transactions and first_opening is not None:
         transactions[0].opening_balance = first_opening
 
-    return transactions
+    return TransactionList(transactions, metadata=metadata)

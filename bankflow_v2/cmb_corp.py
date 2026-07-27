@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from .models import Transaction
+from .models import StatementMetadata, Transaction, TransactionList
 from .number_parser import CENT, money_to_decimal
 
 
@@ -23,6 +23,30 @@ COORD_TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 COORD_HEADERS = ["交易日期", "借方(出账)", "贷方(入账)", "余额", "摘要", "收(付)方名称", "收(付)方账号", "交易类型"]
 STATEMENT_HEADERS = ["日期", "业务类型", "票据号/摘要", "借方/贷方金额", "余额", "对手户名"]
 BILL_NUMBER_RE = re.compile(r"^(?P<bill>\d{10,})(?:\s+(?P<summary>.*))?$")
+
+
+def _statement_metadata(text: str) -> StatementMetadata:
+    account_matches = re.findall(r"(?:账号|A/C\s*No\.)[：:\s]*([0-9][0-9\s-]{10,31})", text)
+    name_matches = re.findall(r"(?:账户名称|Account\s*Name)[：:\s]*([^\n\r]+)", text)
+    accounts = {re.sub(r"[\s-]+", "", value) for value in account_matches}
+    names = {
+        re.split(r"(?:上(?:一)?页余额|Last\s*Balance|业务类型|Business)", value)[0].strip()
+        for value in name_matches
+    }
+    accounts = {value for value in accounts if value.isdigit() and 12 <= len(value) <= 32}
+    names = {value for value in names if value}
+    if len(accounts) != 1 or len(names) != 1:
+        return StatementMetadata()
+    return StatementMetadata(
+        account_name=next(iter(names)),
+        account_number=next(iter(accounts)),
+        raw_fields=[f"账号: {next(iter(accounts))}", f"账户名称: {next(iter(names))}"],
+        field_sources={
+            "account_name": "page=1:document_header:账户名称",
+            "account_number": "page=1:document_header:账号",
+        },
+        field_confidence={"account_name": 1.0, "account_number": 1.0},
+    )
 
 
 def _parse_date(raw: str) -> datetime | None:
@@ -218,8 +242,10 @@ def _extract_statement_of_account(pdf_path: str) -> list[Transaction]:
     return transactions
 
 
-def extract_cmb_corp(pdf_path: str) -> list[Transaction]:
+def extract_cmb_corp(pdf_path: str) -> TransactionList:
     transactions = _extract_statement_of_account(pdf_path)
-    if transactions:
-        return transactions
-    return _extract_coord_layout(pdf_path)
+    if not transactions:
+        transactions = _extract_coord_layout(pdf_path)
+    with pdfplumber.open(pdf_path) as pdf:
+        metadata = _statement_metadata(pdf.pages[0].extract_text() or "") if pdf.pages else StatementMetadata()
+    return TransactionList(transactions, metadata=metadata)

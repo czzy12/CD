@@ -5,8 +5,11 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import multiprocessing
 import re
 from pathlib import Path
+
+import pdfplumber
 
 from .auto_detect import detect_bank_type
 from .evidence import source_file_id
@@ -30,9 +33,248 @@ def _normalize_full_account(value: object) -> str | None:
     return normalized
 
 
+def _normalize_masked_account(value: object) -> str | None:
+    normalized = re.sub(r"[\s-]+", "", str(value or "")).replace("X", "*").replace("x", "*")
+    return normalized if re.fullmatch(r"\d{4}\*{4,}\d{4}", normalized) else None
+
+
 def _stable_ref(prefix: str, *parts: str) -> str:
     payload = "\x1f".join(parts).encode("utf-8")
     return f"{prefix}:{hashlib.sha256(payload).hexdigest()[:16]}"
+
+
+def _scan_case_file(path_text: str) -> dict[str, object]:
+    """Read one case PDF without assigning any account role."""
+    path = Path(path_text)
+    detection = detect_bank_type(str(path))
+    file_id = source_file_id(path)
+    record: dict[str, object] = {
+        "source_file_id": file_id,
+        "source_file": path.name,
+        "bank_id": detection.bank_id,
+        "bank_label": detection.label,
+    }
+    if not detection.bank_id or detection.bank_id == "generic_pdf":
+        record["scan_status"] = "unusable"
+        record["reason"] = "unsupported_or_unconfirmed_format"
+        return record
+    try:
+        transactions = extract_transactions(str(path), detection.bank_id)
+    except Exception as exc:
+        record["scan_status"] = "unusable"
+        record["reason"] = "parse_error"
+        record["detail"] = str(exc)
+        return record
+
+    metadata = get_statement_metadata(transactions)
+    account_number = _normalize_full_account(metadata.account_number)
+    if not (
+        metadata.account_name.strip()
+        and account_number is not None
+        and metadata.field_confidence.get("account_name") == 1.0
+        and metadata.field_confidence.get("account_number") == 1.0
+    ):
+        masked_account = _normalize_masked_account(metadata.raw_fields.get("masked_account_number"))
+        if not (metadata.account_name.strip() and masked_account is not None):
+            record["scan_status"] = "unusable"
+            record["reason"] = "reliable_header_account_unavailable"
+            return record
+        record.update({
+            "scan_status": "masked_scanned",
+            "reason": "masked_header_account_included_with_warning",
+            "account_ref": _stable_ref("masked-account", detection.bank_id, masked_account),
+            "masked_account_number": masked_account,
+            "account_name": metadata.account_name.strip(),
+            "ownership_evidence_ref": f"{file_id}#statement_metadata.account_name+masked_account_number",
+        })
+        return record
+
+    counterparties = {
+        normalized
+        for transaction in transactions
+        if not getattr(transaction, "neutral", False)
+        and transaction.transaction_id
+        and (transaction.income != 0 or transaction.expense != 0)
+        and transaction.field_confidence.get("counterparty_account") == 1.0
+        for normalized in [_normalize_full_account(transaction.counterparty_account)]
+        if normalized is not None
+    }
+    record.update(
+        {
+            "scan_status": "scanned",
+            "account_ref": _stable_ref("account", detection.bank_id, account_number),
+            "account_number": account_number,
+            "account_name": metadata.account_name.strip(),
+            "ownership_evidence_ref": f"{file_id}#statement_metadata.account_name+account_number",
+            "reliable_counterparty_accounts": sorted(counterparties),
+        }
+    )
+    return record
+
+
+def _ignored_pdf_reason(path: Path) -> str | None:
+    """Return an ignore reason for encrypted or textless PDFs before parsing."""
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            if not any((page.extract_text() or "").strip() for page in pdf.pages):
+                return "image_only_or_no_text_layer_pdf"
+    except Exception:
+        return "password_protected_or_unreadable_pdf"
+    return None
+
+
+def _scan_case_file_worker(path_text: str, result_queue) -> None:
+    try:
+        result_queue.put(_scan_case_file(path_text))
+    except Exception as exc:  # pragma: no cover - process-level fallback
+        result_queue.put({"scan_status": "unusable", "reason": "worker_error", "detail": str(exc)})
+
+
+def _candidate_manifest(case_folder: Path, files: list[dict[str, object]]) -> dict[str, object]:
+    accounts: dict[str, dict[str, object]] = {}
+    masked_accounts: dict[str, dict[str, object]] = {}
+    for file_record in files:
+        if file_record.get("scan_status") == "masked_scanned":
+            account_ref = str(file_record["account_ref"])
+            account = masked_accounts.setdefault(account_ref, {
+                "account_ref": account_ref, "masked_account_number": file_record["masked_account_number"],
+                "account_name": file_record["account_name"], "bank_id": file_record["bank_id"],
+                "bank_label": file_record["bank_label"], "source_file_ids": [],
+                "warning": "账号已掩码，已纳入同案分析来源；不能用于完整账号精确匹配或唯一双边配对。",
+            })
+            account["source_file_ids"].append(file_record["source_file_id"])
+            continue
+        if file_record.get("scan_status") != "scanned":
+            continue
+        account_ref = str(file_record["account_ref"])
+        account = accounts.setdefault(
+            account_ref,
+            {
+                "account_ref": account_ref,
+                "account_number": file_record["account_number"],
+                "account_name": file_record["account_name"],
+                "bank_id": file_record["bank_id"],
+                "bank_label": file_record["bank_label"],
+                "verification_status": "discovered",
+                "role": "unconfirmed",
+                "ownership_evidence_refs": [],
+                "source_file_ids": [],
+                "reliable_counterparty_accounts": set(),
+            },
+        )
+        account["ownership_evidence_refs"].append(file_record["ownership_evidence_ref"])
+        account["source_file_ids"].append(file_record["source_file_id"])
+        account["reliable_counterparty_accounts"].update(file_record["reliable_counterparty_accounts"])
+
+    candidate_pairs: list[dict[str, object]] = []
+    ordered_accounts = sorted(accounts.values(), key=lambda item: str(item["account_ref"]))
+    for account in ordered_accounts:
+        account["reliable_counterparty_accounts"] = sorted(account["reliable_counterparty_accounts"])
+        account["verification_status"] = "confirmed"
+        account["confirmation_basis"] = "reliable_statement_header"
+        account["role"] = "case_account_no_role_inference"
+    for index, left in enumerate(ordered_accounts):
+        for right in ordered_accounts[index + 1 :]:
+            left_covers_right = right["account_number"] in left["reliable_counterparty_accounts"]
+            right_covers_left = left["account_number"] in right["reliable_counterparty_accounts"]
+            candidate_pairs.append(
+                {
+                    "account_refs": [left["account_ref"], right["account_ref"]],
+                    "v1d_status": "to_run",
+                    "reliable_counterparty_coverage": {
+                        "left_to_right": left_covers_right,
+                        "right_to_left": right_covers_left,
+                    },
+                }
+            )
+
+    reason = ""
+    if len(ordered_accounts) < 2:
+        reason = "fewer_than_two_reliable_header_accounts"
+    elif not any(
+        pair["reliable_counterparty_coverage"]["left_to_right"]
+        and pair["reliable_counterparty_coverage"]["right_to_left"]
+        for pair in candidate_pairs
+    ):
+        reason = "mutual_reliable_counterparty_accounts_unavailable"
+    return {
+        "schema_version": "1.2",
+        "case_boundary": {
+            "root_folder": ".",
+            "folder_is_boundary_only": True,
+            "files_do_not_imply_same_subject": True,
+        },
+        "role_confirmation_status": "not_required_reliable_header_accounts_auto_included",
+        "v1c_status": "ready_to_run",
+        "v1d_status": "ready_to_run" if len(ordered_accounts) >= 2 else "unavailable",
+        "candidate_status": "ready_to_run" if ordered_accounts else "unavailable",
+        "reason": reason,
+        "accounts": ordered_accounts,
+        "candidate_accounts": ordered_accounts,
+        "candidate_pairs": candidate_pairs,
+        "masked_accounts": sorted(masked_accounts.values(), key=lambda item: str(item["account_ref"])),
+        "files": files,
+    }
+
+
+def scan_case_account_candidates(
+    case_folder: str | Path,
+    file_timeout_seconds: float = 30.0,
+) -> dict[str, object]:
+    """Read-only candidate scan; it never confirms roles or runs v1D."""
+    root = Path(case_folder)
+    if not root.is_dir():
+        raise ValueError(f"案件文件夹不存在: {root}")
+    if file_timeout_seconds <= 0:
+        raise ValueError("file_timeout_seconds 必须大于 0")
+
+    files: list[dict[str, object]] = []
+    context = multiprocessing.get_context("spawn")
+    for path in sorted(root.glob("*.pdf"), key=lambda item: str(item).casefold()):
+        relative_path = path.name
+        ignored_reason = _ignored_pdf_reason(path)
+        if ignored_reason is not None:
+            files.append(
+                {
+                    "source_file_id": source_file_id(path),
+                    "source_file": path.name,
+                    "relative_path": relative_path,
+                    "scan_status": "ignored",
+                    "reason": ignored_reason,
+                }
+            )
+            continue
+        result_queue = context.Queue()
+        process = context.Process(target=_scan_case_file_worker, args=(str(path), result_queue))
+        process.start()
+        process.join(file_timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join()
+            record: dict[str, object] = {
+                "source_file_id": source_file_id(path),
+                "source_file": path.name,
+                "relative_path": relative_path,
+                "scan_status": "unusable",
+                "reason": "file_timeout",
+            }
+        else:
+            try:
+                record = result_queue.get(timeout=1)
+            except Exception:
+                record = {
+                    "source_file_id": source_file_id(path),
+                    "source_file": path.name,
+                    "scan_status": "unusable",
+                    "reason": "worker_result_unavailable",
+                }
+            record["relative_path"] = relative_path
+        result_queue.close()
+        if record.get("reason") == "unsupported_or_unconfirmed_format":
+            record["scan_status"] = "ignored"
+            record["reason"] = "non_statement_or_unconfirmed_format"
+        files.append(record)
+    return _candidate_manifest(root, files)
 
 
 def discover_case_accounts(case_folder: str | Path) -> dict[str, object]:
@@ -187,7 +429,7 @@ def verification_context_from_manifest(manifest: dict[str, object]) -> dict[str,
     confirmed_accounts: list[dict[str, str]] = []
     accounts = manifest.get("accounts", [])
     if not isinstance(accounts, list):
-        return {"confirmed_owned_accounts": confirmed_accounts}
+        return {"confirmed_owned_accounts": confirmed_accounts, "masked_case_accounts": manifest.get("masked_accounts", [])}
 
     for account in accounts:
         if not isinstance(account, dict) or account.get("verification_status") != "confirmed":
@@ -218,7 +460,7 @@ def verification_context_from_manifest(manifest: dict[str, object]) -> dict[str,
                 ],
             }
         )
-    return {"confirmed_owned_accounts": confirmed_accounts}
+    return {"confirmed_owned_accounts": confirmed_accounts, "masked_case_accounts": manifest.get("masked_accounts", [])}
 
 
 def write_case_manifest(manifest: dict[str, object], path: str | Path) -> Path:

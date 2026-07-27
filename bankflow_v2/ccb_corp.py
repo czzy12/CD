@@ -19,6 +19,7 @@ METADATA_RE = re.compile(
     r"(?P<start>\d{8})\s*-\s*(?P<end>\d{8})",
     re.S,
 )
+OWN_ACCOUNT_NAME_RE = re.compile(r"本方户名[:：]\s*(?P<name>[^\r\n]+)")
 
 
 def _clean_cell(value) -> str:
@@ -156,7 +157,7 @@ def _transaction_key(row: list) -> str:
     )
 
 
-def _statement_metadata(pdf_path: str) -> StatementMetadata:
+def _legacy_statement_metadata(pdf_path: str) -> StatementMetadata:
     metadata = StatementMetadata()
     with pdfplumber.open(pdf_path) as pdf:
         if not pdf.pages:
@@ -176,6 +177,85 @@ def _statement_metadata(pdf_path: str) -> StatementMetadata:
     }
     metadata.field_confidence = {field_name: 1.0 for field_name in metadata.field_sources}
     return metadata
+
+
+def _normalized_account(value: object) -> str | None:
+    raw = str(value or "").strip()
+    if not raw or not re.fullmatch(r"[0-9\s-]+", raw):
+        return None
+    account = re.sub(r"[\s-]+", "", raw)
+    return account if re.fullmatch(r"[0-9]{12,32}", account) else None
+
+
+def _fixed_format_accounts(page) -> set[str] | None:
+    """Return the verified first-column account only for the fixed CCB corp table."""
+    matching_tables = []
+    for table in getattr(page, "extract_tables", lambda: [])():
+        for header_index, row in enumerate(table):
+            header = [_clean_cell(cell) for cell in row]
+            if not header or header[0] != "账号":
+                continue
+            normalized_headers = {re.sub(r"\s+", "", value) for value in header}
+            if not {"交易时间", "借方发生额", "贷方发生额", "余额"}.issubset(normalized_headers):
+                continue
+            matching_tables.append((table, header_index))
+
+    if len(matching_tables) != 1:
+        return None
+
+    table, header_index = matching_tables[0]
+    accounts: set[str] = set()
+    for row in table[header_index + 1 :]:
+        if len(row) <= TIME_COL or _parse_time(row[TIME_COL]) is None:
+            continue
+        account = _normalized_account(row[0])
+        if account is None:
+            return None
+        accounts.add(account)
+    return accounts if len(accounts) == 1 else None
+
+
+def _fixed_format_statement_metadata(pdf_path: str) -> StatementMetadata | None:
+    """Extract only the manually verified `本方户名 + 账号` table format.
+
+    ``None`` means this is not the fixed format; an empty metadata object means the
+    fixed format was detected but failed a required reliability check.
+    """
+    with pdfplumber.open(pdf_path) as pdf:
+        if not pdf.pages:
+            return None
+        name_matches = OWN_ACCOUNT_NAME_RE.findall(pdf.pages[0].extract_text() or "")
+        if not name_matches:
+            return None
+        if len(name_matches) != 1 or not name_matches[0].strip():
+            return StatementMetadata()
+
+        accounts: set[str] = set()
+        for page in pdf.pages:
+            page_accounts = _fixed_format_accounts(page)
+            if page_accounts is None:
+                return StatementMetadata()
+            accounts.update(page_accounts)
+        if len(accounts) != 1:
+            return StatementMetadata()
+
+    account_number = next(iter(accounts))
+    account_name = name_matches[0].strip()
+    return StatementMetadata(
+        account_name=account_name,
+        account_number=account_number,
+        raw_fields={"本方户名": account_name, "账号": account_number},
+        field_sources={
+            "account_name": "page=1:document_header:本方户名",
+            "account_number": "all_pages:transaction_table:first_column:账号",
+        },
+        field_confidence={"account_name": 1.0, "account_number": 1.0},
+    )
+
+
+def _statement_metadata(pdf_path: str) -> StatementMetadata:
+    fixed_metadata = _fixed_format_statement_metadata(pdf_path)
+    return fixed_metadata if fixed_metadata is not None else _legacy_statement_metadata(pdf_path)
 
 
 def extract_ccb_corp(pdf_path: str) -> TransactionList:

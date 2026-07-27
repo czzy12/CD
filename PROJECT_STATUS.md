@@ -255,3 +255,12 @@ PDF / Excel / 微信流水
 日期流水账不再在本文件重复维护。问题现象、原因分析、解决方式和验证证据完整保留在 `技术变更记录.md`；当前生效的银行解析规则见 `银行适配手册.md`。
 
 后续排查必须先按问题或银行关键词搜索 `技术变更记录.md`，不得因为本状态摘要已精简而忽略历史踩坑。
+
+# 2026-07-27 只读账户发现复跑与版式核验（chg-20260727-03）
+
+- 以本地 HEAD 的实际状态为基线，未推送。对历史客户中中国银行对公、招商银行对公和招商银行个人定向重跑账户发现：中行对公 10 个目录、59 份已扫描文件、8 个可靠完整抬头账户；招商对公 3 个目录、11 份已扫描文件、1 个可靠完整抬头账户，另 3 份缺可靠抬头；招商个人 13 个目录没有可靠完整抬头账户，6 份来源形成 5 个不同掩码账户，另 7 份缺可靠抬头。
+- 招商个人掩码账户专项验收：所有 5 个掩码账户均输出 `masked_case_account_included_with_warning`，且均不进入完整账号 v1C 候选或 v1D 双边配对。任何独立完整账号结果仍只来自可靠完整抬头和可靠完整对手账号。
+- 原 20 份文件超时以 120 秒逐文件重跑：17 份完成；3 份仍为 `source_processing_timeout`，保留来源处理状态，不补号、不改解析或统计。
+- 按 `StatementMetadata` 覆盖清单归并并优先核验两组同案多可靠抬头账户版式：工行对公 + 建行个人得到 7 组唯一双边候选、1 笔单边、3 笔歧义；农行个人 + 建行个人 + 中信个人得到 1 组唯一双边候选、17 笔单边、0 笔歧义。均仅为可复核候选，不作姓名、目录、摘要、掩码或资金关系推断。
+- 产物：`D:\Investigator PDF\outputs\verification-runs\2026-07-27\history-customers-targeted-header-refresh\`、`history-customers-extended-timeout-rerun\`、`high-value-multi-account-layout-verification\`。
+- 验证：`python -m unittest discover -s tests` 为 99 项通过；`python tools\regression.py --all --allow-missing` 为 71 PASS / 0 FAIL / 21 SKIP（20 个既有路径缺失、佛山农村商业银行 1 项主动暂缓）。

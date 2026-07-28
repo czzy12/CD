@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bankflow_v2.ai_business_observation import (
     build_ai_business_observation,
+    build_ai_input_audit,
     build_ai_input_profile,
     select_ai_input_sample,
 )
@@ -50,6 +51,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("case_dir", type=Path)
     parser.add_argument("output_path", type=Path)
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path("output/ai-response-cache"),
+    )
     parser.add_argument("--confirm-real-data", action="store_true")
     parser.add_argument("--confirm-full-run", action="store_true")
     args = parser.parse_args()
@@ -64,7 +70,7 @@ def main() -> int:
         return 2
 
     settings = load_deepseek_settings()
-    ai_config, evaluator = load_deepseek_runtime()
+    ai_config, evaluator = load_deepseek_runtime(cache_dir=args.cache_dir)
     if evaluator is None:
         print("status=not_started")
         print("reason=ai_configuration_or_authorization_incomplete")
@@ -87,6 +93,14 @@ def main() -> int:
     )
     ai_candidate_count = int(profile["ai_candidate_count"])
     unique_semantic_count = int(profile["unique_semantic_signature_count"])
+    audit = build_ai_input_audit(
+        transactions,
+        case_context,
+        allow_business_names=settings.allow_business_names,
+    )
+    acceptance_scope_count = int(
+        audit["legacy_unique_semantic_signature_count"]
+    )
     if not ai_candidate_count or not unique_semantic_count:
         print("status=not_started")
         print("reason=no_eligible_ai_candidates")
@@ -108,6 +122,7 @@ def main() -> int:
     )
     print(f"parsed_transactions={len(transactions)}")
     print(f"ai_candidate_transactions={ai_candidate_count}")
+    print(f"acceptance_scope_unique_semantics={acceptance_scope_count}")
     print(f"unique_semantic_signatures={unique_semantic_count}")
     print(f"expected_provider_batches={expected_batch_count}")
 
@@ -128,6 +143,7 @@ def main() -> int:
             observation=observation,
             full_run=True,
             expected_batch_count=expected_batch_count,
+            acceptance_scope_count=acceptance_scope_count,
         )
         + "\n",
         encoding="utf-8",
@@ -140,6 +156,17 @@ def main() -> int:
         print(f"reason={value['reason'] or 'expanded_result_count_mismatch'}")
         if value.get("failure_detail"):
             print(f"failure_detail={value['failure_detail']}")
+        summary = value.get("validation_failure_summary", {})
+        if isinstance(summary, dict):
+            print(f"validation_failure_count={summary.get('total', 0)}")
+            for failure_reason, count in sorted(
+                dict(summary.get("counts", {})).items()
+            ):
+                print(f"validation_failure_{failure_reason}={count}")
+        print(
+            "provisional_valid_results="
+            f"{len(value.get('provisional_ai_candidates', []))}"
+        )
         print(f"accepted_ai_results={accepted_count}")
         print(f"report={args.output_path}")
         return 1

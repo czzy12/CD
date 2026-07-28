@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -10,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bankflow_v2.ai_business_observation import (
     build_ai_business_observation,
-    select_ai_input_sample,
+    select_ai_input_from_manifest,
 )
 from bankflow_v2.ai_sample_acceptance import render_ai_sample_markdown
 from bankflow_v2.auto_detect import detect_bank_type
@@ -48,7 +49,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("case_dir", type=Path)
     parser.add_argument("output_path", type=Path)
-    parser.add_argument("--sample-size", type=int, default=50)
+    parser.add_argument("--sample-manifest", type=Path, required=True)
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path("output/ai-response-cache"),
+    )
     parser.add_argument("--confirm-real-data", action="store_true")
     args = parser.parse_args()
 
@@ -62,14 +68,14 @@ def main() -> int:
         return 2
 
     settings = load_deepseek_settings()
-    ai_config, evaluator = load_deepseek_runtime()
+    ai_config, evaluator = load_deepseek_runtime(cache_dir=args.cache_dir)
     if evaluator is None:
         print("status=not_started")
         print("reason=ai_configuration_or_authorization_incomplete")
         return 2
-    if args.sample_size <= 0 or args.sample_size > settings.batch_size:
+    if not args.sample_manifest.is_file():
         print("status=not_started")
-        print("reason=sample_size_must_fit_one_configured_batch")
+        print("reason=sample_manifest_not_found")
         return 2
 
     case_context = build_case_context(args.case_dir.name, _sources(args.case_dir))
@@ -82,14 +88,23 @@ def main() -> int:
         print(f"parsing={pdf_path.name}")
         transactions.extend(extract_transactions(str(pdf_path), detection.bank_id))
 
-    sampled_transactions, eligible_count = select_ai_input_sample(
-        transactions,
-        case_context,
-        allow_business_names=settings.allow_business_names,
-        sample_size=args.sample_size,
-        source_balanced=True,
-        unique_semantic_signatures=True,
-    )
+    manifest = json.loads(args.sample_manifest.read_text(encoding="utf-8"))
+    try:
+        sampled_transactions, eligible_count = select_ai_input_from_manifest(
+            transactions,
+            case_context,
+            manifest,
+            allow_business_names=settings.allow_business_names,
+            split="development",
+        )
+    except ValueError as exc:
+        print("status=not_started")
+        print(f"reason=sample_manifest_invalid:{exc}")
+        return 2
+    if len(sampled_transactions) > settings.batch_size:
+        print("status=not_started")
+        print("reason=fixed_sample_must_fit_one_configured_batch")
+        return 2
     print(f"parsed_transactions={len(transactions)}")
     print(f"eligible_ai_candidates={eligible_count}")
     print(f"sampled_transactions={len(sampled_transactions)}")
@@ -120,11 +135,18 @@ def main() -> int:
     if not observation["value"]["available"]:
         print("status=failed_closed")
         print(f"reason={observation['value']['reason']}")
+        print(
+            "validation_failures="
+            f"{observation['value']['validation_failure_summary']['total']}"
+        )
         print(f"report={args.output_path}")
         return 1
 
+    provider_execution = observation["value"]["provider_execution"]
     print("status=ok")
     print(f"accepted_ai_results={len(observation['value']['ai_candidates'])}")
+    print(f"cache_hits={provider_execution['cache_hit_count']}")
+    print(f"provider_calls={provider_execution['provider_call_count']}")
     print(f"report={args.output_path}")
     return 0
 

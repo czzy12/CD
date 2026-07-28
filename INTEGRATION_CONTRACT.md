@@ -226,17 +226,19 @@ schema 1.9 新增 `ai_business_relevance_candidates`：
 DeepSeek 运行配置不进入 JSON、不写入仓库，只从当前进程环境读取：
 
 - `BANKFLOW_AI_API_KEY`：必填；只用于 `Authorization: Bearer` 请求头，禁止输出或持久化到报告。
+- 当前经营关联 AI 任务固定为 `task_type=business_relevance`。缓存命名空间、输入指纹、提示版本和结果契约均按任务类型隔离；后续 `task_type=life_trajectory` 必须使用独立提示词、结果 schema 和验收样本，不得改变经营关联含义。
+- 生活轨迹仅列入后续路线，当前第一版流水核查 MVP 不实现；详见 `docs/流水核查MVP后续路线图.md`。
 - `BANKFLOW_AI_BASE_URL`：默认 `https://api.deepseek.com`，只接受 HTTPS。
 - `BANKFLOW_AI_MODEL`：默认 `deepseek-v4-flash`。
 - `BANKFLOW_AI_ENABLED`、`BANKFLOW_AI_DATA_AUTHORIZED`、`BANKFLOW_AI_RETENTION_CONFIRMED`：三者必须均为真。
 - `BANKFLOW_AI_ALLOW_BUSINESS_NAMES`：为真时可发送满足组织标记的企业/商户名称；疑似个人名称仍留在本地。
 - `BANKFLOW_AI_TIMEOUT_SECONDS`、`BANKFLOW_AI_BATCH_SIZE`：默认 60 秒、每批 50 笔。
 
-适配器使用 `/chat/completions`、`response_format={"type":"json_object"}`，关闭思考模式并要求逐笔结构化结果。任一批次超时、请求失败、非 JSON、结构错误、虚构字段、重复/遗漏交易时，本次 AI 候选整体不采用；不得保留此前已成功批次的部分模型结果。`tools/enable_deepseek_ai.ps1` 仅在当前 PowerShell 进程内设置授权和模型配置，并以隐藏输入读取 Key；`tools/test_ai_connection.py` 只用虚构交易检查连通性，不读取客户资料。
+适配器使用 `/chat/completions`、`response_format={"type":"json_object"}`，关闭思考模式并要求逐笔结构化结果。单项结构、字段引用或强度违规时拒绝该项并继续同批及后续批次，最终聚合失败原因；存在关键违规时本次 AI 候选整体不采用。网络、鉴权、超时或无法继续调用的系统错误仍立即终止。`tools/enable_deepseek_ai.ps1` 仅在当前 PowerShell 进程内设置授权和模型配置，并以隐藏输入读取 Key；`tools/test_ai_connection.py` 只用虚构交易检查连通性，不读取客户资料。
 
-真实案例首次验收使用 `tools/run_ai_sample_acceptance.py`：只选择排除确定性单位/行业精确命中后、确有可发送可靠文字字段的交易，并沿候选时间序列做可复现的均匀抽样。默认50笔且不得超过已配置单批大小；必须显式传入 `--confirm-real-data`。输出本地 Markdown，逐笔保留分类、理由、使用字段原文和证据定位；小批结果不代表完整流水分布，也不得自动触发完整案例调用。
+真实案例首次验收使用 `tools/run_ai_sample_acceptance.py`：只选择排除确定性单位/行业精确命中后、确有可发送可靠文字字段的交易，并强制读取 `--sample-manifest` 中冻结的 `development` 语义签名；该固定集合不得超过已配置单批大小，且必须显式传入 `--confirm-real-data`。输出本地 Markdown，逐笔保留分类、理由、使用字段原文和证据定位；小批结果不代表完整流水分布，也不得自动触发完整案例调用。`reserved_acceptance` 签名不用于反复调参。
 
-小批验收通过并由用户单独确认后，完整语义验收使用 `tools/run_ai_full_acceptance.py`。该入口必须同时传入 `--confirm-real-data` 与 `--confirm-full-run`，先统计全部AI候选和规范化唯一语义，再由适配器按唯一语义分批判断并展开回全部原交易ID。报告必须记录唯一语义数、预计批次、展开后的有效结果数、交易ID、使用字段及证据定位；任一批次失败、响应无效或展开结果数不等于候选原交易数时失败关闭。响应校验在每个批次返回后立即进行，首个不合格批次即停止后续调用；终端和报告只记录批次号、批内序号及稳定校验码，不保存提供方原始响应或流水原文。
+小批验收通过并由用户单独确认后，完整语义验收使用 `tools/run_ai_full_acceptance.py`。该入口必须同时传入 `--confirm-real-data` 与 `--confirm-full-run`，先统计旧口径完整语义范围、确定性排除项及真正需模型判断的规范化唯一语义，再按唯一语义分批判断并展开回全部原交易ID。报告必须记录完整本地验收范围、送模唯一语义数、预计批次、展开结果、失败聚合、交易ID、使用字段及证据定位；关键违规或展开数不一致时失败关闭，但业务项错误不得阻止后续语义继续接受校验。请求正文与原始响应仅保存在用户指定的本地忽略目录缓存中，不写入仓库记录或终端；缓存不得包含 API Key 或授权头。
 
 AI行业资格按整笔交易判断，而不是按单列排除：
 
@@ -244,7 +246,7 @@ AI行业资格按整笔交易判断，而不是按单列排除：
 - `transaction_type`、`counterparty_bank`、月份、金额、方向和商户地点只作上下文，不能单独使交易入选，也不能单独支持行业相关。
 - 一笔交易只要存在至少一个语义证据字段，就连同该笔允许发送的其他可靠上下文字段一起输入；“转账、扫码付款、二维码收款、商户消费”等通用类型不得抵消企业名称、用途或商品中的行业语义。
 - 账号、证件、电话、本地路径、PDF页面和疑似个人对手名称不发送。个人名称不发送同时也是因为姓名本身通常不提供行业语义，不以其猜测经营关系。
-- 小批验收按 `source_file_id` 平衡来源，并在每个来源内沿时间均匀抽样，防止大体量微信来源淹没银行、公户或支付宝商品字段。
+- 固定样本清单创建时按 `source_file_id` 平衡来源并保存稳定语义签名；后续小批只按签名读取，不因提示词版本临时改变50条内容。
 
 `tools/inspect_ai_input_coverage.py` 只在本地解析并统计上述候选数、输入字段和语义证据字段，不装载Key、不调用模型。该统计表示“存在可供AI判断的可靠文字”，不表示交易已经与申报行业相关。
 
@@ -269,12 +271,19 @@ schema 1.11 新增 `declaration_flow_cross_checks` 和 Markdown 验收视图：
 
 schema 1.12 收紧AI行业输入并新增证据强度：
 
-- 当前提示词版本为 `business-relevance-mvp-v10`；schema结构未变化。v6明确具体产品或服务优先形成中等候选，`货款`不得把同笔已有的具体产品或服务语义降为弱提示；v7为每笔附加仅由字段名派生的 `classification_constraints`，没有摘要、备注、用途、商品说明或商户类别时明确禁止 `directly_related`；v8要求所有正向分类均与申报行业或工作单位明确体现的行业语义相关，具体但无关的生活或通用服务不得判正向；v9固定建材、护栏、栏杆、围栏、塑木和园林景观设计在本案上下文中的具体相关语义，货款不得将其降为weak，同时排除无具体课题、产品、项目或行业对象的泛化咨询费、材料费和采购款；v10在AI语义入口排除纯字母数字代码备注，此类代码仍保留在本地原交易中，但不能单独使交易进入AI候选或开放direct门槛。
+- 当前提示词版本为 `business-relevance-mvp-v11`；schema结构未变化。v6明确具体产品或服务优先形成中等候选，`货款`不得把同笔已有的具体产品或服务语义降为弱提示；v7为每笔附加仅由字段名派生的 `classification_constraints`，没有摘要、备注、用途、商品说明或商户类别时明确禁止 `directly_related`；v8要求所有正向分类均与申报行业或工作单位明确体现的行业语义相关，具体但无关的生活或通用服务不得判正向；v9固定建材、护栏、栏杆、围栏、塑木和园林景观设计在本案上下文中的具体相关语义，货款不得将其降为weak，同时排除无具体课题、产品、项目或行业对象的泛化咨询费、材料费和采购款；v10在AI语义入口排除纯字母数字代码备注；v11将业务硬边界、聚合校验、缓存和固定样本从提示依赖中剥离。
 - AI行业模型只接收可靠企业/商户名称、非通用摘要、备注、用途、商品说明和商户类别；金额、日期、方向、银行名、账号、交易方式、地点、路径和原始PDF字段不发送。上述字段继续完整保留在本地 `original_transactions` 及确定性资金/轨迹观察中。
 - `directly_related` 的 `evidence_strength` 固定为 `strong`，且必须引用摘要、备注、用途、商品说明或商户类别；仅有企业名称不能成为直接相关。
 - `possibly_related` 使用 `medium` 或 `weak`：具体行业产品/服务但用途未确认时为中等候选；实业、贸易、科技、工业、工程等泛化类型或货款只能形成弱提示。
 - `no_relation_evidence`、`undetermined` 的强度固定为 `none`。分类、强度、理由或使用字段不一致时整次响应不采用。
 - 候选统计、唯一语义抽样和DeepSeek适配器共用同一规范化语义签名；同一企业/用途/商品组合只判断一次，再把相同分类、强度、理由和字段引用映射回全部原交易ID。任一代表记录缺失、重复或格式错误时，外层全量ID校验仍会拒绝整次结果。
+- `classification_constraints` 必须由本地候选构建代码生成，模型不得覆盖。每项至少包含 `directly_related_allowed`、`directly_related_evidence_fields` 和 `maximum_allowed_strength`；只有企业/商户名称而没有有效用途文字时最高为 `medium`，纯代码不能开放直接证据门槛，泛化货款/咨询费等可进一步限制为 `weak`。
+- 模型只返回 `semantic_judgement: strong / medium / weak / none / undetermined`、理由和使用字段；`directly_related / possibly_related / no_relation_evidence / undetermined` 由本地代码派生并再次校验。明确餐饮、便利店、话费、银行年费、医疗和打车等当前经营模块生活类由本地规则归为 `none`，不发送模型；混有明确经营用途时保留冲突字段并进入边界判断，不把不同字段拼成原件不存在的句子。
+- AI经营判断只读取统一标准字段 `counterparty_name / summary / remark / purpose / product_description / merchant_name / merchant_category`；当前项目商品字段名为 `product_description`，不是 `goods_description`。`transaction_type / transaction_method / payment_method` 保留为可追溯标准字段，可供本地确定性排除，但不能单独构成行业证据。银行名、原始表头字符串、PDF列位置和字段排列不得改变行业判断标准。
+- 原始交易、原始字段、标准字段来源、来源文件、交易ID及页/行证据继续保留；标准字段为空时降级或不可用，不回退全文扫描，不从其他不可靠字段猜测，也不把多个字段拼接成原件不存在的完整表述。
+- 完整验收对单项结构或业务校验失败采用“逐项拒绝、继续后续语义、最终聚合失败类型/数量/代表样本”；存在关键违规时整轮仍失败且不采用任何模型候选。网络、鉴权、超时或其他无法继续调用的系统错误仍可立即终止。
+- 真实调用必须启用本地缓存：按提供方、模型、提示词版本、规范化语义签名和实际输入指纹保存不含凭据的请求正文、提供方原始响应、逐项响应和校验结果。修改本地校验器或展开逻辑时先离线重放；只有模型、提示词、案件上下文或该语义实际输入变化时，才允许重新调用受影响签名。
+- 小批验收必须读取固定样本清单；开发样本与保留验收样本分开，保留集不用于反复调提示词。曹国民4份流水的真实调用只证明该客户及4个来源的语义表现；统一字段层通过本地契约测试不等于所有银行、版式和客户均已完成真实模型验收。
 
 v1C 新增独立 `result.observations[]`，包含 `confirmed_own_account_transfer_candidates`：
 

@@ -1,5 +1,8 @@
 __pycache__/
 output/
+outputs/
+.bankflow_ai_cache/
+ai-response-cache/
 build/
 dist/
 BankFlowGUI/

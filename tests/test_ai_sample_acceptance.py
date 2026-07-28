@@ -3,7 +3,10 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from bankflow_v2.ai_business_observation import (
+    build_fixed_ai_sample_manifest,
+    build_ai_input_audit,
     build_ai_input_profile,
+    select_ai_input_from_manifest,
     select_ai_input_sample,
 )
 from bankflow_v2.ai_sample_acceptance import render_ai_sample_markdown
@@ -213,6 +216,70 @@ class AiSampleAcceptanceTests(unittest.TestCase):
             [row.transaction_id for row in sample],
             ["tx:0", "tx:2"],
         )
+
+    def test_audits_legacy_code_signature_before_current_filter(self):
+        name_only = transaction(0)
+        name_only.purpose = ""
+        name_only.counterparty_name = "示例建材有限公司"
+        name_only.field_confidence = {"counterparty_name": 1.0}
+        with_code = transaction(1)
+        with_code.purpose = ""
+        with_code.counterparty_name = "示例建材有限公司"
+        with_code.remark = "M0EEHDNH"
+        with_code.field_confidence = {
+            "counterparty_name": 1.0,
+            "remark": 1.0,
+        }
+
+        audit = build_ai_input_audit(
+            [name_only, with_code],
+            {"search_context": {"declared_industries": ["装修"]}},
+            allow_business_names=True,
+        )
+
+        self.assertEqual(
+            audit["legacy_unique_semantic_signature_count"],
+            2,
+        )
+        self.assertEqual(
+            audit[
+                "model_unique_semantic_signature_count_after_deterministic_boundaries"
+            ],
+            1,
+        )
+        self.assertEqual(
+            audit["field_filter_category_counts_by_unique_signature"][
+                "alphanumeric_code"
+            ],
+            1,
+        )
+
+    def test_fixed_manifest_selects_same_development_signatures(self):
+        rows = [
+            transaction(index, f"材料采购{index}")
+            for index in range(12)
+        ]
+        for index, row in enumerate(rows):
+            row.source_file_id = "source:one" if index < 8 else "source:two"
+        context = {"search_context": {"declared_industries": ["装修"]}}
+        manifest = build_fixed_ai_sample_manifest(
+            rows,
+            context,
+            allow_business_names=True,
+            development_size=6,
+            reserved_size=3,
+        )
+
+        selected, eligible_count = select_ai_input_from_manifest(
+            rows,
+            context,
+            manifest,
+            allow_business_names=True,
+        )
+
+        self.assertEqual(len(selected), 6)
+        self.assertEqual(eligible_count, 12)
+        self.assertEqual(len(manifest["reserved_acceptance"]), 3)
 
 
 if __name__ == "__main__":

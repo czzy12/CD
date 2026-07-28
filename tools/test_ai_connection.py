@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bankflow_v2.ai_business_observation import build_classification_constraints
 from bankflow_v2.deepseek_adapter import (
     DeepSeekProviderError,
     load_deepseek_runtime,
@@ -41,6 +42,13 @@ def main() -> int:
             "no_relation_evidence",
             "undetermined",
         ],
+        "allowed_model_judgements": [
+            "strong",
+            "medium",
+            "weak",
+            "none",
+            "undetermined",
+        ],
         "instructions": [
             "仅处理虚构示例数据。",
             "证据不足时使用 undetermined。",
@@ -52,6 +60,9 @@ def main() -> int:
                 "direction": "expense",
                 "amount": "1000.00",
                 "fields": {"purpose": "环保设备采购"},
+                "classification_constraints": build_classification_constraints(
+                    {"purpose": "环保设备采购"}
+                ),
             }
         ],
     }
@@ -66,10 +77,17 @@ def main() -> int:
         print("reason=unexpected_provider_failure")
         return 1
 
+    results = response.get("results", []) if isinstance(response, dict) else []
+    failures = (
+        response.get("validation_failures", [])
+        if isinstance(response, dict)
+        else ["response_not_object"]
+    )
     if (
-        not isinstance(response, list)
-        or len(response) != 1
-        or response[0].get("transaction_id") != "connection:test"
+        failures
+        or not isinstance(results, list)
+        or len(results) != 1
+        or results[0].get("transaction_id") != "connection:test"
     ):
         print("connection=failed")
         print("reason=response_contract_invalid")

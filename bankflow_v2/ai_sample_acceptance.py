@@ -39,6 +39,7 @@ def render_ai_sample_markdown(
     observation: Mapping[str, object],
     full_run: bool = False,
     expected_batch_count: int | None = None,
+    acceptance_scope_count: int | None = None,
 ) -> str:
     value = observation.get("value", {})
     if not isinstance(value, Mapping):
@@ -46,16 +47,26 @@ def render_ai_sample_markdown(
     candidates = value.get("ai_candidates", [])
     if not isinstance(candidates, list):
         candidates = []
+    provisional_candidates = value.get("provisional_ai_candidates", [])
+    if not isinstance(provisional_candidates, list):
+        provisional_candidates = []
+    displayed_candidates = candidates or provisional_candidates
     counts = Counter(
         str(candidate.get("classification", ""))
-        for candidate in candidates
+        for candidate in displayed_candidates
         if isinstance(candidate, Mapping)
     )
     strength_counts = Counter(
         str(candidate.get("evidence_strength", ""))
-        for candidate in candidates
+        for candidate in displayed_candidates
         if isinstance(candidate, Mapping)
     )
+    failure_summary = value.get("validation_failure_summary", {})
+    if not isinstance(failure_summary, Mapping):
+        failure_summary = {}
+    failure_counts = failure_summary.get("counts", {})
+    if not isinstance(failure_counts, Mapping):
+        failure_counts = {}
     transaction_by_id = {
         transaction.transaction_id: transaction
         for transaction in sampled_transactions
@@ -69,6 +80,11 @@ def render_ai_sample_markdown(
         f"- 提供方：{_cell(provider)}",
         f"- 模型：{_cell(model)}",
         f"- 可送入AI的唯一语义候选总数：{eligible_count}",
+        *(
+            [f"- 完整本地验收语义范围：{acceptance_scope_count}"]
+            if full_run and acceptance_scope_count is not None
+            else []
+        ),
         (
             f"- 参与结果展开的原交易：{len(sampled_transactions)}"
             if full_run
@@ -79,7 +95,8 @@ def render_ai_sample_markdown(
             if full_run and expected_batch_count is not None
             else []
         ),
-        f"- 有效模型结果：{len(candidates)}",
+        f"- 已采用模型结果：{len(candidates)}",
+        f"- 仅供失败诊断的合格单项：{len(provisional_candidates) if not candidates else 0}",
         f"- 运行状态：{'成功' if value.get('available') else '未采用'}",
         f"- 未采用原因：{_cell(value.get('reason')) or '无'}",
         f"- 失败诊断：{_cell(value.get('failure_detail')) or '无'}",
@@ -117,6 +134,14 @@ def render_ai_sample_markdown(
             f"- 中等候选：{strength_counts['medium']}",
             f"- 弱提示：{strength_counts['weak']}",
             "",
+            "## 校验失败汇总",
+            "",
+            f"- 失败总数：{int(failure_summary.get('total', 0) or 0)}",
+            *[
+                f"- {_cell(reason)}：{count}"
+                for reason, count in sorted(failure_counts.items())
+            ],
+            "",
             "## 逐笔结果",
             "",
             (
@@ -131,7 +156,7 @@ def render_ai_sample_markdown(
             ),
         ]
     )
-    for candidate in candidates:
+    for candidate in displayed_candidates:
         if not isinstance(candidate, Mapping):
             continue
         transaction = transaction_by_id.get(str(candidate.get("transaction_id", "")))
@@ -171,7 +196,8 @@ def render_ai_sample_markdown(
             ),
             "- AI结果仅为人工复核候选，不表示真实经营、欺诈、包装、准入或拒绝结论。",
             "- 输入不含身份证、电话、账号、本地路径或PDF页面；疑似个人交易对手名称不发送。",
-            "- 任一请求失败、超时、格式不合格、虚构字段或漏项时，本批模型结果整体不采用。",
+            "- 单项格式或证据校验失败会被逐项记录并继续后续语义；存在关键违规时整轮仍不采用。",
+            "- 网络、鉴权或无法继续调用的系统错误可以终止后续请求。",
         ]
     )
     return "\n".join(lines)

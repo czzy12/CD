@@ -1,0 +1,108 @@
+{
+  "fixture_version": "ai-business-semantics-v1",
+  "development": [
+    {
+      "id": "explicit_project_material",
+      "fields": {
+        "counterparty_name": "示例建设有限公司",
+        "remark": "环境治理项目材料费"
+      },
+      "expected_maximum_strength": "strong",
+      "expected_direct_allowed": true
+    },
+    {
+      "id": "specific_business_name_goods_payment",
+      "fields": {
+        "counterparty_name": "示例建材有限公司",
+        "remark": "货款"
+      },
+      "expected_maximum_strength": "medium",
+      "expected_direct_allowed": false
+    },
+    {
+      "id": "business_name_only",
+      "fields": {
+        "counterparty_name": "示例园林景观有限公司"
+      },
+      "expected_maximum_strength": "medium",
+      "expected_direct_allowed": false
+    },
+    {
+      "id": "opaque_code_only",
+      "fields": {
+        "remark": "M0EEHDNH"
+      },
+      "expected_maximum_strength": "none",
+      "expected_direct_allowed": false
+    },
+    {
+      "id": "generic_company_goods_payment",
+      "fields": {
+        "counterparty_name": "示例贸易有限公司",
+        "remark": "货款"
+      },
+      "expected_maximum_strength": "weak",
+      "expected_direct_allowed": false
+    },
+    {
+      "id": "generic_technical_consulting",
+      "fields": {
+        "purpose": "技术咨询费"
+      },
+      "expected_maximum_strength": "weak",
+      "expected_direct_allowed": false
+    },
+    {
+      "id": "life_dining",
+      "fields": {
+        "merchant_name": "示例餐厅"
+      },
+      "expected_maximum_strength": "none",
+      "expected_direct_allowed": false,
+      "expected_life_category": "dining"
+    },
+    {
+      "id": "mixed_life_and_business",
+      "fields": {
+        "merchant_name": "示例便利店",
+        "purpose": "环保工程款"
+      },
+      "expected_maximum_strength": "strong",
+      "expected_direct_allowed": true
+    },
+    {
+      "id": "order_number_with_goods_payment",
+      "fields": {
+        "remark": "订单号ABCD123456 货款"
+      },
+      "expected_maximum_strength": "weak",
+      "expected_direct_allowed": false
+    }
+  ],
+  "reserved_acceptance": [
+    {
+      "id": "reserved_mixed_company_and_reference",
+      "fields": {
+        "counterparty_name": "保留样例工程有限公司",
+        "remark": "参考号REF998877"
+      }
+    },
+    {
+      "id": "reserved_conflicting_fields",
+      "fields": {
+        "merchant_name": "保留样例医院",
+        "purpose": "设备采购"
+      }
+    },
+    {
+      "id": "reserved_product_field",
+      "fields": {
+        "product_description": "护栏配件"
+      }
+    }
+  ],
+  "rules": {
+    "development_may_be_used_for_local_rule_changes": true,
+    "reserved_acceptance_must_not_be_used_for_prompt_tuning": true
+  }
+}

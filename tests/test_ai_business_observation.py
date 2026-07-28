@@ -165,7 +165,7 @@ class AiBusinessObservationTests(unittest.TestCase):
         self.assertEqual(observation["value"]["reason"], "ai_response_invalid")
         self.assertEqual(
             observation["value"]["failure_detail"],
-            "response_coverage_mismatch",
+            "coverage:response_item_missing",
         )
 
     def test_reports_provider_unavailable_after_authorization(self):
@@ -583,7 +583,7 @@ class AiBusinessObservationTests(unittest.TestCase):
 
         self.assertTrue(observation["value"]["available"])
         self.assertEqual(captured["prompt_version"], AI_PROMPT_VERSION)
-        self.assertEqual(AI_PROMPT_VERSION, "business-relevance-mvp-v10")
+        self.assertEqual(AI_PROMPT_VERSION, "business-relevance-mvp-v11")
         self.assertTrue(
             any(
                 "货款不得覆盖或削弱" in instruction
@@ -605,6 +605,67 @@ class AiBusinessObservationTests(unittest.TestCase):
         self.assertEqual(
             observation["value"]["ai_candidates"][0]["evidence_strength"],
             "medium",
+        )
+
+    def test_aggregates_multiple_item_failures_without_adopting_partial_round(self):
+        rows = [
+            business_tx("tx:invalid-class", purpose="五金采购"),
+            business_tx(
+                "tx:name-only",
+                counterparty_name="示例建材有限公司",
+            ),
+            business_tx("tx:valid", purpose="环境治理项目材料费"),
+        ]
+
+        observation = build_ai_business_observation(
+            rows,
+            case_context(),
+            ai_config={
+                "enabled": True,
+                "data_authorized": True,
+                "retention_policy_confirmed": True,
+                "allow_business_names": True,
+                "provider": "test-provider",
+                "model": "test-model",
+                "api_key_available": True,
+            },
+            evaluator=lambda payload: [
+                {
+                    "transaction_id": "tx:invalid-class",
+                    "classification": "相关",
+                    "evidence_strength": "medium",
+                    "reason": "非法分类",
+                    "used_fields": ["purpose"],
+                },
+                {
+                    "transaction_id": "tx:name-only",
+                    "classification": "directly_related",
+                    "evidence_strength": "strong",
+                    "reason": "只使用企业名称",
+                    "used_fields": ["counterparty_name"],
+                },
+                {
+                    "transaction_id": "tx:valid",
+                    "classification": "directly_related",
+                    "evidence_strength": "strong",
+                    "reason": "备注明确为环境治理项目材料费",
+                    "used_fields": ["purpose"],
+                },
+            ],
+        )
+
+        value = observation["value"]
+        self.assertFalse(value["available"])
+        self.assertEqual(value["reason"], "ai_response_invalid")
+        self.assertEqual(value["ai_candidates"], [])
+        self.assertEqual(len(value["provisional_ai_candidates"]), 1)
+        self.assertEqual(value["validation_failure_summary"]["total"], 2)
+        self.assertEqual(
+            value["validation_failure_summary"]["counts"],
+            {
+                "classification_invalid": 1,
+                "maximum_allowed_strength_exceeded": 1,
+            },
         )
 
 

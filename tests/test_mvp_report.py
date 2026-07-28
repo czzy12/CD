@@ -82,7 +82,44 @@ class MvpReportTests(unittest.TestCase):
         self.assertIn("# 流水核查 MVP 验收报告：测试客户", markdown)
         self.assertIn("申报与流水对照", markdown)
         self.assertIn("tx:purchase", markdown)
+        self.assertIn("counterparty_name=重庆问界汽车销售有限公司", markdown)
+        self.assertIn("expense", markdown)
         self.assertIn("不输出欺诈、包装、资金来源、实际控制、通过或拒绝结论", markdown)
+
+    def test_markdown_distinguishes_no_keyword_hit_from_unavailable_fields(self):
+        case = context()
+        reliable_unrelated = transaction(
+            "tx:unrelated",
+            counterparty_name="普通百货商店",
+        )
+        no_hit_result = build_bankflow_result(
+            [reliable_unrelated],
+            case_context={
+                "case_id": "无动态购车词",
+                "search_context": {},
+            },
+        )
+        no_hit_markdown = render_mvp_markdown(
+            no_hit_result,
+            {"case_id": "无动态购车词"},
+        )
+
+        unavailable = transaction(
+            "tx:unavailable",
+            counterparty_name="普通百货商店",
+        )
+        unavailable.field_confidence.clear()
+        unavailable_result = build_bankflow_result(
+            [unavailable],
+            case_context={"case_id": "字段不可用", "search_context": {}},
+        )
+        unavailable_markdown = render_mvp_markdown(
+            unavailable_result,
+            {"case_id": "字段不可用"},
+        )
+
+        self.assertIn("可靠标准文字字段内未发现受控关键词", no_hit_markdown)
+        self.assertIn("没有可用于关键词搜索的可靠标准文字字段", unavailable_markdown)
 
 
 if __name__ == "__main__":

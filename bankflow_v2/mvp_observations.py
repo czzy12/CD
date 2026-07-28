@@ -11,7 +11,7 @@ from .models import Transaction
 from .summary import sort_transactions
 
 
-CONTROLLED_VOCABULARY_VERSION = "mvp-2026-07-27-v1"
+CONTROLLED_VOCABULARY_VERSION = "mvp-2026-07-28-v2"
 
 SEARCH_FIELDS = (
     "counterparty_name",
@@ -35,7 +35,11 @@ KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
         "AITO",
         "下定",
         "定金",
+        "订金",
         "试驾",
+        "购车款",
+        "首付款",
+        "补款",
     ),
     "vehicle_and_location_trace": (
         "停车",
@@ -237,11 +241,20 @@ def _dynamic_terms(
 
 
 def _context(transaction: Transaction, reliable_fields: Mapping[str, str]) -> dict[str, object]:
+    direction = (
+        "income"
+        if transaction.income > Decimal("0.00")
+        else "expense"
+        if transaction.expense > Decimal("0.00")
+        else "neutral"
+    )
     return {
         "transaction_time": transaction.transaction_time.isoformat(),
+        "direction": direction,
         "income": _decimal(transaction.income),
         "expense": _decimal(transaction.expense),
         "balance": _decimal(transaction.balance),
+        "bank": transaction.bank,
         "source_file_id": transaction.source_file_id,
         "source_file": transaction.source_file,
         "reliable_standard_fields": dict(reliable_fields),
@@ -461,9 +474,13 @@ def _purchase_funding_observation(
                 {
                     "transaction_id": income.transaction_id,
                     "source_file_id": income.source_file_id,
+                    "source_file": income.source_file,
                     "evidence_locator": income.evidence_locator,
                     "transaction_time": income.transaction_time.isoformat(),
                     "income": _decimal(income.income),
+                    "same_source_as_purchase": (
+                        income.source_file_id == purchase.source_file_id
+                    ),
                     "exact_amount": exact_amount,
                     "near_amount": near_amount,
                     "large_income": large_income,
@@ -481,6 +498,8 @@ def _purchase_funding_observation(
                 "transaction_time": purchase.transaction_time.isoformat(),
                 "expense": _decimal(purchase.expense),
                 "matched_terms": hit["matched_terms"],
+                "matched_fields": hit["matched_fields"],
+                "transaction_context": hit["transaction_context"],
                 "prior_income_candidates": prior_income_rows,
             }
         )

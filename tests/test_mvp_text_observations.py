@@ -182,13 +182,54 @@ class MvpTextObservationTests(unittest.TestCase):
 
         self.assertEqual(candidate["purchase_transaction_id"], "tx:purchase")
         self.assertEqual(
+            candidate["transaction_context"]["direction"],
+            "expense",
+        )
+        self.assertIn(
+            "counterparty_name",
+            candidate["matched_fields"],
+        )
+        self.assertEqual(
             [item["transaction_id"] for item in candidate["prior_income_candidates"]],
             ["tx:large-income", "tx:near-income"],
+        )
+        self.assertFalse(
+            candidate["prior_income_candidates"][0][
+                "same_source_as_purchase"
+            ]
         )
         near = candidate["prior_income_candidates"][1]
         self.assertTrue(near["near_amount"])
         self.assertEqual(near["within_windows_days"], [1, 3, 7])
         self.assertFalse(funding["parameters"]["fund_source_attribution"])
+
+    def test_purchase_vocabulary_accepts_explicit_order_payment_synonyms(self):
+        for index, term in enumerate(("订金", "购车款", "首付款", "补款")):
+            with self.subTest(term=term):
+                purchase = tx(
+                    f"tx:purchase:{index}",
+                    datetime(2026, 1, 2),
+                    expense="1000",
+                    purpose=term,
+                )
+
+                observations = build_deterministic_text_observations(
+                    [purchase],
+                    None,
+                )
+                keyword = observations[0]
+                funding = observations[2]
+
+                self.assertIn(
+                    term,
+                    keyword["value"]["hits"][0]["matched_terms"],
+                )
+                self.assertEqual(
+                    funding["value"]["purchase_candidates"][0][
+                        "purchase_transaction_id"
+                    ],
+                    f"tx:purchase:{index}",
+                )
 
     def test_does_not_match_single_character_sensitive_or_vehicle_terms(self):
         unrelated = tx(

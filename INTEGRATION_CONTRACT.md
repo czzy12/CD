@@ -206,9 +206,9 @@ v1B 固定包含：
 
 schema 1.8 在 `result.observations[]` 新增三项流水核查 MVP 确定性观察：
 
-- `controlled_keyword_candidates`：只搜索非空且 `field_confidence == 1.0` 的现有标准文字字段；输出命中词组、命中字段、完整交易上下文、交易 ID 和证据定位。基础词表覆盖下定购车、用车轨迹、经营收入和敏感交易；单位、行业、地点、车型及经销商动态词只来自显式 `case_context.search_context`。不对“车、电、资、法”等单字做无条件匹配。
+- `controlled_keyword_candidates`：只搜索非空且 `field_confidence == 1.0` 的现有标准文字字段；输出命中词组、命中字段、方向、完整交易上下文、交易 ID 和证据定位。下定购车词表覆盖品牌、下定、定金/订金、试驾、购车款、首付款和补款；其他基础组覆盖用车轨迹、经营收入和敏感交易。单位、行业、地点、车型及经销商动态词只来自显式 `case_context.search_context`。不对“车、电、资、法”等单字做无条件匹配。
 - `industry_text_search_coverage`：按 `source_file_id` 输出有效收支交易数、可识别对手、明确摘要/用途、商户/商品字段和去重行业搜索覆盖。空值、掩码、占位及“转账、消费、商户消费、扫码付款、微信支付、电子汇入、其他”等通用值不算有信息量。该覆盖率不是行业相关交易占比或解析准确率。
-- `purchase_prepayment_funding_candidates`：对下定/定金/品牌或经销商支出候选，并列此前 1/3/7 日收入；同额或收入/支出比例在 90% 至 110% 内视为近似金额，任意 `>=30000` 元收入也展示。允许跨案件来源作时间并列，但 `fund_source_attribution` 固定为 `false`。
+- `purchase_prepayment_funding_candidates`：对下定/定金/订金/购车款/首付款/补款、品牌或经销商支出候选，并列此前 1/3/7 日收入；同额或收入/支出比例在 90% 至 110% 内视为近似金额，任意 `>=30000` 元收入也展示。每条此前收入明确标记与购车候选是否同一来源；跨案件来源只作时间并列，`fund_source_attribution` 固定为 `false`。
 
 `build_bankflow_result(..., case_context=...)` 的案件上下文仅供上述动态搜索使用；业务观察仍直接读取原 `Transaction` 列表并与 `original_transactions` 使用同一交易 ID，不改写交易，不建立平行交易模型。关键词无命中、搜索字段不可用和无下定支出候选必须分别返回明确原因；任何命中都不得输出异常、欺诈、资金来源或准入结论。
 

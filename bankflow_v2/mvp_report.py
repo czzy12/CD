@@ -429,21 +429,56 @@ def render_mvp_markdown(
 
     keyword_hits = keyword.get("value", {}).get("hits", [])
     purchase_candidates = funding.get("value", {}).get("purchase_candidates", [])
+    keyword_reason = {
+        "no_hits_in_reliable_fields": "可靠标准文字字段内未发现受控关键词",
+        "keyword_search_fields_unavailable": "没有可用于关键词搜索的可靠标准文字字段",
+    }.get(
+        keyword.get("value", {}).get("reason", ""),
+        keyword.get("value", {}).get("reason", ""),
+    )
+    purchase_reason = {
+        "purchase_expense_candidate_unavailable": "未发现下定或购车支出候选",
+    }.get(
+        funding.get("value", {}).get("reason", ""),
+        funding.get("value", {}).get("reason", ""),
+    )
     lines.extend(
         [
             "",
             "## 3. 关键词与下定候选",
             "",
-            f"- 关键词命中：{len(keyword_hits)} 笔；仅为候选。",
-            f"- 下定/购车支出候选：{len(purchase_candidates)} 笔。",
+            (
+                f"- 关键词命中：{len(keyword_hits)} 笔；仅为候选。"
+                if keyword_hits
+                else f"- 关键词命中：0 笔；{keyword_reason}。"
+            ),
+            (
+                f"- 下定/购车支出候选：{len(purchase_candidates)} 笔。"
+                if purchase_candidates
+                else f"- 下定/购车支出候选：0 笔；{purchase_reason}。"
+            ),
             "",
-            "| 下定候选时间 | 支出 | 命中词 | 此前收入候选 | 证据 |",
-            "| --- | ---: | --- | --- | --- |",
+            "| 下定候选时间 | 来源 | 方向 | 支出 | 命中字段及原文 | 命中词 | 此前收入候选 | 证据 |",
+            "| --- | --- | --- | ---: | --- | --- | --- | --- |",
         ]
     )
     for candidate in purchase_candidates:
+        transaction_context = candidate.get("transaction_context", {})
+        reliable_fields = transaction_context.get(
+            "reliable_standard_fields",
+            {},
+        )
+        field_text = "；".join(
+            f"{field_name}={field_value}"
+            for field_name, field_value in reliable_fields.items()
+        )
         prior = "；".join(
             f"{income.get('transaction_time')} 收入{income.get('income')}元 窗口{income.get('within_windows_days')}日"
+            + (
+                " 同来源"
+                if income.get("same_source_as_purchase")
+                else " 跨来源"
+            )
             + (" 同额" if income.get("exact_amount") else "")
             + (" 近似" if income.get("near_amount") and not income.get("exact_amount") else "")
             + (" 大额" if income.get("large_income") else "")
@@ -454,7 +489,14 @@ def render_mvp_markdown(
             + " | ".join(
                 [
                     _md(candidate.get("transaction_time")),
+                    _md(
+                        Path(
+                            str(transaction_context.get("source_file", ""))
+                        ).name
+                    ),
+                    _md(transaction_context.get("direction")),
                     _md(candidate.get("expense")),
+                    _md(field_text),
                     _md("、".join(candidate.get("matched_terms", []))),
                     _md(prior),
                     _md(

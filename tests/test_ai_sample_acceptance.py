@@ -80,6 +80,63 @@ class AiSampleAcceptanceTests(unittest.TestCase):
         self.assertIn("page=1;row=1", rendered)
         self.assertIn("不表示真实经营", rendered)
 
+    def test_renders_full_run_counts_and_transaction_ids(self):
+        row = transaction(0)
+        observation = {
+            "value": {
+                "available": True,
+                "reason": "",
+                "ai_candidates": [{
+                    "transaction_id": "tx:0",
+                    "classification": "possibly_related",
+                    "evidence_strength": "medium",
+                    "reason": "用途可能与行业相关，需人工复核",
+                    "used_fields": ["purpose"],
+                }],
+            }
+        }
+
+        rendered = render_ai_sample_markdown(
+            case_name="示例客户",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            eligible_count=337,
+            sampled_transactions=[row],
+            observation=observation,
+            full_run=True,
+            expected_batch_count=7,
+        )
+
+        self.assertIn("AI经营关联完整语义验收", rendered)
+        self.assertIn("参与结果展开的原交易：1", rendered)
+        self.assertIn("预计模型批次：7", rendered)
+        self.assertIn("| tx:0 |", rendered)
+        self.assertIn("覆盖全部可送入AI的唯一语义", rendered)
+
+    def test_renders_safe_failure_diagnostic(self):
+        rendered = render_ai_sample_markdown(
+            case_name="示例客户",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            eligible_count=337,
+            sampled_transactions=[transaction(0)],
+            observation={
+                "value": {
+                    "available": False,
+                    "reason": "ai_response_invalid",
+                    "failure_detail": "batch_2:item_1:classification_invalid",
+                    "ai_candidates": [],
+                }
+            },
+            full_run=True,
+            expected_batch_count=7,
+        )
+
+        self.assertIn(
+            "失败诊断：batch_2:item_1:classification_invalid",
+            rendered,
+        )
+
     def test_profiles_candidate_fields_without_provider_call(self):
         informative = transaction(0)
         generic = transaction(1)

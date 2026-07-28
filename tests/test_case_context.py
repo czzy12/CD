@@ -62,7 +62,8 @@ class CaseContextTests(unittest.TestCase):
                     "购买车型：\n问界M9 增程Ultra 六座\n"
                     "工作单位全称：\n河南省润恒环保工程有限公司\n"
                     "家庭住址：\n郑州市二七区秀水湾\n"
-                    "工作介绍及收入情况（是否和流水匹配）：\n客户经理描述的建筑材料批发投资\n"
+                    "工作介绍及收入情况（是否和流水匹配）：\n"
+                    "客户主要是做建筑材料批发投资的，还有其他生意，信用卡用于日常消费\n"
                 ),
             }],
         )
@@ -80,6 +81,36 @@ class CaseContextTests(unittest.TestCase):
             context["fields"]["manager_work_income_description"][0]["verification_status"],
             "unverified",
         )
+        self.assertEqual(
+            context["search_context"]["declared_industries"],
+            ["建筑材料批发投资"],
+        )
+        self.assertEqual(
+            context["fields"]["declared_industry"][0]["source_role"],
+            SOURCE_ROLE_CUSTOMER_MANAGER_DESCRIPTION,
+        )
+        self.assertEqual(
+            context["fields"]["declared_industry"][0]["verification_status"],
+            "unverified",
+        )
+        self.assertNotIn("其他生意", context["search_context"]["declared_industries"])
+        self.assertNotIn("信用卡", context["search_context"]["declared_industries"])
+
+    def test_does_not_turn_non_work_manager_notes_into_industry_context(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "客户资料.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：示例\n"
+                    "工作介绍及收入情况（是否和流水匹配）：\n"
+                    "信用卡消费是日常消费，微信体现居住地\n"
+                ),
+            }],
+        )
+
+        self.assertEqual(context["search_context"]["declared_industries"], [])
 
     def test_keeps_risk_report_as_reported_narrative_not_confirmed_fields(self):
         context = build_case_context(

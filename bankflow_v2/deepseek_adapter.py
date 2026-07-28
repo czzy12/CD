@@ -11,6 +11,12 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from .ai_business_observation import (
+    AI_DIRECT_EVIDENCE_FIELDS,
+    ai_semantic_signature,
+    validate_ai_response,
+)
+
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-flash"
@@ -22,6 +28,17 @@ Transport = Callable[[str, bytes, Mapping[str, str], float], bytes]
 
 class DeepSeekProviderError(RuntimeError):
     """Raised when a provider response cannot be safely adopted."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failure_reason: str = "ai_provider_failed",
+        safe_diagnostic: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.failure_reason = failure_reason
+        self.safe_diagnostic = safe_diagnostic
 
 
 @dataclass(frozen=True)
@@ -134,16 +151,27 @@ def _default_transport(
         raise DeepSeekProviderError("DeepSeek request failed") from exc
 
 
-def _response_results(raw_response: bytes) -> list[dict[str, object]]:
+def _response_results(
+    raw_response: bytes,
+    batch_number: int,
+) -> list[dict[str, object]]:
     try:
         envelope = json.loads(raw_response.decode("utf-8"))
         content = envelope["choices"][0]["message"]["content"]
         result_object = json.loads(content)
         results = result_object["results"]
     except (KeyError, IndexError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise DeepSeekProviderError("DeepSeek returned an invalid JSON response") from exc
+        raise DeepSeekProviderError(
+            "DeepSeek returned an invalid JSON response",
+            failure_reason="ai_response_invalid",
+            safe_diagnostic=f"batch_{batch_number}:provider_json_invalid",
+        ) from exc
     if not isinstance(results, list):
-        raise DeepSeekProviderError("DeepSeek results must be a JSON list")
+        raise DeepSeekProviderError(
+            "DeepSeek results must be a JSON list",
+            failure_reason="ai_response_invalid",
+            safe_diagnostic=f"batch_{batch_number}:results_not_list",
+        )
     return results
 
 
@@ -152,13 +180,30 @@ def _request_body(
     payload: Mapping[str, object],
     transactions: list[dict[str, object]],
 ) -> bytes:
+    constrained_transactions = []
+    for transaction in transactions:
+        fields = transaction.get("fields", {})
+        direct_fields = (
+            sorted(set(fields).intersection(AI_DIRECT_EVIDENCE_FIELDS))
+            if isinstance(fields, Mapping)
+            else []
+        )
+        constrained_transactions.append(
+            {
+                **transaction,
+                "classification_constraints": {
+                    "directly_related_allowed": bool(direct_fields),
+                    "directly_related_evidence_fields": direct_fields,
+                },
+            }
+        )
     user_payload = {
         "prompt_version": payload.get("prompt_version"),
         "business_context": payload.get("business_context"),
         "allowed_classifications": payload.get("allowed_classifications"),
         "allowed_evidence_strengths": payload.get("allowed_evidence_strengths"),
         "instructions": payload.get("instructions"),
-        "transactions": transactions,
+        "transactions": constrained_transactions,
         "required_output": {
             "type": "object",
             "required_key": "results",
@@ -186,7 +231,14 @@ def _request_body(
                     "你是流水文字字段的经营相关性分类助手。"
                     "只依据输入字段分类，不推断欺诈、包装、准入、资金来源或真实经营。"
                     "必须联合查看用途、商品、商户类别、企业或经营部门店名称中的行业语义。"
-                    "泛化的实业、贸易、科技、工业或工程公司类型只能作为弱提示。"
+                    "具体产品或服务优先作为中等候选；货款不得把具体产品或服务降为弱提示。"
+                    "只有缺少具体产品、服务、项目或用途时，泛化的实业、贸易、科技、工业或工程公司类型及货款才只能作为弱提示。"
+                    "每笔必须遵守classification_constraints；directly_related_allowed为false时绝对禁止判直接相关。"
+                    "企业或商户名称不能单独支持直接相关。"
+                    "所有正向分类必须与business_context中的申报行业或工作单位明确体现的行业语义相关。"
+                    "对建筑材料或环保工程上下文，建材、护栏、栏杆、围栏、塑木、园林景观设计是具体相关产品或服务，货款不得将其中等候选降为弱提示。"
+                    "无具体课题、产品、项目或行业对象的泛化咨询费、材料费或采购款不得仅凭可能性判中等候选。"
+                    "餐饮、便利店、话费、银行服务、医疗、打车等无关生活服务不得仅因具体而判正向。"
                     "分类和理由必须一致。"
                     "必须只输出一个符合用户给定结构的 JSON 对象，不得输出 Markdown。"
                 ),
@@ -223,7 +275,12 @@ class DeepSeekEvaluator:
             fields = transaction.get("fields")
             if not isinstance(fields, dict):
                 raise DeepSeekProviderError("AI transaction fields must be a JSON object")
-            signature = json.dumps(fields, ensure_ascii=False, sort_keys=True)
+            signature = json.dumps(
+                ai_semantic_signature(
+                    {str(name): str(value) for name, value in fields.items()}
+                ),
+                ensure_ascii=False,
+            )
             grouped.setdefault(signature, []).append(transaction)
         representatives = [members[0] for members in grouped.values()]
         member_ids = {
@@ -242,13 +299,22 @@ class DeepSeekEvaluator:
         merged: list[dict[str, object]] = []
         for offset in range(0, len(representatives), self._settings.batch_size):
             batch = representatives[offset : offset + self._settings.batch_size]
+            batch_number = offset // self._settings.batch_size + 1
             raw_response = self._transport(
                 endpoint,
                 _request_body(self._settings, payload, batch),
                 headers,
                 self._settings.timeout_seconds,
             )
-            for result in _response_results(raw_response):
+            results = _response_results(raw_response, batch_number)
+            validated, failure_detail = validate_ai_response(results, batch)
+            if validated is None:
+                raise DeepSeekProviderError(
+                    "DeepSeek batch response failed validation",
+                    failure_reason="ai_response_invalid",
+                    safe_diagnostic=f"batch_{batch_number}:{failure_detail}",
+                )
+            for result in validated:
                 representative_id = str(result.get("transaction_id", ""))
                 ids = member_ids.get(representative_id)
                 if not ids:

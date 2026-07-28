@@ -37,6 +37,8 @@ def render_ai_sample_markdown(
     eligible_count: int,
     sampled_transactions: list[Transaction],
     observation: Mapping[str, object],
+    full_run: bool = False,
+    expected_batch_count: int | None = None,
 ) -> str:
     value = observation.get("value", {})
     if not isinstance(value, Mapping):
@@ -60,17 +62,27 @@ def render_ai_sample_markdown(
     }
 
     lines = [
-        f"# {case_name} AI经营关联小批量验收",
+        f"# {case_name} AI经营关联{'完整语义' if full_run else '小批量'}验收",
         "",
         "## 运行摘要",
         "",
         f"- 提供方：{_cell(provider)}",
         f"- 模型：{_cell(model)}",
         f"- 可送入AI的唯一语义候选总数：{eligible_count}",
-        f"- 本次均匀抽样：{len(sampled_transactions)}",
+        (
+            f"- 参与结果展开的原交易：{len(sampled_transactions)}"
+            if full_run
+            else f"- 本次均匀抽样：{len(sampled_transactions)}"
+        ),
+        *(
+            [f"- 预计模型批次：{expected_batch_count}"]
+            if full_run and expected_batch_count is not None
+            else []
+        ),
         f"- 有效模型结果：{len(candidates)}",
         f"- 运行状态：{'成功' if value.get('available') else '未采用'}",
         f"- 未采用原因：{_cell(value.get('reason')) or '无'}",
+        f"- 失败诊断：{_cell(value.get('failure_detail')) or '无'}",
         "",
         "## 抽样来源",
         "",
@@ -107,8 +119,16 @@ def render_ai_sample_markdown(
             "",
             "## 逐笔结果",
             "",
-            "| 日期 | 方向 | 金额 | 使用字段及原文 | AI分类 | 证据强度 | 理由 | 证据定位 |",
-            "| --- | --- | ---: | --- | --- | --- | --- | --- |",
+            (
+                "| 交易ID | 日期 | 方向 | 金额 | 使用字段及原文 | AI分类 | 证据强度 | 理由 | 证据定位 |"
+                if full_run
+                else "| 日期 | 方向 | 金额 | 使用字段及原文 | AI分类 | 证据强度 | 理由 | 证据定位 |"
+            ),
+            (
+                "| --- | --- | --- | ---: | --- | --- | --- | --- | --- |"
+                if full_run
+                else "| --- | --- | ---: | --- | --- | --- | --- | --- |"
+            ),
         ]
     )
     for candidate in candidates:
@@ -126,28 +146,29 @@ def render_ai_sample_markdown(
             for field_name in used_fields
         )
         classification = str(candidate.get("classification", ""))
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    transaction.transaction_time.strftime("%Y-%m-%d"),
-                    direction,
-                    f"{amount:.2f}",
-                    field_text,
-                    CLASSIFICATION_LABELS.get(classification, classification),
-                    _cell(candidate.get("evidence_strength")),
-                    _cell(candidate.get("reason")),
-                    _cell(transaction.evidence_locator),
-                ]
-            )
-            + " |"
-        )
+        cells = [
+            transaction.transaction_time.strftime("%Y-%m-%d"),
+            direction,
+            f"{amount:.2f}",
+            field_text,
+            CLASSIFICATION_LABELS.get(classification, classification),
+            _cell(candidate.get("evidence_strength")),
+            _cell(candidate.get("reason")),
+            _cell(transaction.evidence_locator),
+        ]
+        if full_run:
+            cells.insert(0, _cell(candidate.get("transaction_id")))
+        lines.append("| " + " | ".join(cells) + " |")
     lines.extend(
         [
             "",
             "## 使用边界",
             "",
-            "- 本次只抽取一个小批次，不代表完整流水的行业关联分布。",
+            (
+                "- 本次覆盖全部可送入AI的唯一语义，并将每个代表判断展开回具有相同语义的原交易；仍只表示人工复核候选。"
+                if full_run
+                else "- 本次只抽取一个小批次，不代表完整流水的行业关联分布。"
+            ),
             "- AI结果仅为人工复核候选，不表示真实经营、欺诈、包装、准入或拒绝结论。",
             "- 输入不含身份证、电话、账号、本地路径或PDF页面；疑似个人交易对手名称不发送。",
             "- 任一请求失败、超时、格式不合格、虚构字段或漏项时，本批模型结果整体不采用。",

@@ -20,6 +20,10 @@ SOURCE_ROLES = {
 
 _ANALYSIS_BOUNDARY_RE = re.compile(r"^\s*(?:本人分析|个人分析)\s*[：:]?\s*$")
 _INLINE_FIELD_RE = re.compile(r"^\s*([^：:]{1,40})\s*[：:]\s*(.*?)\s*$")
+_EXPLICIT_WORK_CONTENT_RE = re.compile(
+    r"(?:客户)?\s*(?:主要)?\s*(?:是做|从事|经营)\s*"
+    r"([^，,。；;]+?)(?:的(?=[，,。；;]|$)|[，,。；;]|$)"
+)
 
 _FIELD_BY_LABEL = {
     "姓名": "customer_name",
@@ -137,6 +141,18 @@ def _normalized_field_value(field_name: str, value: str) -> str:
     return normalized
 
 
+def _explicit_work_content_values(value: str) -> list[str]:
+    values: list[str] = []
+    for match in _EXPLICIT_WORK_CONTENT_RE.finditer(str(value or "")):
+        work_content = match.group(1).strip()
+        if (
+            2 <= len(work_content) <= 40
+            and work_content not in {"工作", "经营", "生意", "其他生意"}
+        ):
+            values.append(work_content)
+    return list(dict.fromkeys(values))
+
+
 def build_case_context(
     case_id: str,
     sources: Iterable[Mapping[str, object]],
@@ -181,6 +197,16 @@ def build_case_context(
             fields.setdefault(field_name, []).append(
                 _field_record(value, field_role, source_ref, excerpt)
             )
+            if field_name == "manager_work_income_description":
+                for work_content in _explicit_work_content_values(value):
+                    fields.setdefault("declared_industry", []).append(
+                        _field_record(
+                            work_content,
+                            field_role,
+                            source_ref,
+                            excerpt,
+                        )
+                    )
 
     search_context = {
         "customer_names": _field_values(fields, "customer_name"),

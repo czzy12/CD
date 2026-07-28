@@ -12,7 +12,7 @@ from .mvp_observations import is_informative_text
 from .summary import sort_transactions
 
 
-AI_PROMPT_VERSION = "business-relevance-mvp-v5"
+AI_PROMPT_VERSION = "business-relevance-mvp-v10"
 AI_CLASSIFICATIONS = {
     "directly_related",
     "possibly_related",
@@ -71,6 +71,7 @@ _GENERIC_SUMMARY_RE = re.compile(
     r"^(?:跨行)?(?:汇款|转账|网转|ATM取款|微信零钱提现|利息|结息)$",
     re.IGNORECASE,
 )
+_OPAQUE_AI_REMARK_RE = re.compile(r"[a-z0-9._/-]+", re.IGNORECASE)
 
 
 def _values(case_context: Mapping[str, object] | None, field_name: str) -> list[str]:
@@ -173,6 +174,8 @@ def _ai_semantic_evidence_fields(fields: Mapping[str, str]) -> list[str]:
         normalized = re.sub(r"[\s\d]+", "", value).strip("()（）[]【】")
         if field_name == "summary" and _GENERIC_SUMMARY_RE.fullmatch(normalized):
             continue
+        if field_name == "remark" and _OPAQUE_AI_REMARK_RE.fullmatch(normalized):
+            continue
         if (
             field_name in {"counterparty_name", "merchant_name"}
             and any(marker in normalized for marker in _FINANCIAL_INFRASTRUCTURE_MARKERS)
@@ -182,11 +185,7 @@ def _ai_semantic_evidence_fields(fields: Mapping[str, str]) -> list[str]:
     return evidence_fields
 
 
-def _has_ai_semantic_evidence(fields: Mapping[str, str]) -> bool:
-    return bool(_ai_semantic_evidence_fields(fields))
-
-
-def _ai_semantic_signature(fields: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
+def ai_semantic_signature(fields: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
     evidence_fields = _ai_semantic_evidence_fields(fields)
     return tuple(
         sorted(
@@ -212,7 +211,13 @@ def _payload_records(
             _reliable_fields(transaction),
             allow_business_names,
         )
-        if not fields or not _has_ai_semantic_evidence(fields):
+        evidence_fields = set(_ai_semantic_evidence_fields(fields))
+        fields = {
+            field_name: value
+            for field_name, value in fields.items()
+            if field_name in evidence_fields
+        }
+        if not fields:
             continue
         records.append(
             {
@@ -262,7 +267,7 @@ def build_ai_input_profile(
         evidence_fields = _ai_semantic_evidence_fields(
             {str(name): str(value) for name, value in fields.items()}
         )
-        signature = _ai_semantic_signature(
+        signature = ai_semantic_signature(
             {str(name): str(value) for name, value in fields.items()}
         )
         total_signatures.add(signature)
@@ -368,7 +373,7 @@ def select_ai_input_sample(
         fields = record.get("fields")
         if transaction is None or not isinstance(fields, Mapping):
             continue
-        signature = _ai_semantic_signature(
+        signature = ai_semantic_signature(
             {str(name): str(value) for name, value in fields.items()}
         )
         if unique_semantic_signatures and signature in seen_signatures:
@@ -420,18 +425,19 @@ def select_ai_input_sample(
     return [eligible[index] for index in indexes], total
 
 
-def _validate_response(
+def validate_ai_response(
     response: object,
     records: list[dict[str, object]],
-) -> list[dict[str, object]] | None:
+) -> tuple[list[dict[str, object]] | None, str]:
     if not isinstance(response, list):
-        return None
+        return None, "response_not_list"
     by_id = {str(record["transaction_id"]): record for record in records}
     validated: list[dict[str, object]] = []
     seen: set[str] = set()
-    for item in response:
+    for item_number, item in enumerate(response, start=1):
+        location = f"item_{item_number}"
         if not isinstance(item, Mapping):
-            return None
+            return None, f"{location}:item_not_object"
         transaction_id = str(item.get("transaction_id", ""))
         classification = str(item.get("classification", ""))
         reason = str(item.get("reason", "")).strip()
@@ -446,15 +452,18 @@ def _validate_response(
         evidence_strength = str(
             item.get("evidence_strength", default_strength)
         )
-        if (
-            transaction_id not in by_id
-            or transaction_id in seen
-            or classification not in AI_CLASSIFICATIONS
-            or evidence_strength not in AI_EVIDENCE_STRENGTHS
-            or not reason
-            or not isinstance(used_fields, list)
-        ):
-            return None
+        if transaction_id not in by_id:
+            return None, f"{location}:transaction_id_unknown"
+        if transaction_id in seen:
+            return None, f"{location}:transaction_id_duplicate"
+        if classification not in AI_CLASSIFICATIONS:
+            return None, f"{location}:classification_invalid"
+        if evidence_strength not in AI_EVIDENCE_STRENGTHS:
+            return None, f"{location}:evidence_strength_invalid"
+        if not reason:
+            return None, f"{location}:reason_missing"
+        if not isinstance(used_fields, list):
+            return None, f"{location}:used_fields_not_list"
         if (
             (classification == "directly_related" and evidence_strength != "strong")
             or (
@@ -466,21 +475,23 @@ def _validate_response(
                 and evidence_strength != "none"
             )
         ):
-            return None
+            return None, f"{location}:classification_strength_mismatch"
         allowed_fields = set(by_id[transaction_id]["fields"])
         normalized_fields = [str(field_name) for field_name in used_fields]
-        if not normalized_fields or not set(normalized_fields).issubset(allowed_fields):
-            return None
+        if not normalized_fields:
+            return None, f"{location}:used_fields_empty"
+        if not set(normalized_fields).issubset(allowed_fields):
+            return None, f"{location}:used_fields_not_allowed"
         if (
             classification in {"directly_related", "possibly_related"}
             and not set(normalized_fields).intersection(AI_SEMANTIC_EVIDENCE_FIELDS)
         ):
-            return None
+            return None, f"{location}:semantic_evidence_field_missing"
         if (
             classification == "directly_related"
             and not set(normalized_fields).intersection(AI_DIRECT_EVIDENCE_FIELDS)
         ):
-            return None
+            return None, f"{location}:direct_evidence_field_missing"
         seen.add(transaction_id)
         validated.append(
             {
@@ -492,7 +503,9 @@ def _validate_response(
                 "used_fields": normalized_fields,
             }
         )
-    return validated if seen == set(by_id) else None
+    if seen != set(by_id):
+        return None, "response_coverage_mismatch"
+    return validated, ""
 
 
 def build_ai_business_observation(
@@ -514,6 +527,7 @@ def build_ai_business_observation(
         bool(config.get("allow_business_names")),
     )
     reason = ""
+    failure_detail = ""
     ai_candidates: list[dict[str, object]] = []
 
     if not anchors:
@@ -551,18 +565,36 @@ def build_ai_business_observation(
                 "不得判断真实经营、欺诈、包装、准入或拒绝。",
                 "必须联合查看同一交易提供的全部语义字段。",
                 "明确出现申报行业商品、服务或用途时可判directly_related且evidence_strength为strong。",
-                "名称中有具体行业产品或服务、但用途不确定时判possibly_related且evidence_strength为medium。",
-                "实业、贸易、科技、工业、工程等泛化企业类型或货款只能作为possibly_related弱提示，evidence_strength必须为weak，理由必须说明缺少具体产品或用途。",
+                "每笔必须遵守classification_constraints；directly_related_allowed为false时绝对不得判directly_related。",
+                "企业或商户名称无论看起来多么具体，只要没有摘要、备注、用途、商品说明或商户类别字段支持，就不得判directly_related。",
+                "所有正向分类都必须与business_context中的申报行业或工作单位名称所明确体现的行业语义相关；具体但无关的产品或服务不得判正向。",
+                "名称或其他字段中有与申报工作内容相关的具体产品或服务、但用途不确定时，优先判possibly_related且evidence_strength为medium；建材、护栏、园林景观设计等可与建筑材料或环保工程相关。",
+                "对于本案建筑材料批发投资或环保工程上下文，建材、护栏、栏杆、围栏、塑木和园林景观设计属于具体相关产品或服务；即使同笔另有货款，也必须优先判possibly_related且evidence_strength为medium，不得降为weak。",
+                "仅有技术咨询费、材料费、采购款等泛化用途而没有具体课题、产品、项目或行业对象时，不得仅凭可能性判为medium。",
+                "餐饮、便利店、话费充值、银行年费、医疗和打车等生活或通用服务若与申报工作内容无关，应判no_relation_evidence且evidence_strength为none；本轮不得将其用于生活轨迹判断。",
+                "只有实业、贸易、科技、工业、工程等泛化企业类型，或只有货款而没有具体产品、服务、项目或用途时，才可作为possibly_related弱提示且evidence_strength必须为weak。",
+                "货款不得覆盖或削弱同笔交易中已经存在的具体产品或服务语义，不得仅因同时出现货款就把medium降为weak。",
                 "reason必须与classification一致；possibly_related的理由不得写成直接相关。",
                 "证据不足时使用undetermined。",
             ],
         }
         try:
             response = evaluator(payload)
-        except Exception:
-            reason = "ai_provider_failed"
+        except Exception as exc:
+            provider_reason = getattr(exc, "failure_reason", "")
+            reason = (
+                provider_reason
+                if provider_reason in {"ai_provider_failed", "ai_response_invalid"}
+                else "ai_provider_failed"
+            )
+            provider_detail = getattr(exc, "safe_diagnostic", "")
+            if (
+                isinstance(provider_detail, str)
+                and re.fullmatch(r"[a-z0-9_:-]+", provider_detail)
+            ):
+                failure_detail = provider_detail
         else:
-            validated = _validate_response(response, records)
+            validated, failure_detail = validate_ai_response(response, records)
             if validated is None:
                 reason = "ai_response_invalid"
             else:
@@ -578,6 +610,7 @@ def build_ai_business_observation(
         "value": {
             "available": not reason,
             "reason": reason,
+            "failure_detail": failure_detail,
             "deterministic_candidates": deterministic,
             "ai_candidates": ai_candidates,
             "ai_input_candidate_count": len(records),

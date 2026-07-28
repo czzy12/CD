@@ -2,7 +2,10 @@ import unittest
 from datetime import datetime
 from decimal import Decimal
 
-from bankflow_v2.ai_business_observation import build_ai_business_observation
+from bankflow_v2.ai_business_observation import (
+    AI_PROMPT_VERSION,
+    build_ai_business_observation,
+)
 from bankflow_v2.models import Transaction
 
 
@@ -130,6 +133,10 @@ class AiBusinessObservationTests(unittest.TestCase):
 
         self.assertFalse(observation["value"]["available"])
         self.assertEqual(observation["value"]["reason"], "ai_response_invalid")
+        self.assertEqual(
+            observation["value"]["failure_detail"],
+            "item_1:transaction_id_unknown",
+        )
         self.assertEqual(observation["value"]["ai_candidates"], [])
 
     def test_rejects_partial_response_that_leaves_input_unclassified(self):
@@ -156,6 +163,10 @@ class AiBusinessObservationTests(unittest.TestCase):
         )
 
         self.assertEqual(observation["value"]["reason"], "ai_response_invalid")
+        self.assertEqual(
+            observation["value"]["failure_detail"],
+            "response_coverage_mismatch",
+        )
 
     def test_reports_provider_unavailable_after_authorization(self):
         observation = build_ai_business_observation(
@@ -324,6 +335,96 @@ class AiBusinessObservationTests(unittest.TestCase):
             "ai_input_candidates_unavailable",
         )
 
+    def test_does_not_send_generic_summary_with_informative_business_name(self):
+        row = Transaction(
+            datetime(2026, 1, 2),
+            expense=Decimal("2000"),
+            transaction_id="tx:business-transfer",
+            source_file_id="source:bank",
+            counterparty_name="宜城市杭艺建材厂",
+            summary="8跨行4汇款",
+        )
+        row.field_confidence.update({
+            "counterparty_name": 1.0,
+            "summary": 1.0,
+        })
+        captured = {}
+
+        observation = build_ai_business_observation(
+            [row],
+            case_context(),
+            ai_config={
+                "enabled": True,
+                "data_authorized": True,
+                "retention_policy_confirmed": True,
+                "allow_business_names": True,
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "api_key_available": True,
+            },
+            evaluator=lambda payload: (
+                captured.update(payload)
+                or [{
+                    "transaction_id": "tx:business-transfer",
+                    "classification": "possibly_related",
+                    "evidence_strength": "medium",
+                    "reason": "建材属于具体行业产品，需人工复核用途",
+                    "used_fields": ["counterparty_name"],
+                }]
+            ),
+        )
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(
+            captured["transactions"][0]["fields"],
+            {"counterparty_name": "宜城市杭艺建材厂"},
+        )
+
+    def test_does_not_send_opaque_alphanumeric_remark_with_business_name(self):
+        row = Transaction(
+            datetime(2026, 1, 2),
+            income=Decimal("2000"),
+            transaction_id="tx:opaque-remark",
+            source_file_id="source:bank",
+            counterparty_name="贵州荣盛（集团）建材有限公司",
+            remark="M0EEHDNH",
+        )
+        row.field_confidence.update({
+            "counterparty_name": 1.0,
+            "remark": 1.0,
+        })
+        captured = {}
+
+        observation = build_ai_business_observation(
+            [row],
+            case_context(),
+            ai_config={
+                "enabled": True,
+                "data_authorized": True,
+                "retention_policy_confirmed": True,
+                "allow_business_names": True,
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "api_key_available": True,
+            },
+            evaluator=lambda payload: (
+                captured.update(payload)
+                or [{
+                    "transaction_id": "tx:opaque-remark",
+                    "classification": "possibly_related",
+                    "evidence_strength": "medium",
+                    "reason": "建材名称与申报行业相关，但无具体用途",
+                    "used_fields": ["counterparty_name"],
+                }]
+            ),
+        )
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(
+            captured["transactions"][0]["fields"],
+            {"counterparty_name": "贵州荣盛（集团）建材有限公司"},
+        )
+
     def test_rejects_direct_classification_based_only_on_business_name(self):
         row = Transaction(
             datetime(2026, 1, 2),
@@ -439,6 +540,71 @@ class AiBusinessObservationTests(unittest.TestCase):
         self.assertEqual(
             observation["value"]["ai_candidates"][0]["evidence_strength"],
             "weak",
+        )
+
+    def test_specific_product_takes_priority_over_generic_goods_payment(self):
+        row = Transaction(
+            datetime(2026, 1, 2),
+            income=Decimal("25000"),
+            transaction_id="tx:building-materials",
+            source_file_id="source:bank",
+            counterparty_name="江山市杰成建材有限公司",
+            remark="货款",
+        )
+        row.field_confidence.update({
+            "counterparty_name": 1.0,
+            "remark": 1.0,
+        })
+        captured = {}
+
+        observation = build_ai_business_observation(
+            [row],
+            case_context(),
+            ai_config={
+                "enabled": True,
+                "data_authorized": True,
+                "retention_policy_confirmed": True,
+                "allow_business_names": True,
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "api_key_available": True,
+            },
+            evaluator=lambda payload: (
+                captured.update(payload)
+                or [{
+                    "transaction_id": "tx:building-materials",
+                    "classification": "possibly_related",
+                    "evidence_strength": "medium",
+                    "reason": "建材是具体产品类别，货款不削弱该语义",
+                    "used_fields": ["counterparty_name", "remark"],
+                }]
+            ),
+        )
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(captured["prompt_version"], AI_PROMPT_VERSION)
+        self.assertEqual(AI_PROMPT_VERSION, "business-relevance-mvp-v10")
+        self.assertTrue(
+            any(
+                "货款不得覆盖或削弱" in instruction
+                for instruction in captured["instructions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "园林景观设计属于具体相关产品或服务" in instruction
+                for instruction in captured["instructions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "泛化用途而没有具体课题" in instruction
+                for instruction in captured["instructions"]
+            )
+        )
+        self.assertEqual(
+            observation["value"]["ai_candidates"][0]["evidence_strength"],
+            "medium",
         )
 
 

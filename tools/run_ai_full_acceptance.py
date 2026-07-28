@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
@@ -58,6 +59,7 @@ def main() -> int:
     )
     parser.add_argument("--confirm-real-data", action="store_true")
     parser.add_argument("--confirm-full-run", action="store_true")
+    parser.add_argument("--business-confirmation", type=Path)
     args = parser.parse_args()
 
     if not args.confirm_real_data or not args.confirm_full_run:
@@ -68,6 +70,13 @@ def main() -> int:
         print("status=not_started")
         print("reason=case_directory_not_found")
         return 2
+    if (
+        args.business_confirmation
+        and not args.business_confirmation.is_file()
+    ):
+        print("status=not_started")
+        print("reason=business_confirmation_not_found")
+        return 2
 
     settings = load_deepseek_settings()
     ai_config, evaluator = load_deepseek_runtime(cache_dir=args.cache_dir)
@@ -76,7 +85,18 @@ def main() -> int:
         print("reason=ai_configuration_or_authorization_incomplete")
         return 2
 
-    case_context = build_case_context(args.case_dir.name, _sources(args.case_dir))
+    confirmation = (
+        json.loads(
+            args.business_confirmation.read_text(encoding="utf-8-sig")
+        )
+        if args.business_confirmation
+        else None
+    )
+    case_context = build_case_context(
+        args.case_dir.name,
+        _sources(args.case_dir),
+        business_confirmation=confirmation,
+    )
     transactions = []
     for pdf_path in sorted(args.case_dir.glob("*.pdf")):
         detection = detect_bank_type(str(pdf_path))

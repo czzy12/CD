@@ -9,7 +9,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from bankflow_v2.ai_business_observation import build_ai_business_observation
+from bankflow_v2.ai_business_observation import (
+    build_ai_business_observation,
+    select_ai_input_from_manifest,
+)
 from bankflow_v2.auto_detect import detect_bank_type
 from bankflow_v2.case_context import (
     SOURCE_ROLE_RISK_INVESTIGATION_REPORT,
@@ -47,13 +50,37 @@ def main() -> int:
     parser.add_argument("cache_dir", type=Path)
     parser.add_argument("output_json", type=Path)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--business-confirmation", type=Path)
+    parser.add_argument("--sample-manifest", type=Path)
     args = parser.parse_args()
     if not args.case_dir.is_dir() or not args.cache_dir.is_dir():
         print("status=not_started")
         print("reason=case_or_cache_directory_not_found")
         return 2
+    if (
+        args.business_confirmation
+        and not args.business_confirmation.is_file()
+    ):
+        print("status=not_started")
+        print("reason=business_confirmation_not_found")
+        return 2
+    if args.sample_manifest and not args.sample_manifest.is_file():
+        print("status=not_started")
+        print("reason=sample_manifest_not_found")
+        return 2
 
-    context = build_case_context(args.case_dir.name, _sources(args.case_dir))
+    confirmation = (
+        json.loads(
+            args.business_confirmation.read_text(encoding="utf-8-sig")
+        )
+        if args.business_confirmation
+        else None
+    )
+    context = build_case_context(
+        args.case_dir.name,
+        _sources(args.case_dir),
+        business_confirmation=confirmation,
+    )
     transactions = []
     for path in sorted(args.case_dir.glob("*.pdf")):
         detection = detect_bank_type(str(path))
@@ -61,6 +88,25 @@ def main() -> int:
             transactions.extend(
                 extract_transactions(str(path), detection.bank_id)
             )
+    eligible_unique_semantic_count = 0
+    if args.sample_manifest:
+        manifest = json.loads(
+            args.sample_manifest.read_text(encoding="utf-8-sig")
+        )
+        try:
+            transactions, eligible_unique_semantic_count = (
+                select_ai_input_from_manifest(
+                    transactions,
+                    context,
+                    manifest,
+                    allow_business_names=True,
+                    split="development",
+                )
+            )
+        except ValueError as exc:
+            print("status=not_started")
+            print(f"reason=sample_manifest_invalid:{exc}")
+            return 2
     settings = DeepSeekSettings(
         api_key="",
         model=args.model,
@@ -101,6 +147,12 @@ def main() -> int:
     )
     output = {
         "replay_source": str(args.cache_dir),
+        "sample_manifest": (
+            str(args.sample_manifest) if args.sample_manifest else ""
+        ),
+        "eligible_unique_semantic_count": (
+            eligible_unique_semantic_count
+        ),
         "task_type": observation["parameters"]["task_type"],
         "prompt_version": observation["parameters"]["prompt_version"],
         "model": args.model,

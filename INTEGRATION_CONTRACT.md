@@ -212,7 +212,29 @@ schema 1.8 在 `result.observations[]` 新增三项流水核查 MVP 确定性观
 
 `build_bankflow_result(..., case_context=...)` 的案件上下文仅供上述动态搜索使用；业务观察仍直接读取原 `Transaction` 列表并与 `original_transactions` 使用同一交易 ID，不改写交易，不建立平行交易模型。关键词无命中、搜索字段不可用和无下定支出候选必须分别返回明确原因；任何命中都不得输出异常、欺诈、资金来源或准入结论。
 
-案件上下文除标准“行业/经营行业/主营业务”字段外，可从“工作介绍及收入情况（是否和流水匹配）”中提取带明确“主要是做/从事/经营”表述的工作内容，作为 `customer_manager_description`、`unverified` 的申报行业上下文。只提取明确工作内容；“其他生意”、信用卡用途、日常消费、位置轨迹或其他备注不得混入行业上下文，也不得从普通叙述或单位名称反向补造结构化行业值。
+案件经营上下文优先读取标准“行业/经营行业/主营业务”字段，以及“工作介绍及收入情况（是否和流水匹配）”、业务人员备注或客户经理备注中明确、具体的工作和经营内容。提取结果须保存原始文字、来源字段、来源文件和 `declared_unverified` 状态；“做生意、自己经营、其他生意”等宽泛描述，以及信用卡用途、日常消费、家庭情况、位置轨迹和其他无关备注不得进入经营上下文。
+
+`case_context.business_context` 分别保存申报描述、工作单位和人工确认，不得相互覆盖。工作单位名称只作辅助上下文，不得单独推导客户主营行业；只有单位名称、缺少明确描述、存在多个无法确定主次的描述或单位名称与描述明显冲突时，AI经营关联必须返回 `business_context_confirmation_required`，不得调用模型。人工确认至少包含 `confirmed_primary_business / confirmed_products_or_services / confirmation_note / confirmation_status`；仅当明确工作描述可用，或 `confirmation_status=confirmed` 且主要经营内容非空时，才允许进入AI经营关联。
+
+最小结构为：
+
+```json
+{
+  "declared_work_description": "",
+  "declared_work_source": "",
+  "declared_work_source_ref": "",
+  "declared_work_status": "declared_unverified",
+  "company_name": "",
+  "confirmed_primary_business": "",
+  "confirmed_products_or_services": "",
+  "confirmation_note": "",
+  "confirmation_status": "unconfirmed"
+}
+```
+
+`build_case_context(case_id, sources, business_confirmation=...)` 接受上述人工确认字段；确认状态下 `confirmed_primary_business` 必填。原始描述继续保留在 `declared_work_evidence` 中。
+
+当前 MVP 不联网查询企业主营业务，不把工商经营范围或外部搜索结果自动写成确认事实。后续企业经营上下文发现模块另行按“企业标识→企业信息源→登记范围和外部经营证据→AI候选→人工确认→正式经营上下文”建设。
 
 schema 1.9 新增 `ai_business_relevance_candidates`：
 

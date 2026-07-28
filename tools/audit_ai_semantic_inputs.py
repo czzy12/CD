@@ -102,13 +102,32 @@ def main() -> int:
     parser.add_argument("audit_json", type=Path)
     parser.add_argument("--markdown-path", type=Path)
     parser.add_argument("--manifest-path", type=Path)
+    parser.add_argument("--business-confirmation", type=Path)
     args = parser.parse_args()
     if not args.case_dir.is_dir():
         print("status=not_started")
         print("reason=case_directory_not_found")
         return 2
+    if (
+        args.business_confirmation
+        and not args.business_confirmation.is_file()
+    ):
+        print("status=not_started")
+        print("reason=business_confirmation_not_found")
+        return 2
+    confirmation = (
+        json.loads(
+            args.business_confirmation.read_text(encoding="utf-8-sig")
+        )
+        if args.business_confirmation
+        else None
+    )
 
-    context = build_case_context(args.case_dir.name, _sources(args.case_dir))
+    context = build_case_context(
+        args.case_dir.name,
+        _sources(args.case_dir),
+        business_confirmation=confirmation,
+    )
     transactions = []
     for pdf_path in sorted(args.case_dir.glob("*.pdf")):
         detection = detect_bank_type(str(pdf_path))

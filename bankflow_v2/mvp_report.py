@@ -44,6 +44,10 @@ _AI_REASON_LABELS = {
     "ai_provider_failed": "模型调用失败，已降级",
     "ai_response_invalid": "模型返回未通过证据校验，已降级",
     "case_business_context_unavailable": "案件单位/行业上下文不足",
+    "business_context_confirmation_required": (
+        "经营上下文不足，暂不执行行业关联分析；"
+        "请人工确认客户实际主要经营内容和主要产品或服务"
+    ),
 }
 
 

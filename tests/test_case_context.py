@@ -95,6 +95,13 @@ class CaseContextTests(unittest.TestCase):
         )
         self.assertNotIn("其他生意", context["search_context"]["declared_industries"])
         self.assertNotIn("信用卡", context["search_context"]["declared_industries"])
+        self.assertEqual(
+            context["business_context"]["declared_work_description"],
+            "建筑材料批发投资",
+        )
+        self.assertTrue(
+            context["business_context"]["ai_business_relevance_eligible"]
+        )
 
     def test_does_not_turn_non_work_manager_notes_into_industry_context(self):
         context = build_case_context(
@@ -111,6 +118,175 @@ class CaseContextTests(unittest.TestCase):
         )
 
         self.assertEqual(context["search_context"]["declared_industries"], [])
+
+    def test_builds_traceable_declared_work_context(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "客户资料.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：示例\n"
+                    "工作单位全称：示例商贸有限公司\n"
+                    "工作介绍及收入情况（是否和流水匹配）：建筑材料批发\n"
+                ),
+            }],
+        )
+
+        business = context["business_context"]
+        self.assertEqual(
+            business["declared_work_description"],
+            "建筑材料批发",
+        )
+        self.assertEqual(
+            business["declared_work_source"],
+            "工作介绍及收入情况（是否和流水匹配）",
+        )
+        self.assertEqual(
+            business["declared_work_source_ref"],
+            "客户资料.txt",
+        )
+        self.assertEqual(
+            business["declared_work_status"],
+            "declared_unverified",
+        )
+        self.assertEqual(business["company_name"], "示例商贸有限公司")
+        self.assertTrue(business["ai_business_relevance_eligible"])
+        self.assertEqual(
+            business["eligibility_reason"],
+            "explicit_declared_work_description",
+        )
+
+    def test_company_name_only_requires_business_confirmation(self):
+        context = build_case_context(
+            "李娟",
+            [{
+                "source_ref": "李娟.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：李娟\n"
+                    "工作单位全称：新疆汇品建安商贸有限公司\n"
+                    "工作介绍及收入情况（是否和流水匹配）：是\n"
+                ),
+            }],
+        )
+
+        business = context["business_context"]
+        self.assertEqual(business["declared_work_description"], "")
+        self.assertEqual(
+            business["company_name"],
+            "新疆汇品建安商贸有限公司",
+        )
+        self.assertFalse(business["ai_business_relevance_eligible"])
+        self.assertEqual(
+            business["eligibility_reason"],
+            "business_context_confirmation_required",
+        )
+        self.assertEqual(
+            business["confirmation_reason"],
+            "company_name_only",
+        )
+        self.assertEqual(business["confirmation_status"], "unconfirmed")
+
+    def test_manual_confirmation_is_separate_and_has_priority(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "客户资料.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "工作单位全称：示例科技有限公司\n"
+                    "工作介绍及收入情况（是否和流水匹配）：做生意\n"
+                ),
+            }],
+            business_confirmation={
+                "confirmed_primary_business": "货物运输",
+                "confirmed_products_or_services": "普通货物道路运输",
+                "confirmation_note": "客户现场确认",
+                "confirmation_status": "confirmed",
+            },
+        )
+
+        business = context["business_context"]
+        self.assertEqual(business["declared_work_description"], "")
+        self.assertEqual(
+            business["confirmed_primary_business"],
+            "货物运输",
+        )
+        self.assertEqual(
+            business["confirmed_products_or_services"],
+            "普通货物道路运输",
+        )
+        self.assertEqual(
+            business["effective_primary_business"],
+            "货物运输",
+        )
+        self.assertTrue(business["ai_business_relevance_eligible"])
+        self.assertEqual(
+            business["eligibility_reason"],
+            "confirmed_primary_business",
+        )
+
+    def test_confirmed_status_requires_primary_business(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "confirmed_primary_business",
+        ):
+            build_case_context(
+                "示例",
+                [{
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：示例商贸有限公司",
+                }],
+                business_confirmation={
+                    "confirmation_status": "confirmed",
+                },
+            )
+
+    def test_multiple_declared_work_descriptions_require_confirmation(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "客户资料.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "主营业务：烟酒经营\n"
+                    "工作介绍及收入情况（是否和流水匹配）：货物运输\n"
+                ),
+            }],
+        )
+
+        business = context["business_context"]
+        self.assertFalse(business["ai_business_relevance_eligible"])
+        self.assertEqual(
+            business["confirmation_reason"],
+            "multiple_declared_work_descriptions",
+        )
+        self.assertCountEqual(
+            business["declared_work_descriptions"],
+            ["烟酒经营", "货物运输"],
+        )
+
+    def test_clear_company_and_work_description_conflict_requires_confirmation(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "客户资料.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "工作单位全称：示例环保工程有限公司\n"
+                    "工作介绍及收入情况（是否和流水匹配）：烟酒经营\n"
+                ),
+            }],
+        )
+
+        business = context["business_context"]
+        self.assertFalse(business["ai_business_relevance_eligible"])
+        self.assertEqual(
+            business["confirmation_reason"],
+            "company_description_conflict",
+        )
 
     def test_keeps_risk_report_as_reported_narrative_not_confirmed_fields(self):
         context = build_case_context(

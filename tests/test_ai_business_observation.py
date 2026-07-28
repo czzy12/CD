@@ -40,7 +40,143 @@ def case_context() -> dict[str, object]:
     }
 
 
+def cao_case_context() -> dict[str, object]:
+    return {
+        "search_context": {
+            "work_units": ["河南省润恒环保工程有限公司"],
+            "declared_industries": ["建筑材料批发投资"],
+        },
+        "business_context": {
+            "declared_work_description": "建筑材料批发投资",
+            "declared_work_status": "declared_unverified",
+            "company_name": "河南省润恒环保工程有限公司",
+            "confirmed_primary_business": "",
+            "confirmed_products_or_services": "",
+            "confirmation_status": "unconfirmed",
+            "effective_primary_business": "建筑材料批发投资",
+            "effective_products_or_services": "",
+            "ai_business_relevance_eligible": True,
+            "eligibility_reason": "explicit_declared_work_description",
+        },
+    }
+
+
 class AiBusinessObservationTests(unittest.TestCase):
+    def test_company_name_only_does_not_call_evaluator(self):
+        calls = []
+        context = {
+            "search_context": {
+                "work_units": ["新疆汇品建安商贸有限公司"],
+                "declared_industries": [],
+            },
+            "business_context": {
+                "declared_work_description": "",
+                "company_name": "新疆汇品建安商贸有限公司",
+                "confirmed_primary_business": "",
+                "confirmation_status": "unconfirmed",
+                "ai_business_relevance_eligible": False,
+                "eligibility_reason": (
+                    "business_context_confirmation_required"
+                ),
+                "confirmation_reason": "company_name_only",
+            },
+        }
+
+        observation = build_ai_business_observation(
+            [business_tx("tx:one", purpose="材料采购")],
+            context,
+            ai_config={
+                "enabled": True,
+                "data_authorized": True,
+                "retention_policy_confirmed": True,
+                "provider": "test-provider",
+                "model": "test-model",
+                "api_key_available": True,
+                "allow_business_names": True,
+            },
+            evaluator=lambda payload: calls.append(payload),
+        )
+
+        self.assertFalse(observation["value"]["available"])
+        self.assertEqual(
+            observation["value"]["reason"],
+            "business_context_confirmation_required",
+        )
+        self.assertEqual(calls, [])
+
+    def test_sends_confirmed_business_separately_from_company_name(self):
+        captured = {}
+        context = {
+            "search_context": {
+                "work_units": ["示例商贸有限公司"],
+                "declared_industries": [],
+            },
+            "business_context": {
+                "declared_work_description": "",
+                "declared_work_status": "unavailable",
+                "declared_work_source": "",
+                "declared_work_source_ref": "",
+                "company_name": "示例商贸有限公司",
+                "confirmed_primary_business": "货物运输",
+                "confirmed_products_or_services": "普通货物道路运输",
+                "confirmation_status": "confirmed",
+                "effective_primary_business": "货物运输",
+                "effective_products_or_services": "普通货物道路运输",
+                "ai_business_relevance_eligible": True,
+                "eligibility_reason": "confirmed_primary_business",
+            },
+        }
+
+        def evaluator(payload):
+            captured.update(payload)
+            return [{
+                "transaction_id": "tx:one",
+                "semantic_judgement": "medium",
+                "reason": "用途与人工确认的运输业务相关，需复核",
+                "used_fields": ["purpose"],
+            }]
+
+        observation = build_ai_business_observation(
+            [business_tx("tx:one", purpose="运输服务费")],
+            context,
+            ai_config={
+                "enabled": True,
+                "data_authorized": True,
+                "retention_policy_confirmed": True,
+                "provider": "test-provider",
+                "model": "test-model",
+                "api_key_available": True,
+                "allow_business_names": True,
+            },
+            evaluator=evaluator,
+        )
+
+        self.assertTrue(observation["value"]["available"])
+        self.assertEqual(
+            captured["business_context"]["confirmed_primary_business"],
+            "货物运输",
+        )
+        self.assertEqual(
+            captured["business_context"][
+                "confirmed_products_or_services"
+            ],
+            "普通货物道路运输",
+        )
+        self.assertEqual(
+            captured["business_context"]["declared_work_units"],
+            ["示例商贸有限公司"],
+        )
+        self.assertEqual(
+            captured["business_context"]["company_name_context_role"],
+            "auxiliary_only",
+        )
+        self.assertFalse(
+            any(
+                "护栏" in instruction or "塑木" in instruction
+                for instruction in captured["instructions"]
+            )
+        )
+
     def test_defaults_to_authorization_missing_without_calling_evaluator(self):
         calls = []
 
@@ -270,7 +406,6 @@ class AiBusinessObservationTests(unittest.TestCase):
             "transaction_type": 1.0,
         })
         captured = {}
-
         observation = build_ai_business_observation(
             [row],
             case_context(),
@@ -556,7 +691,7 @@ class AiBusinessObservationTests(unittest.TestCase):
 
         observation = build_ai_business_observation(
             [row],
-            case_context(),
+            cao_case_context(),
             ai_config={
                 "enabled": True,
                 "data_authorized": True,

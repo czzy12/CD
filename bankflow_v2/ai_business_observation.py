@@ -140,11 +140,115 @@ def _values(case_context: Mapping[str, object] | None, field_name: str) -> list[
     return [str(value).strip() for value in values if str(value).strip()]
 
 
+def _case_business_context(
+    case_context: Mapping[str, object] | None,
+) -> Mapping[str, object]:
+    if not isinstance(case_context, Mapping):
+        return {}
+    value = case_context.get("business_context")
+    return value if isinstance(value, Mapping) else {}
+
+
+def _business_context_eligible(
+    case_context: Mapping[str, object] | None,
+) -> bool:
+    business_context = _case_business_context(case_context)
+    if business_context:
+        return business_context.get(
+            "ai_business_relevance_eligible"
+        ) is True
+    return bool(_values(case_context, "declared_industries"))
+
+
+def _business_context_payload(
+    case_context: Mapping[str, object] | None,
+) -> dict[str, object]:
+    business_context = _case_business_context(case_context)
+    return {
+        "declared_work_description": str(
+            business_context.get("declared_work_description", "") or ""
+        ),
+        "declared_work_status": str(
+            business_context.get("declared_work_status", "") or ""
+        ),
+        "declared_work_source": str(
+            business_context.get("declared_work_source", "") or ""
+        ),
+        "declared_work_source_ref": str(
+            business_context.get("declared_work_source_ref", "") or ""
+        ),
+        "declared_industries": _values(
+            case_context,
+            "declared_industries",
+        ),
+        "declared_work_units": _values(case_context, "work_units"),
+        "confirmed_primary_business": str(
+            business_context.get(
+                "confirmed_primary_business",
+                "",
+            )
+            or ""
+        ),
+        "confirmed_products_or_services": str(
+            business_context.get(
+                "confirmed_products_or_services",
+                "",
+            )
+            or ""
+        ),
+        "confirmation_status": str(
+            business_context.get("confirmation_status", "unconfirmed")
+            or "unconfirmed"
+        ),
+    }
+
+
+def _case_specific_business_instructions(
+    case_context: Mapping[str, object] | None,
+) -> list[str]:
+    business_context = _case_business_context(case_context)
+    context_text = " ".join(
+        [
+            *_values(case_context, "declared_industries"),
+            *_values(case_context, "work_units"),
+            str(
+                business_context.get("effective_primary_business", "")
+                or ""
+            ),
+            str(
+                business_context.get(
+                    "effective_products_or_services",
+                    "",
+                )
+                or ""
+            ),
+        ]
+    )
+    if "建筑材料" not in context_text or "环保工程" not in context_text:
+        return []
+    return [
+        "名称或其他字段中有与申报工作内容相关的具体产品或服务、但用途不确定时，semantic_judgement优先为medium；建材、护栏、园林景观设计等可与建筑材料或环保工程相关。",
+        "对于建筑材料批发投资及环保工程上下文，建材、护栏、栏杆、围栏、塑木和园林景观设计属于具体相关产品或服务；即使同笔另有货款，semantic_judgement也必须优先为medium，不得降为weak。",
+    ]
+
+
 def _anchors(case_context: Mapping[str, object] | None) -> list[str]:
+    business_context = _case_business_context(case_context)
     return list(
         dict.fromkeys(
             _values(case_context, "work_units")
             + _values(case_context, "declared_industries")
+            + [
+                str(value).strip()
+                for value in (
+                    business_context.get("effective_primary_business", ""),
+                    business_context.get(
+                        "effective_products_or_services",
+                        "",
+                    ),
+                )
+                if str(value).strip()
+            ]
         )
     )
 
@@ -1378,7 +1482,10 @@ def build_ai_business_observation(
         "invalid_cache_entry_count": 0,
     }
 
-    if not anchors:
+    business_context = _case_business_context(case_context)
+    if not _business_context_eligible(case_context):
+        reason = "business_context_confirmation_required"
+    elif not anchors:
         reason = "case_business_context_unavailable"
     elif not config.get("enabled") or not config.get("data_authorized"):
         reason = "ai_data_authorization_missing"
@@ -1398,14 +1505,13 @@ def build_ai_business_observation(
             "prompt_version": AI_PROMPT_VERSION,
             "output_contract_version": AI_OUTPUT_CONTRACT_VERSION,
             "business_context": {
-                "declared_industries": _values(
-                    case_context, "declared_industries"
-                ),
+                **_business_context_payload(case_context),
                 "declared_work_units": (
                     _values(case_context, "work_units")
                     if config.get("allow_business_names")
                     else []
                 ),
+                "company_name_context_role": "auxiliary_only",
             },
             "allowed_model_judgements": sorted(AI_MODEL_JUDGEMENTS),
             "transactions": records,
@@ -1418,8 +1524,8 @@ def build_ai_business_observation(
                 "每笔不得超过maximum_allowed_strength；directly_related_allowed为false时semantic_judgement绝对不得为strong。",
                 "企业或商户名称无论看起来多么具体，只要没有摘要、备注、用途、商品说明或商户类别字段支持，semantic_judgement就不得为strong。",
                 "所有正向分类都必须与business_context中的申报行业或工作单位名称所明确体现的行业语义相关；具体但无关的产品或服务不得判正向。",
-                "名称或其他字段中有与申报工作内容相关的具体产品或服务、但用途不确定时，semantic_judgement优先为medium；建材、护栏、园林景观设计等可与建筑材料或环保工程相关。",
-                "对于本案建筑材料批发投资或环保工程上下文，建材、护栏、栏杆、围栏、塑木和园林景观设计属于具体相关产品或服务；即使同笔另有货款，semantic_judgement也必须优先为medium，不得降为weak。",
+                "工作单位名称仅作辅助上下文，不得单独推导或确认客户主营行业。",
+                *_case_specific_business_instructions(case_context),
                 "仅有技术咨询费、材料费、采购款等泛化用途而没有具体课题、产品、项目或行业对象时，不得仅凭可能性判为medium。",
                 "餐饮、便利店、话费充值、银行年费、医疗和打车等生活或通用服务若与申报工作内容无关，semantic_judgement应为none；本轮不得将其用于生活轨迹判断。",
                 "只有实业、贸易、科技、工业、工程等泛化企业类型，或只有货款而没有具体产品、服务、项目或用途时，semantic_judgement最多为weak。",
@@ -1507,6 +1613,22 @@ def build_ai_business_observation(
             "validation_failure_summary": validation_failure_summary,
             "provider_execution": provider_execution,
             "ai_input_candidate_count": len(records),
+            "business_context_confirmation": {
+                "required": (
+                    reason == "business_context_confirmation_required"
+                ),
+                "reason": str(
+                    business_context.get("confirmation_reason", "") or ""
+                ),
+                "prompt": str(
+                    business_context.get("confirmation_prompt", "") or ""
+                ),
+                "required_fields": [
+                    "confirmed_primary_business",
+                    "confirmed_products_or_services",
+                    "confirmation_note",
+                ],
+            },
         },
         "parameters": {
             "task_type": AI_TASK_TYPE,

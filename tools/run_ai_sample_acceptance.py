@@ -58,6 +58,7 @@ def main() -> int:
     parser.add_argument("--confirm-real-data", action="store_true")
     parser.add_argument("--retry-invalid-cache", action="store_true")
     parser.add_argument("--expected-retry-count", type=int)
+    parser.add_argument("--business-confirmation", type=Path)
     args = parser.parse_args()
 
     if (
@@ -78,6 +79,13 @@ def main() -> int:
         print("status=not_started")
         print("reason=case_directory_not_found")
         return 2
+    if (
+        args.business_confirmation
+        and not args.business_confirmation.is_file()
+    ):
+        print("status=not_started")
+        print("reason=business_confirmation_not_found")
+        return 2
 
     settings = load_deepseek_settings()
     ai_config, evaluator = load_deepseek_runtime(
@@ -93,7 +101,18 @@ def main() -> int:
         print("reason=sample_manifest_not_found")
         return 2
 
-    case_context = build_case_context(args.case_dir.name, _sources(args.case_dir))
+    confirmation = (
+        json.loads(
+            args.business_confirmation.read_text(encoding="utf-8-sig")
+        )
+        if args.business_confirmation
+        else None
+    )
+    case_context = build_case_context(
+        args.case_dir.name,
+        _sources(args.case_dir),
+        business_confirmation=confirmation,
+    )
     transactions = []
     for pdf_path in sorted(args.case_dir.glob("*.pdf")):
         detection = detect_bank_type(str(pdf_path))
@@ -103,7 +122,9 @@ def main() -> int:
         print(f"parsing={pdf_path.name}")
         transactions.extend(extract_transactions(str(pdf_path), detection.bank_id))
 
-    manifest = json.loads(args.sample_manifest.read_text(encoding="utf-8"))
+    manifest = json.loads(
+        args.sample_manifest.read_text(encoding="utf-8-sig")
+    )
     try:
         sampled_transactions, eligible_count = select_ai_input_from_manifest(
             transactions,

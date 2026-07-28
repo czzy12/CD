@@ -380,18 +380,34 @@ def _balance_and_interest(transactions: list[Transaction]) -> dict[str, object]:
     )
 
 
-def _identifiable_name(value: str) -> bool:
+def is_identifiable_counterparty_name(value: str) -> bool:
+    """Return whether a reliable name is usable as a counterparty identity."""
     compact = re.sub(r"\s+", "", value).strip("()（）[]【】")
-    prefixed_short_name = re.fullmatch(
-        r"[A-Za-z0-9-]{2,8}[\u4e00-\u9fff]{2,4}",
+    prefixed_name = re.fullmatch(
+        r"([A-Za-z0-9-]+)([\u4e00-\u9fff]{2,8})",
         compact,
     )
+    prefixed_short_name = False
+    if prefixed_name:
+        chinese_suffix = prefixed_name.group(2)
+        recognizable_entity_suffix = re.search(
+            r"公司|商行|经营部|门市部|商店|超市|酒店|医院|银行|"
+            r"中心|工厂|厂|店$",
+            chinese_suffix,
+        )
+        prefixed_short_name = bool(
+            "账户" in chinese_suffix
+            or (
+                len(chinese_suffix) <= 4
+                and recognizable_entity_suffix is None
+            )
+        )
     return bool(
         compact
         and compact not in {"空", "无", "未知", "-", "其他"}
         and "*" not in compact
         and "（空）" not in value
-        and prefixed_short_name is None
+        and not prefixed_short_name
         and re.search(r"[\u4e00-\u9fffA-Za-z]", compact)
     )
 
@@ -401,7 +417,7 @@ def _counterparty_identity(transaction: Transaction) -> tuple[str, str] | None:
     if (
         name
         and transaction.field_confidence.get("counterparty_name") == 1.0
-        and _identifiable_name(name)
+        and is_identifiable_counterparty_name(name)
     ):
         return "counterparty_name", re.sub(r"\s+", "", name)
     account = re.sub(r"[\s-]+", "", transaction.counterparty_account)
@@ -421,19 +437,28 @@ def _top_counterparties(transactions: list[Transaction]) -> dict[str, object]:
         if not getattr(transaction, "neutral", False)
         and (transaction.income > 0 or transaction.expense > 0)
     ]
-    direction_values: dict[str, list[dict[str, object]]] = {}
+    direction_values: dict[str, object] = {}
     evidence: list[Transaction] = []
     covered: list[Transaction] = []
     for direction, amount_field in (("income", "income"), ("expense", "expense")):
+        directional = [
+            transaction
+            for transaction in eligible
+            if getattr(transaction, amount_field) > 0
+        ]
+        directional_amount = sum(
+            (getattr(transaction, amount_field) for transaction in directional),
+            Decimal("0.00"),
+        )
         groups: dict[tuple[str, str], dict[str, object]] = {}
-        for transaction in eligible:
+        direction_covered: list[Transaction] = []
+        for transaction in directional:
             amount = getattr(transaction, amount_field)
-            if amount <= 0:
-                continue
             identity = _counterparty_identity(transaction)
             if identity is None:
                 continue
             covered.append(transaction)
+            direction_covered.append(transaction)
             group = groups.setdefault(
                 identity,
                 {
@@ -447,6 +472,13 @@ def _top_counterparties(transactions: list[Transaction]) -> dict[str, object]:
             group["count"] += 1
             group["months"].add(transaction.transaction_time.strftime("%Y-%m"))
             group["transactions"].append(transaction)
+        covered_amount = sum(
+            (
+                getattr(transaction, amount_field)
+                for transaction in direction_covered
+            ),
+            Decimal("0.00"),
+        )
         ranked = sorted(
             groups.items(),
             key=lambda item: (
@@ -464,10 +496,39 @@ def _top_counterparties(transactions: list[Transaction]) -> dict[str, object]:
                     "identity_value": identity[1],
                     "transaction_count": group["count"],
                     "amount": _decimal(group["amount"]),
+                    "covered_amount_share": _ratio(
+                        group["amount"],
+                        covered_amount,
+                    ),
+                    "direction_amount_share": _ratio(
+                        group["amount"],
+                        directional_amount,
+                    ),
                     "months": sorted(group["months"]),
                     "evidence_transaction_ids": _evidence_ids(group["transactions"]),
                 }
             )
+        direction_values[f"{direction}_summary"] = {
+            "available": bool(groups),
+            "reason": (
+                ""
+                if groups
+                else (
+                    f"no_{direction}_transactions"
+                    if not directional
+                    else "identifiable_counterparty_unavailable"
+                )
+            ),
+            "eligible_transaction_count": len(directional),
+            "covered_transaction_count": len(direction_covered),
+            "eligible_amount": _decimal(directional_amount),
+            "covered_amount": _decimal(covered_amount),
+            "amount_coverage_rate": _ratio(
+                covered_amount,
+                directional_amount,
+            ),
+            "distinct_identifiable_counterparty_count": len(groups),
+        }
 
     return _base_observation(
         "top_counterparties",
@@ -505,7 +566,7 @@ def _cross_source_occurrences(transactions: list[Transaction]) -> dict[str, obje
         name = transaction.counterparty_name.strip()
         if (
             transaction.field_confidence.get("counterparty_name") != 1.0
-            or not _identifiable_name(name)
+            or not is_identifiable_counterparty_name(name)
         ):
             continue
         normalized = re.sub(r"\s+", "", name).casefold()

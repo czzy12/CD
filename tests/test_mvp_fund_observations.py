@@ -153,6 +153,18 @@ class MvpFundObservationTests(unittest.TestCase):
                 income="888",
                 counterparty_name="88BE张鑫",
             ),
+            tx(
+                "tx:short-prefixed",
+                datetime(2026, 1, 5),
+                income="777",
+                counterparty_name="0高衡",
+            ),
+            tx(
+                "tx:account-label",
+                datetime(2026, 1, 6),
+                income="666",
+                counterparty_name="JXLCJXZD200106004赎回账户",
+            ),
         ]
 
         observations = {
@@ -164,10 +176,41 @@ class MvpFundObservationTests(unittest.TestCase):
 
         self.assertEqual(top["income"][0]["identity_value"], "张鑫")
         self.assertEqual(top["expense"][0]["identity_value"], "张鑫")
+        self.assertEqual(top["income"][0]["covered_amount_share"], "1.0000")
+        self.assertEqual(top["income"][0]["direction_amount_share"], "0.0292")
+        self.assertEqual(
+            top["income_summary"]["amount_coverage_rate"],
+            "0.0292",
+        )
         self.assertNotIn("***中心", str(top))
         self.assertNotIn("88BE张鑫", str(top))
+        self.assertNotIn("0高衡", str(top))
+        self.assertNotIn("赎回账户", str(top))
         self.assertEqual(occurrence["counterparties"][0]["counterparty_name"], "张鑫")
         self.assertEqual(occurrence["counterparties"][0]["source_count"], 2)
+
+    def test_top_counterparties_reports_direction_unavailable_reason(self):
+        row = tx(
+            "tx:income",
+            datetime(2026, 1, 1),
+            income="100",
+        )
+
+        top = {
+            item["observation_type"]: item
+            for item in build_fund_observations([row])
+        }["top_counterparties"]["value"]
+
+        self.assertFalse(top["income_summary"]["available"])
+        self.assertEqual(
+            top["income_summary"]["reason"],
+            "identifiable_counterparty_unavailable",
+        )
+        self.assertFalse(top["expense_summary"]["available"])
+        self.assertEqual(
+            top["expense_summary"]["reason"],
+            "no_expense_transactions",
+        )
 
     def test_explicit_purpose_candidates_keep_transaction_evidence(self):
         rows = [

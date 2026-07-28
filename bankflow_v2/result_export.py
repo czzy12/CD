@@ -13,7 +13,10 @@ from pathlib import Path
 from .ai_business_observation import build_ai_business_observation
 from .deepseek_adapter import load_deepseek_runtime
 from .models import Transaction, get_statement_metadata
-from .mvp_fund_observations import build_fund_observations
+from .mvp_fund_observations import (
+    build_fund_observations,
+    is_identifiable_counterparty_name,
+)
 from .mvp_observations import build_deterministic_text_observations
 from .mvp_report import build_declaration_flow_cross_check
 from .summary import Summary, sort_transactions, summarize
@@ -664,10 +667,23 @@ def _cashflow_scale_and_recent_change_indicator(
 def _reliable_counterparty(
     transaction: Transaction,
 ) -> tuple[str, str] | None:
-    for field_name in ("counterparty_account", "counterparty_name"):
-        value = str(getattr(transaction, field_name) or "").strip()
-        if value and transaction.field_confidence.get(field_name) == 1.0:
-            return field_name, value
+    account = re.sub(
+        r"[\s-]+",
+        "",
+        str(transaction.counterparty_account or ""),
+    )
+    if (
+        account.isdigit()
+        and 12 <= len(account) <= 32
+        and transaction.field_confidence.get("counterparty_account") == 1.0
+    ):
+        return "counterparty_account", account
+    name = str(transaction.counterparty_name or "").strip()
+    if (
+        transaction.field_confidence.get("counterparty_name") == 1.0
+        and is_identifiable_counterparty_name(name)
+    ):
+        return "counterparty_name", re.sub(r"\s+", "", name)
     return None
 
 
@@ -754,6 +770,8 @@ def _counterparty_concentration_indicator(
             "direction": direction,
             "identity_priority": ["counterparty_account", "counterparty_name"],
             "reliability_rule": "non_empty_and_field_confidence_equals_1.0",
+            "complete_account_rule": "12_to_32_digits_after_space_and_hyphen_removal",
+            "masked_placeholder_or_prefixed_short_names_excluded": True,
             "amount_basis": f"absolute_{amount_field}",
             "concentration_measure": "top_counterparty_share_of_covered_amount",
         },

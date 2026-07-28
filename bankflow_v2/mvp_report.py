@@ -580,17 +580,54 @@ def render_mvp_markdown(
 
     lines.extend(["", "## 5. 主要交易对手 Top 5", ""])
     for direction, title in (("income", "收入"), ("expense", "支出")):
+        summary = top.get("value", {}).get(f"{direction}_summary", {})
+        reason = {
+            f"no_{direction}_transactions": f"没有{title}交易",
+            "identifiable_counterparty_unavailable": "存在交易，但可靠可识别对手字段不可用",
+        }.get(summary.get("reason", ""), summary.get("reason", ""))
         lines.extend(
             [
                 f"### {title} Top 5",
                 "",
-                "| 对手 | 金额 | 笔数 | 月份 |",
-                "| --- | ---: | ---: | --- |",
+                (
+                    f"- 可识别对手金额覆盖：{summary.get('covered_amount', '0.00')} / "
+                    f"{summary.get('eligible_amount', '0.00')} 元"
+                    f"（{summary.get('amount_coverage_rate') or '不可计算'}）；"
+                    f"可识别对手数：{summary.get('distinct_identifiable_counterparty_count', 0)}。"
+                    if summary.get("available")
+                    else f"- 当前不可用：{reason}。"
+                ),
+                "",
+                "| 对手 | 身份字段 | 金额 | 占可识别金额 | 占全部方向金额 | 笔数 | 月份 | 证据交易ID |",
+                "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
             ]
         )
         for item in top.get("value", {}).get(direction, []):
+            identity_value = str(item.get("identity_value", ""))
+            display_value = (
+                f"账号尾号{identity_value[-4:]}"
+                if item.get("identity_field") == "counterparty_account"
+                else identity_value
+            )
             lines.append(
-                f"| {_md(item.get('identity_value'))} | {_md(item.get('amount'))} | {_md(item.get('transaction_count'))} | {_md('、'.join(item.get('months', [])))} |"
+                "| "
+                + " | ".join(
+                    [
+                        _md(display_value),
+                        _md(item.get("identity_field")),
+                        _md(item.get("amount")),
+                        _md(item.get("covered_amount_share")),
+                        _md(item.get("direction_amount_share")),
+                        _md(item.get("transaction_count")),
+                        _md("、".join(item.get("months", []))),
+                        _md(
+                            "；".join(
+                                item.get("evidence_transaction_ids", [])[:10]
+                            )
+                        ),
+                    ]
+                )
+                + " |"
             )
         lines.append("")
 

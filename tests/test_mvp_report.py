@@ -121,6 +121,24 @@ class MvpReportTests(unittest.TestCase):
         self.assertIn("可靠标准文字字段内未发现受控关键词", no_hit_markdown)
         self.assertIn("没有可用于关键词搜索的可靠标准文字字段", unavailable_markdown)
 
+    def test_markdown_counterparty_table_has_coverage_and_evidence(self):
+        row = transaction(
+            "tx:counterparty",
+            counterparty_name="甲公司",
+            expense="100",
+        )
+        case = {"case_id": "对手测试", "search_context": {}}
+        markdown = render_mvp_markdown(
+            build_bankflow_result([row], case_context=case),
+            case,
+        )
+
+        self.assertIn("可识别对手金额覆盖", markdown)
+        self.assertIn("占可识别金额", markdown)
+        self.assertIn("证据交易ID", markdown)
+        self.assertIn("tx:counterparty", markdown)
+        self.assertIn("没有收入交易", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()

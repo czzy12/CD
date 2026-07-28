@@ -563,6 +563,41 @@ class ResultExportTests(unittest.TestCase):
         self.assertFalse(expense["value"]["available"])
         self.assertIsNone(expense["field_coverage"]["transaction_coverage_rate"])
 
+    def test_counterparty_concentration_excludes_masked_and_placeholder_names(self):
+        rows = []
+        for index, name in enumerate(
+            (
+                "***中心",
+                "（空）",
+                "88BE张鑫",
+                "0高衡",
+                "JXLCJXZD200106004赎回账户",
+                "甲公司",
+            ),
+        ):
+            row = transaction()
+            row.transaction_id = f"tx:counterparty:{index}"
+            row.counterparty_name = name
+            row.field_confidence["counterparty_name"] = 1.0
+            rows.append(row)
+
+        result = build_bankflow_result(rows)
+        indicator = next(
+            item
+            for item in result["result"]["indicators"]
+            if item["indicator_type"] == "income_counterparty_concentration"
+        )
+
+        self.assertEqual(indicator["value"]["distinct_counterparty_count"], 1)
+        self.assertEqual(
+            indicator["value"]["top_counterparty"]["identity_value"],
+            "甲公司",
+        )
+        self.assertEqual(
+            indicator["evidence_transaction_ids"],
+            ["tx:counterparty:5"],
+        )
+
     def test_income_continuity_uses_inclusive_calendar_months(self):
         rows = []
         for index, (month, income, expense) in enumerate(

@@ -18,7 +18,10 @@ SOURCE_ROLES = {
     SOURCE_ROLE_RISK_INVESTIGATION_REPORT,
 }
 
-_ANALYSIS_BOUNDARY_RE = re.compile(r"^\s*(?:本人分析|个人分析)\s*[：:]?\s*$")
+_NON_CUSTOMER_SECTION_BOUNDARY_RE = re.compile(
+    r"^\s*(?:本人分析|个人分析|公司意见|意见|结论|"
+    r"流水问题多|流水中个人来往交易多的情况)\s*(?:[：:].*)?$"
+)
 _INLINE_FIELD_RE = re.compile(r"^\s*([^：:]{1,40})\s*[：:]\s*(.*?)\s*$")
 _EXPLICIT_WORK_CONTENT_RE = re.compile(
     r"(?:客户)?\s*(?:主要)?\s*(?:是做|从事|经营)\s*"
@@ -65,8 +68,10 @@ _FIELD_BY_LABEL = {
     "姓名": "customer_name",
     "客户姓名": "customer_name",
     "工作单位全称": "work_unit",
+    "工作单位名称": "work_unit",
     "单位全称": "work_unit",
     "工作单位详细地址": "work_location",
+    "工作单位地址（精确到门牌号）": "work_location",
     "单位地址": "work_location",
     "家庭地址（详细到门牌号）": "residence_location",
     "家庭住址": "residence_location",
@@ -111,7 +116,7 @@ def _normalize_label(value: str) -> str:
 def _system_copy_lines(text: str) -> list[str]:
     lines: list[str] = []
     for line in str(text or "").splitlines():
-        if _ANALYSIS_BOUNDARY_RE.match(line):
+        if _NON_CUSTOMER_SECTION_BOUNDARY_RE.match(line):
             break
         stripped = line.strip()
         if stripped:
@@ -126,6 +131,10 @@ def _recognized_label(line: str) -> str | None:
     return None
 
 
+def _looks_like_labeled_field(line: str) -> bool:
+    return _INLINE_FIELD_RE.match(line) is not None
+
+
 def _parse_system_copy(text: str) -> list[tuple[str, str, str]]:
     lines = _system_copy_lines(text)
     parsed: list[tuple[str, str, str]] = []
@@ -137,7 +146,12 @@ def _parse_system_copy(text: str) -> list[tuple[str, str, str]]:
             label = _normalize_label(match.group(1))
             value = match.group(2).strip()
             if label in _FIELD_BY_LABEL or label in _MANAGER_DESCRIPTION_BY_LABEL:
-                if not value and index + 1 < len(lines) and _recognized_label(lines[index + 1]) is None:
+                if (
+                    not value
+                    and index + 1 < len(lines)
+                    and _recognized_label(lines[index + 1]) is None
+                    and not _looks_like_labeled_field(lines[index + 1])
+                ):
                     index += 1
                     value = lines[index].strip()
                 if value:
@@ -146,7 +160,12 @@ def _parse_system_copy(text: str) -> list[tuple[str, str, str]]:
             continue
 
         label = _recognized_label(line)
-        if label and index + 1 < len(lines) and _recognized_label(lines[index + 1]) is None:
+        if (
+            label
+            and index + 1 < len(lines)
+            and _recognized_label(lines[index + 1]) is None
+            and not _looks_like_labeled_field(lines[index + 1])
+        ):
             value = lines[index + 1].strip()
             if value:
                 parsed.append((label, value, f"{line}\\n{value}"))

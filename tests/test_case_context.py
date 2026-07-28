@@ -33,6 +33,100 @@ class CaseContextTests(unittest.TestCase):
         )
         self.assertNotIn("不应读取", str(context))
 
+    def test_stops_when_manual_analysis_is_on_same_line_as_heading(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "示例.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：示例\n"
+                    "个人分析：客户可能从事烟酒经营\n"
+                    "主营业务：烟酒经营\n"
+                ),
+            }],
+        )
+
+        self.assertEqual(context["search_context"]["customer_names"], ["示例"])
+        self.assertEqual(context["search_context"]["declared_industries"], [])
+        self.assertNotIn("客户可能从事烟酒经营", str(context))
+
+    def test_stops_at_company_opinion_without_analysis_heading(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "示例.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：示例\n"
+                    "公司意见：建议进一步核查其家具销售情况\n"
+                    "主营业务：家具销售\n"
+                ),
+            }],
+        )
+
+        self.assertEqual(context["search_context"]["customer_names"], ["示例"])
+        self.assertEqual(context["search_context"]["declared_industries"], [])
+        self.assertNotIn("建议进一步核查", str(context))
+
+    def test_stops_at_generic_opinion_section(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "示例.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：示例\n"
+                    "意见：疑似从事家具销售\n"
+                    "主营业务：家具销售\n"
+                ),
+            }],
+        )
+
+        self.assertEqual(context["search_context"]["customer_names"], ["示例"])
+        self.assertEqual(context["search_context"]["declared_industries"], [])
+        self.assertNotIn("疑似从事家具销售", str(context))
+
+    def test_does_not_consume_unknown_labeled_field_as_previous_value(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "示例.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "职务：\n"
+                    "生活轨迹：仅为人工分析内容\n"
+                    "工作单位全称：示例公司\n"
+                ),
+            }],
+        )
+
+        self.assertNotIn("job_title", context["fields"])
+        self.assertNotIn("仅为人工分析内容", str(context))
+        self.assertEqual(context["search_context"]["work_units"], ["示例公司"])
+
+    def test_normalizes_practice_customer_work_unit_labels(self):
+        context = build_case_context(
+            "示例",
+            [{
+                "source_ref": "示例.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "工作单位名称：示例销售公司\n"
+                    "工作单位地址（精确到门牌号）：示例路1号\n"
+                ),
+            }],
+        )
+
+        self.assertEqual(
+            context["search_context"]["work_units"],
+            ["示例销售公司"],
+        )
+        self.assertEqual(
+            context["search_context"]["work_locations"],
+            ["示例路1号"],
+        )
+
     def test_normalizes_repeated_credit_section_name_without_losing_excerpt(self):
         context = build_case_context(
             "韩鹏飞",

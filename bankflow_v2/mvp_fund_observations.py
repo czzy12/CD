@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from statistics import median
 
@@ -149,14 +149,14 @@ def _source_groups(
     return groups
 
 
-def _day_end_balance(
+def _balance_as_of(
     source_transactions: list[Transaction],
-    target_date: date,
+    cutoff: datetime,
 ) -> tuple[Decimal | None, Transaction | None]:
     candidates = [
         transaction
         for transaction in source_transactions
-        if transaction.transaction_time.date() == target_date
+        if transaction.transaction_time <= cutoff
         and transaction.balance is not None
     ]
     if not candidates:
@@ -167,12 +167,18 @@ def _day_end_balance(
 
 def _large_inflow_paths(transactions: list[Transaction]) -> dict[str, object]:
     groups = _source_groups(transactions)
-    inflows = [
+    eligible_inflows = [
         transaction
         for transaction in sort_transactions(transactions)
         if not getattr(transaction, "neutral", False)
         and transaction.income >= LARGE_INFLOW_THRESHOLD
     ]
+    inflows = [
+        transaction
+        for transaction in eligible_inflows
+        if transaction.source_file_id
+    ]
+    unavailable_source_count = len(eligible_inflows) - len(inflows)
     candidates: list[dict[str, object]] = []
     evidence: list[Transaction] = []
     balance_covered: list[Transaction] = []
@@ -194,6 +200,12 @@ def _large_inflow_paths(transactions: list[Transaction]) -> dict[str, object]:
         )
         for days in WINDOW_DAYS:
             end_time = inflow.transaction_time + timedelta(days=days)
+            day_end_time = end_time.replace(
+                hour=23,
+                minute=59,
+                second=59,
+                microsecond=999999,
+            )
             expenses = [
                 transaction
                 for transaction in source_rows
@@ -211,12 +223,13 @@ def _large_inflow_paths(transactions: list[Transaction]) -> dict[str, object]:
                 Decimal("0.00"),
             )
             outflow_ratio = cumulative / inflow.income
-            end_balance, balance_tx = _day_end_balance(
+            end_balance, balance_tx = _balance_as_of(
                 source_rows,
-                (inflow.transaction_time + timedelta(days=days)).date(),
+                day_end_time,
             )
             retained_increment_ratio = (
-                (end_balance - pre_balance) / inflow.income
+                max(end_balance - pre_balance, Decimal("0.00"))
+                / inflow.income
                 if end_balance is not None and pre_balance is not None
                 else None
             )
@@ -265,8 +278,20 @@ def _large_inflow_paths(transactions: list[Transaction]) -> dict[str, object]:
         "large_inflow_balance_paths",
         {
             "available": bool(candidates),
-            "reason": "" if candidates else "no_income_meets_path_threshold",
+            "reason": (
+                ""
+                if candidates
+                else (
+                    "source_file_id_unavailable"
+                    if eligible_inflows
+                    else "no_income_meets_path_threshold"
+                )
+            ),
             "candidate_only": True,
+            "eligible_inflow_count": len(eligible_inflows),
+            "path_candidate_count": len(candidates),
+            "source_file_id_unavailable_count": unavailable_source_count,
+            "partially_available": bool(candidates and unavailable_source_count),
             "candidates": candidates,
         },
         {
@@ -285,7 +310,7 @@ def _large_inflow_paths(transactions: list[Transaction]) -> dict[str, object]:
             "interpretation": "只展示同一来源内大额入账后的支出与余额路径，不认定支出使用了该笔收入。",
         },
         evidence,
-        inflows,
+        eligible_inflows,
         balance_covered,
     )
 
@@ -296,6 +321,16 @@ def _interest_match(transaction: Transaction) -> bool:
         for value in _reliable_text_fields(transaction).values()
         for term in PURPOSE_TERMS["interest"]
     )
+
+
+def _balance_unavailable_reason(rows: list[Transaction]) -> str:
+    if rows and all(
+        "微信" in str(transaction.bank or "")
+        or "wechat" in str(transaction.bank or "").lower()
+        for transaction in rows
+    ):
+        return "balance_not_applicable"
+    return "reliable_balance_unavailable"
 
 
 def _balance_and_interest(transactions: list[Transaction]) -> dict[str, object]:
@@ -324,7 +359,16 @@ def _balance_and_interest(transactions: list[Transaction]) -> dict[str, object]:
             covered.extend(day_end.values())
             evidence.extend(day_end.values())
 
-        interest_rows = [transaction for transaction in rows if _interest_match(transaction)]
+        interest_search_covered = [
+            transaction
+            for transaction in rows
+            if _reliable_text_fields(transaction)
+        ]
+        interest_rows = [
+            transaction
+            for transaction in rows
+            if _interest_match(transaction)
+        ]
         evidence.extend(interest_rows)
         quarter_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
         for transaction in interest_rows:
@@ -352,9 +396,25 @@ def _balance_and_interest(transactions: list[Transaction]) -> dict[str, object]:
                 "bank": rows[0].bank if rows else "",
                 "balance_available": bool(balances),
                 "balance_unavailable_reason": (
-                    "" if balances else "reliable_balance_unavailable"
+                    "" if balances else _balance_unavailable_reason(rows)
                 ),
                 "balance_statistics": balance_stats,
+                "balance_snapshot_transaction_ids": _evidence_ids(
+                    list(day_end.values())
+                ),
+                "interest_available": bool(interest_rows),
+                "interest_unavailable_reason": (
+                    ""
+                    if interest_rows
+                    else (
+                        "no_interest_records_in_reliable_fields"
+                        if interest_search_covered
+                        else "interest_records_unavailable"
+                    )
+                ),
+                "interest_search_covered_transaction_count": len(
+                    interest_search_covered
+                ),
                 "interest_records": [
                     _transaction_context(transaction) for transaction in interest_rows
                 ],

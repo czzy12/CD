@@ -244,6 +244,91 @@ class MvpTextObservationTests(unittest.TestCase):
         self.assertFalse(keyword["value"]["available"])
         self.assertEqual(keyword["value"]["reason"], "no_hits_in_reliable_fields")
 
+    def test_sensitive_context_has_group_fields_period_and_source_coverage(self):
+        cash_advance = tx(
+            "tx:cash-advance",
+            datetime(2026, 1, 2),
+            expense="1000",
+            purpose="信用卡套现还款",
+        )
+        court = tx(
+            "tx:court",
+            datetime(2026, 2, 3),
+            expense="200",
+            counterparty_name="甲区人民法院",
+            summary="司法缴费",
+        )
+
+        sensitive = build_deterministic_text_observations(
+            [cash_advance, court],
+            None,
+        )[3]
+
+        self.assertEqual(
+            sensitive["observation_type"],
+            "sensitive_transaction_context_candidates",
+        )
+        self.assertTrue(sensitive["value"]["available"])
+        self.assertEqual(sensitive["value"]["candidate_count"], 2)
+        self.assertEqual(
+            sensitive["value"]["candidates"][0]["matched_terms"],
+            ["套现"],
+        )
+        self.assertEqual(
+            sensitive["value"]["candidates"][0]["matched_fields"],
+            {"purpose": ["套现"]},
+        )
+        self.assertEqual(
+            sensitive["value"]["candidates"][0][
+                "observed_source_period_start"
+            ],
+            "2026-01-02T00:00:00",
+        )
+        source = sensitive["value"]["searched_sources"][0]
+        self.assertEqual(source["eligible_transaction_count"], 2)
+        self.assertEqual(source["searched_transaction_count"], 2)
+        self.assertEqual(source["candidate_count"], 2)
+        self.assertEqual(
+            sensitive["evidence_transaction_ids"],
+            ["tx:cash-advance", "tx:court"],
+        )
+        self.assertFalse(
+            sensitive["parameters"]["single_character_unconditional_matching"]
+        )
+
+    def test_sensitive_context_distinguishes_no_hit_from_unavailable_fields(self):
+        no_hit = tx(
+            "tx:no-hit",
+            datetime(2026, 1, 2),
+            expense="10",
+            summary="普通消费",
+        )
+        unavailable = tx(
+            "tx:unavailable",
+            datetime(2026, 1, 3),
+            expense="10",
+            summary="法院",
+        )
+        unavailable.field_confidence.clear()
+
+        no_hit_observation = build_deterministic_text_observations(
+            [no_hit],
+            None,
+        )[3]
+        unavailable_observation = build_deterministic_text_observations(
+            [unavailable],
+            None,
+        )[3]
+
+        self.assertEqual(
+            no_hit_observation["value"]["reason"],
+            "no_sensitive_hits_in_reliable_fields",
+        )
+        self.assertEqual(
+            unavailable_observation["value"]["reason"],
+            "sensitive_search_fields_unavailable",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

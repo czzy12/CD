@@ -78,6 +78,93 @@ class MvpFundObservationTests(unittest.TestCase):
             ]
         )
 
+    def test_retained_increment_ratio_is_clamped_at_zero(self):
+        start = datetime(2026, 1, 10, 10)
+        rows = [
+            tx("tx:in", start, income="100000", balance="105000"),
+            tx(
+                "tx:out",
+                start + timedelta(hours=2),
+                expense="105000",
+                balance="0",
+            ),
+        ]
+
+        path = {
+            item["observation_type"]: item
+            for item in build_fund_observations(rows)
+        }["large_inflow_balance_paths"]["value"]["candidates"][0]
+
+        self.assertEqual(
+            path["windows"][0]["retained_balance_increment_ratio"],
+            "0.0000",
+        )
+        self.assertTrue(
+            path["windows"][0]["low_retained_balance_increment"],
+        )
+
+    def test_large_inflow_path_requires_source_file_id(self):
+        start = datetime(2026, 1, 10, 10)
+        rows = [
+            tx(
+                "tx:in",
+                start,
+                income="100000",
+                balance="105000",
+                source_file_id="",
+                source_file="first.pdf",
+            ),
+            tx(
+                "tx:out",
+                start + timedelta(hours=2),
+                expense="95000",
+                balance="10000",
+                source_file_id="",
+                source_file="second.pdf",
+            ),
+        ]
+
+        path_observation = {
+            item["observation_type"]: item
+            for item in build_fund_observations(rows)
+        }["large_inflow_balance_paths"]
+
+        self.assertFalse(path_observation["value"]["available"])
+        self.assertEqual(
+            path_observation["value"]["reason"],
+            "source_file_id_unavailable",
+        )
+        self.assertEqual(path_observation["value"]["candidates"], [])
+
+    def test_large_inflow_path_reports_partially_unavailable_sources(self):
+        start = datetime(2026, 1, 10, 10)
+        rows = [
+            tx("tx:usable", start, income="30000", balance="30000"),
+            tx(
+                "tx:missing-source",
+                start + timedelta(days=1),
+                income="40000",
+                balance="40000",
+                source_file_id="",
+                source_file="unknown.pdf",
+            ),
+        ]
+
+        value = {
+            item["observation_type"]: item
+            for item in build_fund_observations(rows)
+        }["large_inflow_balance_paths"]["value"]
+
+        self.assertTrue(value["available"])
+        self.assertTrue(value["partially_available"])
+        self.assertEqual(value["eligible_inflow_count"], 2)
+        self.assertEqual(value["path_candidate_count"], 1)
+        self.assertEqual(value["source_file_id_unavailable_count"], 1)
+        self.assertEqual(
+            value["candidates"][0]["inflow_transaction"]["transaction_id"],
+            "tx:usable",
+        )
+
     def test_large_transaction_threshold_is_ten_thousand_inclusive(self):
         rows = [
             tx("tx:large", datetime(2026, 1, 1), expense="10000"),
@@ -120,10 +207,41 @@ class MvpFundObservationTests(unittest.TestCase):
         self.assertEqual(source["balance_statistics"]["average"], "200.00")
         self.assertEqual(source["balance_statistics"]["closing"], "300.00")
         self.assertEqual(
+            source["balance_snapshot_transaction_ids"],
+            ["tx:q1", "tx:q2"],
+        )
+        self.assertEqual(
             [item["quarter"] for item in source["quarterly_interest"]],
             ["2026-Q1", "2026-Q2"],
         )
         self.assertEqual(source["quarterly_interest"][1]["change_from_previous"], "7.66")
+
+    def test_balance_and_interest_distinguish_not_applicable_and_no_hit(self):
+        wechat = tx(
+            "tx:wechat",
+            datetime(2026, 1, 1),
+            income="100",
+            balance=None,
+            source_file_id="source:wechat",
+            source_file="wechat.pdf",
+            summary="普通收款",
+        )
+        wechat.bank = "微信流水"
+
+        source = {
+            item["observation_type"]: item
+            for item in build_fund_observations([wechat])
+        }["end_of_day_balance_and_interest"]["value"]["sources"][0]
+
+        self.assertEqual(
+            source["balance_unavailable_reason"],
+            "balance_not_applicable",
+        )
+        self.assertFalse(source["interest_available"])
+        self.assertEqual(
+            source["interest_unavailable_reason"],
+            "no_interest_records_in_reliable_fields",
+        )
 
     def test_top_five_excludes_masked_names_and_builds_cross_source_occurrence(self):
         rows = [

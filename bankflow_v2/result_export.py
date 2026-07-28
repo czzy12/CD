@@ -18,11 +18,14 @@ from .mvp_fund_observations import (
     is_identifiable_counterparty_name,
 )
 from .mvp_observations import build_deterministic_text_observations
-from .mvp_report import build_declaration_flow_cross_check
+from .mvp_report import (
+    build_declaration_flow_cross_check,
+    build_manual_verification_questions,
+)
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.12"
+SCHEMA_VERSION = "1.15"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -1536,10 +1539,15 @@ def build_bankflow_result(
         ),
         *build_fund_observations(original_transactions),
     ]
+    declaration_cross_check = build_declaration_flow_cross_check(
+        original_transactions,
+        case_context,
+        observations,
+    )
+    observations.append(declaration_cross_check)
     observations.append(
-        build_declaration_flow_cross_check(
+        build_manual_verification_questions(
             original_transactions,
-            case_context,
             observations,
         )
     )
@@ -1576,7 +1584,8 @@ def build_bankflow_result(
             "行业搜索覆盖率只表示可靠且有信息量的文字字段覆盖，不是行业相关交易占比或解析准确率。",
             "AI经营关联默认不调用外部模型；数据授权、留存策略或模型配置缺失时明确降级，且不影响确定性关键词和证据输出。",
             "大额、拆分转出、余额留存、结息和跨来源同名出现均为确定性观察；只报告时间金额与字段共现，不作资金来源、关系或闭环推断。",
-            "申报与流水对照区分直接命中、候选命中、可靠字段内未发现和不可用；未发现或不可用不等于客户陈述虚假。",
+            "申报与流水自动对照仅处理工作单位、经营内容和下定定金支出；其他系统车辆及地点信息只展示。未发现或不可用不等于客户陈述虚假。",
+            "人工核实问题和需关注提示只由确定性规则生成并链接交易证据；需关注仅供参考，不是风险评分、风险结论或准入意见。",
             "本人账户转账候选仅基于外部已确认账户集合与可靠完整对手账号精确匹配，不表示资金来源、资金闭环或账户实际控制关系。",
             "跨账户双边候选仅基于已确认账户来源文件、可靠完整对手账号、同日同额和相反方向匹配，不表示资金来源、资金闭环或账户实际控制关系。",
             "微信支付扣款关联候选仅在唯一银行卡尾号、已确认银行账户、同日同额、文字渠道和唯一商户内容同时满足时输出；不表示本人账户互转。",

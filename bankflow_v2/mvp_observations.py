@@ -11,7 +11,7 @@ from .models import Transaction
 from .summary import sort_transactions
 
 
-CONTROLLED_VOCABULARY_VERSION = "mvp-2026-07-28-v2"
+CONTROLLED_VOCABULARY_VERSION = "mvp-2026-07-28-v3"
 
 SEARCH_FIELDS = (
     "counterparty_name",
@@ -83,6 +83,8 @@ KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
         "司法",
         "诉讼",
         "律师",
+        "套现",
+        "套转",
     ),
 }
 
@@ -277,6 +279,7 @@ def _keyword_observation(
             searched_transaction_count += 1
         group_hits: dict[str, set[str]] = {}
         field_hits: dict[str, set[str]] = {}
+        group_field_hits: dict[str, dict[str, set[str]]] = {}
         for group_name, base_terms in KEYWORD_GROUPS.items():
             terms = (*base_terms, *dynamic.get(group_name, ()))
             for field_name, field_value in reliable_fields.items():
@@ -286,6 +289,10 @@ def _keyword_observation(
                     if normalized_term and normalized_term in normalized_value:
                         group_hits.setdefault(group_name, set()).add(term)
                         field_hits.setdefault(field_name, set()).add(term)
+                        group_field_hits.setdefault(group_name, {}).setdefault(
+                            field_name,
+                            set(),
+                        ).add(term)
         if not group_hits:
             continue
         hits.append(
@@ -300,6 +307,18 @@ def _keyword_observation(
                 "matched_fields": {
                     field_name: sorted(terms)
                     for field_name, terms in sorted(field_hits.items())
+                },
+                "group_matches": {
+                    group_name: {
+                        "matched_terms": sorted(group_hits[group_name]),
+                        "matched_fields": {
+                            field_name: sorted(terms)
+                            for field_name, terms in sorted(
+                                group_field_hits[group_name].items()
+                            )
+                        },
+                    }
+                    for group_name in sorted(group_hits)
                 },
                 "transaction_context": _context(transaction, reliable_fields),
             }
@@ -338,6 +357,127 @@ def _keyword_observation(
                 ]
             ),
             "covered_transaction_count": searched_transaction_count,
+        },
+    }
+
+
+def _sensitive_context_observation(
+    transactions: list[Transaction],
+    keyword_observation: Mapping[str, object],
+) -> dict[str, object]:
+    group_name = "sensitive_transaction_context"
+    source_rows: dict[tuple[str, str], list[Transaction]] = {}
+    for transaction in sort_transactions(transactions):
+        if getattr(transaction, "neutral", False):
+            continue
+        key = (
+            str(transaction.source_file_id or ""),
+            str(transaction.source_file or ""),
+        )
+        source_rows.setdefault(key, []).append(transaction)
+
+    sensitive_hits: list[dict[str, object]] = []
+    for hit in keyword_observation.get("value", {}).get("hits", []):
+        group_match = hit.get("group_matches", {}).get(group_name)
+        if not isinstance(group_match, Mapping):
+            continue
+        context = hit.get("transaction_context", {})
+        key = (
+            str(hit.get("source_file_id", "")),
+            str(context.get("source_file", "")),
+        )
+        rows = source_rows.get(key, [])
+        sensitive_hits.append(
+            {
+                "transaction_id": hit.get("transaction_id", ""),
+                "source_file_id": hit.get("source_file_id", ""),
+                "evidence_locator": hit.get("evidence_locator", ""),
+                "matched_terms": list(group_match.get("matched_terms", [])),
+                "matched_fields": dict(group_match.get("matched_fields", {})),
+                "observed_source_period_start": (
+                    rows[0].transaction_time.isoformat() if rows else None
+                ),
+                "observed_source_period_end": (
+                    rows[-1].transaction_time.isoformat() if rows else None
+                ),
+                "transaction_context": context,
+            }
+        )
+
+    candidates_by_source: dict[tuple[str, str], int] = {}
+    for candidate in sensitive_hits:
+        context = candidate.get("transaction_context", {})
+        key = (
+            str(candidate.get("source_file_id", "")),
+            str(context.get("source_file", "")),
+        )
+        candidates_by_source[key] = candidates_by_source.get(key, 0) + 1
+
+    searched_sources: list[dict[str, object]] = []
+    total_covered = 0
+    for (source_file_id, source_file), rows in sorted(source_rows.items()):
+        covered_count = sum(bool(_reliable_text_fields(row)) for row in rows)
+        total_covered += covered_count
+        candidate_count = candidates_by_source.get(
+            (source_file_id, source_file),
+            0,
+        )
+        searched_sources.append(
+            {
+                "source_file_id": source_file_id,
+                "source_file": source_file,
+                "observed_period_start": rows[0].transaction_time.isoformat(),
+                "observed_period_end": rows[-1].transaction_time.isoformat(),
+                "eligible_transaction_count": len(rows),
+                "searched_transaction_count": covered_count,
+                "candidate_count": candidate_count,
+                "available": bool(covered_count),
+                "reason": (
+                    ""
+                    if covered_count
+                    else "sensitive_search_fields_unavailable"
+                ),
+            }
+        )
+
+    return {
+        "observation_type": "sensitive_transaction_context_candidates",
+        "value": {
+            "available": bool(sensitive_hits),
+            "reason": (
+                ""
+                if sensitive_hits
+                else (
+                    "no_sensitive_hits_in_reliable_fields"
+                    if total_covered
+                    else "sensitive_search_fields_unavailable"
+                )
+            ),
+            "candidate_only": True,
+            "candidate_count": len(sensitive_hits),
+            "candidates": sensitive_hits,
+            "searched_sources": searched_sources,
+        },
+        "parameters": {
+            "vocabulary_version": CONTROLLED_VOCABULARY_VERSION,
+            "controlled_terms": list(KEYWORD_GROUPS[group_name]),
+            "searched_fields": list(SEARCH_FIELDS),
+            "reliability_rule": "non_empty_and_field_confidence_equals_1.0",
+            "single_character_unconditional_matching": False,
+            "period_basis": "observed_transaction_period_per_source",
+            "interpretation": "敏感词组命中仅为待人工核查候选，不表示真实借贷、抵押、诉讼、医疗事实、异常或风险。",
+        },
+        "evidence_transaction_ids": [
+            candidate["transaction_id"]
+            for candidate in sensitive_hits
+            if candidate["transaction_id"]
+        ],
+        "field_coverage": {
+            "required_fields": [*SEARCH_FIELDS, "field_confidence"],
+            "eligible_transaction_count": sum(
+                len(rows) for rows in source_rows.values()
+            ),
+            "covered_transaction_count": total_covered,
         },
     }
 
@@ -553,4 +693,5 @@ def build_deterministic_text_observations(
         keyword,
         _coverage_observation(transactions),
         _purchase_funding_observation(transactions, keyword),
+        _sensitive_context_observation(transactions, keyword),
     ]

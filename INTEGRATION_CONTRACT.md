@@ -220,7 +220,7 @@ schema 1.9 新增 `ai_business_relevance_candidates`：
 - 只有 `enabled`、`data_authorized`、`retention_policy_confirmed`、`provider` 和 `model` 均明确配置后才允许调用；任一缺失、模型失败或返回无效时必须给出稳定降级原因，schema 1.8 的确定性结果保持完整。
 - 显式申报单位或行业在可靠字段中的精确命中优先形成 `deterministic_exact_match`，不会被模型改写或覆盖。
 - 模型输入只含交易 ID、月份、方向、金额和允许的可靠标准文字字段，不含来源路径、账号、原始 PDF 字段或证件信息。企业/商户名称须另行允许；疑似个人对手名称不进入模型输入。
-- 模型输出只能使用 `directly_related`、`possibly_related`、`no_relation_evidence`、`undetermined`，必须逐条覆盖输入交易，只能引用输入中真实存在的交易 ID 和字段；否则整批记为 `ai_response_invalid`。
+- 模型输出字段 `semantic_judgement` 只能使用 `strong`、`medium`、`weak`、`none`、`undetermined`，必须逐条覆盖输入交易，只能引用输入中真实存在的交易 ID 和字段；非法值按单项拒绝并聚合为 `ai_response_invalid`。经营分类由本地代码在通过校验后派生，旧分类值不得作为模型可选输出。
 - 该观察只表示经营关联候选，不表示真实经营、实际经营主体、欺诈、包装或准入结论。
 
 DeepSeek 运行配置不进入 JSON、不写入仓库，只从当前进程环境读取：
@@ -271,7 +271,7 @@ schema 1.11 新增 `declaration_flow_cross_checks` 和 Markdown 验收视图：
 
 schema 1.12 收紧AI行业输入并新增证据强度：
 
-- 当前提示词版本为 `business-relevance-mvp-v11`；schema结构未变化。v6明确具体产品或服务优先形成中等候选，`货款`不得把同笔已有的具体产品或服务语义降为弱提示；v7为每笔附加仅由字段名派生的 `classification_constraints`，没有摘要、备注、用途、商品说明或商户类别时明确禁止 `directly_related`；v8要求所有正向分类均与申报行业或工作单位明确体现的行业语义相关，具体但无关的生活或通用服务不得判正向；v9固定建材、护栏、栏杆、围栏、塑木和园林景观设计在本案上下文中的具体相关语义，货款不得将其降为weak，同时排除无具体课题、产品、项目或行业对象的泛化咨询费、材料费和采购款；v10在AI语义入口排除纯字母数字代码备注；v11将业务硬边界、聚合校验、缓存和固定样本从提示依赖中剥离。
+- 当前业务提示词版本为 `business-relevance-mvp-v11`，模型输出契约版本为 `semantic-judgement-v2`。v6明确具体产品或服务优先形成中等候选，`货款`不得把同笔已有的具体产品或服务语义降为弱提示；v7为每笔附加仅由字段名派生的 `classification_constraints`，没有摘要、备注、用途、商品说明或商户类别时明确禁止 `directly_related`；v8要求所有正向分类均与申报行业或工作单位明确体现的行业语义相关，具体但无关的生活或通用服务不得判正向；v9固定建材、护栏、栏杆、围栏、塑木和园林景观设计在本案上下文中的具体相关语义，货款不得将其降为weak，同时排除无具体课题、产品、项目或行业对象的泛化咨询费、材料费和采购款；v10在AI语义入口排除纯字母数字代码备注；v11将业务硬边界、聚合校验、缓存和固定样本从提示依赖中剥离。输出契约升级不改变上述业务语义。
 - AI行业模型只接收可靠企业/商户名称、非通用摘要、备注、用途、商品说明和商户类别；金额、日期、方向、银行名、账号、交易方式、地点、路径和原始PDF字段不发送。上述字段继续完整保留在本地 `original_transactions` 及确定性资金/轨迹观察中。
 - `directly_related` 的 `evidence_strength` 固定为 `strong`，且必须引用摘要、备注、用途、商品说明或商户类别；仅有企业名称不能成为直接相关。
 - `possibly_related` 使用 `medium` 或 `weak`：具体行业产品/服务但用途未确认时为中等候选；实业、贸易、科技、工业、工程等泛化类型或货款只能形成弱提示。

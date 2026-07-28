@@ -56,8 +56,20 @@ def main() -> int:
         default=Path("output/ai-response-cache"),
     )
     parser.add_argument("--confirm-real-data", action="store_true")
+    parser.add_argument("--retry-invalid-cache", action="store_true")
+    parser.add_argument("--expected-retry-count", type=int)
     args = parser.parse_args()
 
+    if (
+        args.retry_invalid_cache
+        and (
+            args.expected_retry_count is None
+            or args.expected_retry_count < 1
+        )
+    ):
+        print("status=not_started")
+        print("reason=expected_retry_count_required")
+        return 2
     if not args.confirm_real_data:
         print("status=not_started")
         print("reason=confirm_real_data_required")
@@ -68,7 +80,10 @@ def main() -> int:
         return 2
 
     settings = load_deepseek_settings()
-    ai_config, evaluator = load_deepseek_runtime(cache_dir=args.cache_dir)
+    ai_config, evaluator = load_deepseek_runtime(
+        cache_dir=args.cache_dir,
+        retry_invalid_cache=args.retry_invalid_cache,
+    )
     if evaluator is None:
         print("status=not_started")
         print("reason=ai_configuration_or_authorization_incomplete")
@@ -143,9 +158,23 @@ def main() -> int:
         return 1
 
     provider_execution = observation["value"]["provider_execution"]
+    invalid_cache_entry_count = int(
+        provider_execution.get("invalid_cache_entry_count", 0)
+    )
+    if (
+        args.retry_invalid_cache
+        and invalid_cache_entry_count != args.expected_retry_count
+    ):
+        print("status=failed_closed")
+        print("reason=invalid_cache_retry_scope_mismatch")
+        print(f"invalid_cache_entries={invalid_cache_entry_count}")
+        print(f"expected_retry_count={args.expected_retry_count}")
+        print(f"report={args.output_path}")
+        return 1
     print("status=ok")
     print(f"accepted_ai_results={len(observation['value']['ai_candidates'])}")
     print(f"cache_hits={provider_execution['cache_hit_count']}")
+    print(f"invalid_cache_entries={invalid_cache_entry_count}")
     print(f"provider_calls={provider_execution['provider_call_count']}")
     print(f"report={args.output_path}")
     return 0

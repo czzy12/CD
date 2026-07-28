@@ -217,8 +217,7 @@ class AiSemanticPolicyTests(unittest.TestCase):
             return [
                 {
                     "transaction_id": item["transaction_id"],
-                    "classification": "directly_related",
-                    "evidence_strength": "strong",
+                    "semantic_judgement": "strong",
                     "reason": "标准字段明确出现环保工程款",
                     "used_fields": list(item["fields"]),
                 }

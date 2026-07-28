@@ -91,8 +91,7 @@ class CrossBankAiFieldMappingTests(unittest.TestCase):
             return [
                 {
                     "transaction_id": row.transaction_id,
-                    "classification": "possibly_related",
-                    "evidence_strength": "medium",
+                    "semantic_judgement": "medium",
                     "reason": "建材和材料采购属于具体产品或用途候选",
                     "used_fields": [
                         "counterparty_name",

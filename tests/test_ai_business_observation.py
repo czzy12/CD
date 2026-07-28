@@ -80,7 +80,7 @@ class AiBusinessObservationTests(unittest.TestCase):
             captured.update(payload)
             return [{
                 "transaction_id": "tx:possible",
-                "classification": "possibly_related",
+                "semantic_judgement": "medium",
                 "reason": "用途字段出现五金采购，需要结合申报业务人工复核",
                 "used_fields": ["purpose"],
             }]
@@ -125,7 +125,7 @@ class AiBusinessObservationTests(unittest.TestCase):
             },
             evaluator=lambda payload: [{
                 "transaction_id": "tx:fabricated",
-                "classification": "directly_related",
+                "semantic_judgement": "strong",
                 "reason": "虚构",
                 "used_fields": ["不存在字段"],
             }],
@@ -156,7 +156,7 @@ class AiBusinessObservationTests(unittest.TestCase):
             },
             evaluator=lambda payload: [{
                 "transaction_id": "tx:one",
-                "classification": "possibly_related",
+                "semantic_judgement": "medium",
                 "reason": "仅返回一笔",
                 "used_fields": ["purpose"],
             }],
@@ -287,7 +287,7 @@ class AiBusinessObservationTests(unittest.TestCase):
                 captured.update(payload)
                 or [{
                     "transaction_id": "tx:wine-shop",
-                    "classification": "possibly_related",
+                    "semantic_judgement": "medium",
                     "reason": "企业名称包含酒水经营，需要结合用途人工复核",
                     "used_fields": ["counterparty_name"],
                 }]
@@ -366,8 +366,7 @@ class AiBusinessObservationTests(unittest.TestCase):
                 captured.update(payload)
                 or [{
                     "transaction_id": "tx:business-transfer",
-                    "classification": "possibly_related",
-                    "evidence_strength": "medium",
+                    "semantic_judgement": "medium",
                     "reason": "建材属于具体行业产品，需人工复核用途",
                     "used_fields": ["counterparty_name"],
                 }]
@@ -411,8 +410,7 @@ class AiBusinessObservationTests(unittest.TestCase):
                 captured.update(payload)
                 or [{
                     "transaction_id": "tx:opaque-remark",
-                    "classification": "possibly_related",
-                    "evidence_strength": "medium",
+                    "semantic_judgement": "medium",
                     "reason": "建材名称与申报行业相关，但无具体用途",
                     "used_fields": ["counterparty_name"],
                 }]
@@ -449,7 +447,7 @@ class AiBusinessObservationTests(unittest.TestCase):
             },
             evaluator=lambda payload: [{
                 "transaction_id": "tx:environment-company",
-                "classification": "directly_related",
+                "semantic_judgement": "strong",
                 "reason": "企业名称包含环保",
                 "used_fields": ["counterparty_name"],
             }],
@@ -485,7 +483,7 @@ class AiBusinessObservationTests(unittest.TestCase):
             },
             evaluator=lambda payload: [{
                 "transaction_id": "tx:project-material",
-                "classification": "directly_related",
+                "semantic_judgement": "strong",
                 "reason": "备注明确为环境治理项目材料费",
                 "used_fields": ["counterparty_name", "remark"],
             }],
@@ -529,8 +527,7 @@ class AiBusinessObservationTests(unittest.TestCase):
             },
             evaluator=lambda payload: [{
                 "transaction_id": "tx:trade-company",
-                "classification": "possibly_related",
-                "evidence_strength": "weak",
+                "semantic_judgement": "weak",
                 "reason": "贸易公司和货款仅作为弱提示，缺少具体产品或用途",
                 "used_fields": ["counterparty_name", "remark"],
             }],
@@ -573,8 +570,7 @@ class AiBusinessObservationTests(unittest.TestCase):
                 captured.update(payload)
                 or [{
                     "transaction_id": "tx:building-materials",
-                    "classification": "possibly_related",
-                    "evidence_strength": "medium",
+                    "semantic_judgement": "medium",
                     "reason": "建材是具体产品类别，货款不削弱该语义",
                     "used_fields": ["counterparty_name", "remark"],
                 }]
@@ -632,22 +628,19 @@ class AiBusinessObservationTests(unittest.TestCase):
             evaluator=lambda payload: [
                 {
                     "transaction_id": "tx:invalid-class",
-                    "classification": "相关",
-                    "evidence_strength": "medium",
+                    "semantic_judgement": "相关",
                     "reason": "非法分类",
                     "used_fields": ["purpose"],
                 },
                 {
                     "transaction_id": "tx:name-only",
-                    "classification": "directly_related",
-                    "evidence_strength": "strong",
+                    "semantic_judgement": "strong",
                     "reason": "只使用企业名称",
                     "used_fields": ["counterparty_name"],
                 },
                 {
                     "transaction_id": "tx:valid",
-                    "classification": "directly_related",
-                    "evidence_strength": "strong",
+                    "semantic_judgement": "strong",
                     "reason": "备注明确为环境治理项目材料费",
                     "used_fields": ["purpose"],
                 },
@@ -663,7 +656,7 @@ class AiBusinessObservationTests(unittest.TestCase):
         self.assertEqual(
             value["validation_failure_summary"]["counts"],
             {
-                "classification_invalid": 1,
+                "semantic_judgement_invalid": 1,
                 "maximum_allowed_strength_exceeded": 1,
             },
         )

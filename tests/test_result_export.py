@@ -46,7 +46,7 @@ class ResultExportTests(unittest.TestCase):
         }
         evaluator = lambda payload: [{
             "transaction_id": "tx:source:transaction",
-            "classification": "possibly_related",
+            "semantic_judgement": "medium",
             "reason": "用途字段需人工复核",
             "used_fields": ["purpose"],
         }]

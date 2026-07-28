@@ -3,7 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from bankflow_v2.ai_business_observation import build_classification_constraints
+from bankflow_v2.ai_business_observation import (
+    build_classification_constraints,
+    validate_ai_response_collecting,
+)
 from bankflow_v2.deepseek_adapter import (
     DeepSeekEvaluator,
     DeepSeekProviderError,
@@ -17,13 +20,8 @@ def payload(count: int) -> dict[str, object]:
     return {
         "task_type": "business_relevance",
         "prompt_version": "test-v1",
+        "output_contract_version": "semantic-judgement-v2",
         "business_context": {"declared_industries": ["装修"]},
-        "allowed_classifications": [
-            "directly_related",
-            "possibly_related",
-            "no_relation_evidence",
-            "undetermined",
-        ],
         "allowed_model_judgements": [
             "strong",
             "medium",
@@ -118,6 +116,15 @@ class DeepSeekAdapterTests(unittest.TestCase):
             {"type": "json_object"},
         )
         self.assertEqual(calls[0][1]["thinking"], {"type": "disabled"})
+        enum_values = json.loads(calls[0][1]["messages"][1]["content"])[
+            "output_schema"
+        ]["properties"]["results"]["items"]["properties"][
+            "semantic_judgement"
+        ]["enum"]
+        self.assertEqual(
+            enum_values,
+            ["medium", "none", "strong", "undetermined", "weak"],
+        )
         self.assertEqual(calls[0][3], 15)
         self.assertEqual([item["transaction_id"] for item in result["results"]], [
             "tx:0",
@@ -361,6 +368,77 @@ class DeepSeekAdapterTests(unittest.TestCase):
             "semantic_judgement_invalid",
         )
 
+    def test_accepts_only_five_semantic_judgements(self):
+        records = payload(5)["transactions"]
+        judgements = ["strong", "medium", "weak", "none", "undetermined"]
+        response = [
+            {
+                "transaction_id": record["transaction_id"],
+                "semantic_judgement": judgement,
+                "reason": "test reason",
+                "used_fields": ["purpose"],
+            }
+            for record, judgement in zip(records, judgements)
+        ]
+
+        report = validate_ai_response_collecting(
+            response,
+            records,
+        )
+
+        self.assertEqual(report["accepted_count"], 5)
+        self.assertEqual(report["failures"], [])
+
+    def test_rejects_old_and_unknown_semantic_judgements(self):
+        invalid_values = [
+            "no_relation_evidence",
+            "possibly_related",
+            "directly_related",
+            "related",
+        ]
+        records = payload(len(invalid_values))["transactions"]
+        response = [
+            {
+                "transaction_id": record["transaction_id"],
+                "semantic_judgement": invalid,
+                "reason": "test reason",
+                "used_fields": ["purpose"],
+            }
+            for record, invalid in zip(records, invalid_values)
+        ]
+
+        report = validate_ai_response_collecting(
+            response,
+            records,
+        )
+
+        self.assertEqual(report["accepted"], [])
+        self.assertEqual(
+            [item["reason"] for item in report["failures"]],
+            ["semantic_judgement_invalid"] * 4,
+        )
+
+    def test_strict_contract_rejects_missing_semantic_judgement(self):
+        records = payload(1)["transactions"]
+        report = validate_ai_response_collecting(
+            [
+                {
+                    "transaction_id": "tx:0",
+                    "classification": "possibly_related",
+                    "evidence_strength": "medium",
+                    "reason": "legacy response",
+                    "used_fields": ["purpose"],
+                }
+            ],
+            records,
+        )
+
+        self.assertEqual(report["accepted"], [])
+        self.assertEqual(
+            report["failures"][0]["reason"],
+            "semantic_judgement_missing",
+        )
+
     def test_caches_raw_response_and_replays_without_provider_call(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             calls = []
@@ -448,6 +526,116 @@ class DeepSeekAdapterTests(unittest.TestCase):
             evaluator(changed)
 
             self.assertEqual(calls, [["tx:0"], ["tx:0"]])
+
+    def test_contract_upgrade_reuses_250_and_marks_only_36_for_retry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            calls = []
+
+            def legacy_transport(url, body, headers, timeout):
+                request = json.loads(body.decode("utf-8"))
+                user_payload = json.loads(request["messages"][1]["content"])
+                ids = [
+                    item["transaction_id"]
+                    for item in user_payload["transactions"]
+                ]
+                calls.append(ids)
+                results = []
+                old_values = [
+                    "no_relation_evidence",
+                    "possibly_related",
+                    "directly_related",
+                ]
+                for transaction_id in ids:
+                    index = int(transaction_id.split(":")[-1])
+                    judgement = (
+                        "medium"
+                        if index < 250
+                        else old_values[(index - 250) % len(old_values)]
+                    )
+                    results.append(
+                        {
+                            "transaction_id": transaction_id,
+                            "semantic_judgement": judgement,
+                            "reason": "cached response",
+                            "used_fields": ["purpose"],
+                        }
+                    )
+                content = json.dumps(
+                    {"results": results},
+                    ensure_ascii=False,
+                )
+                return json.dumps(
+                    {"choices": [{"message": {"content": content}}]},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+
+            settings = DeepSeekSettings(
+                api_key="secret-key",
+                model="test-model",
+                batch_size=50,
+            )
+            old_payload = payload(286)
+            old_payload.pop("output_contract_version")
+            old_payload["instructions"] = ["legacy output wording"]
+            first = DeepSeekEvaluator(
+                settings,
+                legacy_transport,
+                cache_dir=temp_dir,
+            )(old_payload)
+
+            upgraded_payload = payload(286)
+            upgraded_payload["instructions"] = ["five-value output contract"]
+            replay = DeepSeekEvaluator(
+                settings,
+                lambda *_args: self.fail("provider should not be called"),
+                cache_dir=temp_dir,
+                replay_only=True,
+                retry_invalid_cache=True,
+            )(upgraded_payload)
+            retry_calls = []
+
+            def retry_transport(url, body, headers, timeout):
+                request = json.loads(body.decode("utf-8"))
+                user_payload = json.loads(request["messages"][1]["content"])
+                ids = [
+                    item["transaction_id"]
+                    for item in user_payload["transactions"]
+                ]
+                retry_calls.append(ids)
+                return provider_response(ids)
+
+            retried = DeepSeekEvaluator(
+                settings,
+                retry_transport,
+                cache_dir=temp_dir,
+                retry_invalid_cache=True,
+            )(upgraded_payload)
+
+            self.assertEqual(len(calls), 6)
+            self.assertEqual(len(first["results"]), 250)
+            self.assertEqual(len(first["validation_failures"]), 36)
+            self.assertEqual(len(replay["results"]), 250)
+            self.assertEqual(replay["cache_hit_count"], 250)
+            self.assertEqual(replay["cache_miss_count"], 36)
+            self.assertEqual(replay["invalid_cache_entry_count"], 36)
+            self.assertEqual(replay["provider_call_count"], 0)
+            self.assertEqual(
+                {
+                    item["reason"]
+                    for item in replay["validation_failures"]
+                },
+                {"cache_miss"},
+            )
+            self.assertEqual(
+                retry_calls,
+                [[f"tx:{index}" for index in range(250, 286)]],
+            )
+            self.assertEqual(len(retried["results"]), 286)
+            self.assertEqual(retried["validation_failures"], [])
+            self.assertEqual(retried["cache_hit_count"], 250)
+            self.assertEqual(retried["cache_miss_count"], 36)
+            self.assertEqual(retried["invalid_cache_entry_count"], 36)
+            self.assertEqual(retried["provider_call_count"], 1)
 
     def test_task_type_change_invalidates_signature_cache(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -54,7 +54,16 @@ def _report_results(report_path: Path) -> list[dict[str, object]]:
             continue
         transaction_id, _, _, _, field_text, label, strength, reason, _ = cells
         classification = _CLASSIFICATIONS.get(label)
-        if not classification:
+        semantic_judgement = (
+            "undetermined"
+            if classification == "undetermined"
+            else strength
+        )
+        if (
+            not classification
+            or semantic_judgement
+            not in {"strong", "medium", "weak", "none", "undetermined"}
+        ):
             continue
         used_fields = []
         for field_part in field_text.split("；"):
@@ -64,8 +73,7 @@ def _report_results(report_path: Path) -> list[dict[str, object]]:
         results.append(
             {
                 "transaction_id": transaction_id,
-                "classification": classification,
-                "evidence_strength": strength,
+                "semantic_judgement": semantic_judgement,
                 "reason": reason,
                 "used_fields": used_fields,
             }

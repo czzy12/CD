@@ -17,6 +17,7 @@ from .summary import sort_transactions
 
 AI_PROMPT_VERSION = "business-relevance-mvp-v11"
 AI_TASK_TYPE = "business_relevance"
+AI_OUTPUT_CONTRACT_VERSION = "semantic-judgement-v2"
 AI_CLASSIFICATIONS = {
     "directly_related",
     "possibly_related",
@@ -1167,34 +1168,24 @@ def validate_ai_response_collecting(
             continue
         seen.add(transaction_id)
         judgement = str(item.get("semantic_judgement", ""))
-        if judgement:
-            if judgement not in AI_MODEL_JUDGEMENTS:
-                reject(location, "semantic_judgement_invalid", transaction_id)
-                continue
-            classification = (
-                "directly_related"
-                if judgement == "strong"
-                else "possibly_related"
-                if judgement in {"medium", "weak"}
-                else "undetermined"
-                if judgement == "undetermined"
-                else "no_relation_evidence"
-            )
-            evidence_strength = (
-                "none" if judgement == "undetermined" else judgement
-            )
-        else:
-            classification = str(item.get("classification", ""))
-            default_strength = (
-                "strong"
-                if classification == "directly_related"
-                else "medium"
-                if classification == "possibly_related"
-                else "none"
-            )
-            evidence_strength = str(
-                item.get("evidence_strength", default_strength)
-            )
+        if not judgement:
+            reject(location, "semantic_judgement_missing", transaction_id)
+            continue
+        if judgement not in AI_MODEL_JUDGEMENTS:
+            reject(location, "semantic_judgement_invalid", transaction_id)
+            continue
+        classification = (
+            "directly_related"
+            if judgement == "strong"
+            else "possibly_related"
+            if judgement in {"medium", "weak"}
+            else "undetermined"
+            if judgement == "undetermined"
+            else "no_relation_evidence"
+        )
+        evidence_strength = (
+            "none" if judgement == "undetermined" else judgement
+        )
         reason = str(item.get("reason", "")).strip()
         used_fields = item.get("used_fields", [])
         if classification not in AI_CLASSIFICATIONS:
@@ -1384,6 +1375,7 @@ def build_ai_business_observation(
         "cache_hit_count": 0,
         "cache_miss_count": 0,
         "cache_replay_mismatch_count": 0,
+        "invalid_cache_entry_count": 0,
     }
 
     if not anchors:
@@ -1404,6 +1396,7 @@ def build_ai_business_observation(
         payload = {
             "task_type": AI_TASK_TYPE,
             "prompt_version": AI_PROMPT_VERSION,
+            "output_contract_version": AI_OUTPUT_CONTRACT_VERSION,
             "business_context": {
                 "declared_industries": _values(
                     case_context, "declared_industries"
@@ -1414,26 +1407,24 @@ def build_ai_business_observation(
                     else []
                 ),
             },
-            "allowed_classifications": sorted(AI_CLASSIFICATIONS),
-            "allowed_evidence_strengths": sorted(AI_EVIDENCE_STRENGTHS),
             "allowed_model_judgements": sorted(AI_MODEL_JUDGEMENTS),
             "transactions": records,
             "instructions": [
                 "只能引用输入中的交易ID和字段。",
                 "不得判断真实经营、欺诈、包装、准入或拒绝。",
                 "必须联合查看同一交易提供的全部语义字段。",
-                "明确出现申报行业商品、服务或用途时可判directly_related且evidence_strength为strong。",
+                "明确出现申报行业商品、服务或用途时，semantic_judgement可为strong。",
                 "classification_constraints由本地确定性代码生成，模型不得覆盖、改写或忽略。",
-                "每笔不得超过maximum_allowed_strength；directly_related_allowed为false时绝对不得判directly_related。",
-                "企业或商户名称无论看起来多么具体，只要没有摘要、备注、用途、商品说明或商户类别字段支持，就不得判directly_related。",
+                "每笔不得超过maximum_allowed_strength；directly_related_allowed为false时semantic_judgement绝对不得为strong。",
+                "企业或商户名称无论看起来多么具体，只要没有摘要、备注、用途、商品说明或商户类别字段支持，semantic_judgement就不得为strong。",
                 "所有正向分类都必须与business_context中的申报行业或工作单位名称所明确体现的行业语义相关；具体但无关的产品或服务不得判正向。",
-                "名称或其他字段中有与申报工作内容相关的具体产品或服务、但用途不确定时，优先判possibly_related且evidence_strength为medium；建材、护栏、园林景观设计等可与建筑材料或环保工程相关。",
-                "对于本案建筑材料批发投资或环保工程上下文，建材、护栏、栏杆、围栏、塑木和园林景观设计属于具体相关产品或服务；即使同笔另有货款，也必须优先判possibly_related且evidence_strength为medium，不得降为weak。",
+                "名称或其他字段中有与申报工作内容相关的具体产品或服务、但用途不确定时，semantic_judgement优先为medium；建材、护栏、园林景观设计等可与建筑材料或环保工程相关。",
+                "对于本案建筑材料批发投资或环保工程上下文，建材、护栏、栏杆、围栏、塑木和园林景观设计属于具体相关产品或服务；即使同笔另有货款，semantic_judgement也必须优先为medium，不得降为weak。",
                 "仅有技术咨询费、材料费、采购款等泛化用途而没有具体课题、产品、项目或行业对象时，不得仅凭可能性判为medium。",
-                "餐饮、便利店、话费充值、银行年费、医疗和打车等生活或通用服务若与申报工作内容无关，应判no_relation_evidence且evidence_strength为none；本轮不得将其用于生活轨迹判断。",
-                "只有实业、贸易、科技、工业、工程等泛化企业类型，或只有货款而没有具体产品、服务、项目或用途时，才可作为possibly_related弱提示且evidence_strength必须为weak。",
+                "餐饮、便利店、话费充值、银行年费、医疗和打车等生活或通用服务若与申报工作内容无关，semantic_judgement应为none；本轮不得将其用于生活轨迹判断。",
+                "只有实业、贸易、科技、工业、工程等泛化企业类型，或只有货款而没有具体产品、服务、项目或用途时，semantic_judgement最多为weak。",
                 "货款不得覆盖或削弱同笔交易中已经存在的具体产品或服务语义，不得仅因同时出现货款就把medium降为weak。",
-                "reason必须与classification一致；possibly_related的理由不得写成直接相关。",
+                "reason必须与semantic_judgement一致，不能把medium或weak描述成确定的直接关系。",
                 "证据不足时使用undetermined。",
             ],
         }
@@ -1520,6 +1511,7 @@ def build_ai_business_observation(
         "parameters": {
             "task_type": AI_TASK_TYPE,
             "prompt_version": AI_PROMPT_VERSION,
+            "output_contract_version": AI_OUTPUT_CONTRACT_VERSION,
             "provider": str(config.get("provider", "")),
             "model": str(config.get("model", "")),
             "run_at": datetime.now(timezone.utc).isoformat(),

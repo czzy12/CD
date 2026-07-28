@@ -7,7 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from bankflow_v2.ai_business_observation import build_classification_constraints
+from bankflow_v2.ai_business_observation import (
+    AI_OUTPUT_CONTRACT_VERSION,
+    AI_TASK_TYPE,
+    build_classification_constraints,
+)
 from bankflow_v2.deepseek_adapter import (
     DeepSeekProviderError,
     load_deepseek_runtime,
@@ -31,17 +35,13 @@ def main() -> int:
         return 2
 
     payload = {
+        "task_type": AI_TASK_TYPE,
         "prompt_version": "connection-test-v1",
+        "output_contract_version": AI_OUTPUT_CONTRACT_VERSION,
         "business_context": {
             "declared_industries": ["环保工程"],
             "declared_work_units": ["示例环保工程有限公司"],
         },
-        "allowed_classifications": [
-            "directly_related",
-            "possibly_related",
-            "no_relation_evidence",
-            "undetermined",
-        ],
         "allowed_model_judgements": [
             "strong",
             "medium",

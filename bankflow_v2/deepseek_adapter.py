@@ -14,6 +14,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .ai_business_observation import (
+    AI_MODEL_JUDGEMENTS,
+    AI_OUTPUT_CONTRACT_VERSION,
     ai_semantic_signature,
     semantic_signature_id,
     validate_ai_response_collecting,
@@ -197,24 +199,60 @@ def _request_body(
     user_payload = {
         "task_type": payload.get("task_type"),
         "prompt_version": payload.get("prompt_version"),
+        "output_contract_version": payload.get("output_contract_version"),
         "business_context": payload.get("business_context"),
-        "allowed_classifications": payload.get("allowed_classifications"),
-        "allowed_evidence_strengths": payload.get("allowed_evidence_strengths"),
         "allowed_model_judgements": payload.get(
             "allowed_model_judgements"
         ),
         "instructions": payload.get("instructions"),
         "transactions": constrained_transactions,
-        "required_output": {
+        "output_schema": {
             "type": "object",
-            "required_key": "results",
-            "result_fields": [
-                "transaction_id",
-                "semantic_judgement",
-                "reason",
-                "used_fields",
-            ],
-            "coverage": "results must contain exactly one item for every input transaction",
+            "additionalProperties": False,
+            "required": ["results"],
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "minItems": len(constrained_transactions),
+                    "maxItems": len(constrained_transactions),
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "transaction_id",
+                            "semantic_judgement",
+                            "reason",
+                            "used_fields",
+                        ],
+                        "properties": {
+                            "transaction_id": {"type": "string"},
+                            "semantic_judgement": {
+                                "type": "string",
+                                "enum": sorted(AI_MODEL_JUDGEMENTS),
+                            },
+                            "reason": {
+                                "type": "string",
+                                "minLength": 1,
+                            },
+                            "used_fields": {
+                                "type": "array",
+                                "minItems": 1,
+                                "items": {"type": "string"},
+                            },
+                        },
+                    },
+                }
+            },
+        },
+        "output_example": {
+            "results": [
+                {
+                    "transaction_id": "必须原样复制输入交易ID",
+                    "semantic_judgement": "medium",
+                    "reason": "简明说明实际使用的字段依据",
+                    "used_fields": ["purpose"],
+                }
+            ]
         },
     }
     request = {
@@ -236,6 +274,7 @@ def _request_body(
                     "classification_constraints由本地确定性代码生成，模型不得覆盖或忽略。"
                     "每笔不得超过maximum_allowed_strength；directly_related_allowed为false时绝对禁止判直接相关。"
                     "你只判断semantic_judgement：strong、medium、weak、none或undetermined；分类由本地代码派生。"
+                    "semantic_judgement必须严格使用用户消息output_schema中的五值enum，不能输出其他词。"
                     "企业或商户名称不能单独支持直接相关。"
                     "所有正向分类必须与business_context中的申报行业或工作单位明确体现的行业语义相关。"
                     "对建筑材料或环保工程上下文，建材、护栏、栏杆、围栏、塑木、园林景观设计是具体相关产品或服务，货款不得将其中等候选降为弱提示。"
@@ -306,6 +345,9 @@ class AiResponseCache:
                 "provider": "deepseek",
                 "model": settings.model,
                 "prompt_version": payload.get("prompt_version"),
+                "output_contract_version": payload.get(
+                    "output_contract_version"
+                ),
                 "business_context": payload.get("business_context"),
                 "instructions": payload.get("instructions"),
                 "fields": transaction.get("fields"),
@@ -341,13 +383,34 @@ class AiResponseCache:
             return None
         if not isinstance(entry, dict):
             return None
-        if entry.get("input_fingerprint") != self.input_fingerprint(
+        if entry.get("input_fingerprint") == self.input_fingerprint(
             settings,
             payload,
             transaction,
         ):
+            return entry
+        cached_input = entry.get("input")
+        if not isinstance(cached_input, Mapping):
             return None
-        return entry
+        compatible = (
+            entry.get("output_contract_version") is None
+            and payload.get("output_contract_version")
+            == AI_OUTPUT_CONTRACT_VERSION
+            and entry.get("task_type") == payload.get("task_type")
+            and entry.get("provider") == "deepseek"
+            and entry.get("model") == settings.model
+            and entry.get("prompt_version") == payload.get("prompt_version")
+            and entry.get("semantic_signature")
+            == [list(pair) for pair in signature]
+            and cached_input.get("fields") == transaction.get("fields")
+            and cached_input.get("classification_constraints")
+            == transaction.get("classification_constraints")
+            and cached_input.get("business_context")
+            == payload.get("business_context")
+        )
+        if not compatible:
+            return None
+        return {**entry, "output_contract_compatible_replay": True}
 
     def store_request(
         self,
@@ -377,6 +440,9 @@ class AiResponseCache:
                     "provider": "deepseek",
                     "model": settings.model,
                     "prompt_version": payload.get("prompt_version"),
+                    "output_contract_version": payload.get(
+                        "output_contract_version"
+                    ),
                     "batch_number": batch_number,
                     "request_body_without_credentials": request_body.decode(
                         "utf-8",
@@ -429,6 +495,9 @@ class AiResponseCache:
                     "provider": "deepseek",
                     "model": settings.model,
                     "prompt_version": payload.get("prompt_version"),
+                    "output_contract_version": payload.get(
+                        "output_contract_version"
+                    ),
                     "semantic_signature": [list(pair) for pair in signature],
                     "input_fingerprint": self.input_fingerprint(
                         settings,
@@ -441,6 +510,10 @@ class AiResponseCache:
                             "classification_constraints"
                         ),
                         "business_context": payload.get("business_context"),
+                        "instructions": payload.get("instructions"),
+                        "output_contract_version": payload.get(
+                            "output_contract_version"
+                        ),
                     },
                     "response_item": response_item,
                     "validation_failures": validation_failures,
@@ -462,11 +535,13 @@ class DeepSeekEvaluator:
         *,
         cache_dir: str | Path | None = None,
         replay_only: bool = False,
+        retry_invalid_cache: bool = False,
     ) -> None:
         self._settings = settings
         self._transport = transport or _default_transport
         self._cache = AiResponseCache(cache_dir or settings.cache_dir)
         self._replay_only = replay_only
+        self._retry_invalid_cache = retry_invalid_cache
 
     def __call__(self, payload: dict[str, object]) -> dict[str, object]:
         transactions = payload.get("transactions")
@@ -478,7 +553,11 @@ class DeepSeekEvaluator:
                 "validation_failures": [],
                 "provider_batch_count": 0,
                 "cache_hit_count": 0,
+                "cache_miss_count": 0,
+                "cache_replay_mismatch_count": 0,
+                "invalid_cache_entry_count": 0,
                 "provider_call_count": 0,
+                "unique_semantic_count": 0,
             }
 
         grouped: dict[str, list[dict[str, object]]] = {}
@@ -515,6 +594,7 @@ class DeepSeekEvaluator:
         cache_hit_count = 0
         cache_miss_count = 0
         cache_replay_mismatch_count = 0
+        invalid_cache_entry_count = 0
         for representative in representatives:
             entry = self._cache.load(
                 self._settings,
@@ -524,7 +604,6 @@ class DeepSeekEvaluator:
             if entry is None:
                 uncached.append(representative)
                 continue
-            cache_hit_count += 1
             response_item = entry.get("response_item")
             if isinstance(response_item, Mapping):
                 response_item = {
@@ -535,17 +614,25 @@ class DeepSeekEvaluator:
                 [response_item] if response_item is not None else [],
                 [representative],
             )
+            replayed_reasons = sorted(
+                str(item.get("reason", ""))
+                for item in report["failures"]
+                if isinstance(item, Mapping)
+            )
+            if (
+                self._retry_invalid_cache
+                and replayed_reasons == ["semantic_judgement_invalid"]
+            ):
+                invalid_cache_entry_count += 1
+                uncached.append(representative)
+                continue
+            cache_hit_count += 1
             stored_failures = entry.get("validation_failures", [])
             if not isinstance(stored_failures, list):
                 stored_failures = []
             stored_reasons = sorted(
                 str(item.get("reason", ""))
                 for item in stored_failures
-                if isinstance(item, Mapping)
-            )
-            replayed_reasons = sorted(
-                str(item.get("reason", ""))
-                for item in report["failures"]
                 if isinstance(item, Mapping)
             )
             if stored_reasons != replayed_reasons:
@@ -566,8 +653,8 @@ class DeepSeekEvaluator:
                 ):
                     merged.append({**result, "transaction_id": transaction_id})
 
+        cache_miss_count = len(uncached)
         if self._replay_only and uncached:
-            cache_miss_count = len(uncached)
             for representative in uncached:
                 failures.append(
                     {
@@ -627,7 +714,10 @@ class DeepSeekEvaluator:
                 )
                 continue
 
-            report = validate_ai_response_collecting(results, batch)
+            report = validate_ai_response_collecting(
+                results,
+                batch,
+            )
             batch_failures = [
                 {
                     **failure,
@@ -690,6 +780,7 @@ class DeepSeekEvaluator:
             "cache_hit_count": cache_hit_count,
             "cache_miss_count": cache_miss_count,
             "cache_replay_mismatch_count": cache_replay_mismatch_count,
+            "invalid_cache_entry_count": invalid_cache_entry_count,
             "provider_call_count": provider_call_count,
             "unique_semantic_count": len(representatives),
         }
@@ -701,6 +792,7 @@ def load_deepseek_runtime(
     *,
     cache_dir: str | Path | None = None,
     replay_only: bool = False,
+    retry_invalid_cache: bool = False,
 ) -> tuple[dict[str, object], Callable[[dict[str, object]], object] | None]:
     settings = load_deepseek_settings(environ)
     config = settings.ai_config()
@@ -713,6 +805,7 @@ def load_deepseek_runtime(
             transport,
             cache_dir=cache_dir,
             replay_only=replay_only,
+            retry_invalid_cache=retry_invalid_cache,
         )
         if settings.enabled
         and settings.data_authorized

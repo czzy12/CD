@@ -10,6 +10,19 @@
 - 基础 GUI 接入调用 `build_bankflow_result()` 时必须显式传入空的禁用配置 `ai_config={}` 和 `ai_evaluator=None`，不得因本机环境变量存在而隐式装载外部模型运行配置。
 - GUI 不重新计算快进快出、敏感词、经营关联、申报对照或人工核实问题，不直接读取解析器内部变量，不建立与 `Transaction` 或 `original_transactions` 平行的交易对象。
 
+### 1.1 第一轮最小纵向切片实现状态
+
+2026-07-29 已完成第一轮实现：
+
+- 保留 `启动GUI.bat → gui_v2.py` 和 `BankFlowGUI.spec`；
+- 现有 `Worker(QThread)` 在解析完成后生成 schema 1.16，固定显式传入 `ai_config={}`；
+- 新增只读标准结果校验、历史 JSON 加载、版本不兼容提示和 transaction_id 证据直查；
+- 新增概览、人工核实、敏感交易、50 条分页表格和共享证据面板；其余模块保持禁用“后续”状态；
+- `ResultListModel` 只保存标准结果引用和 `range` 行序号，不复制 `Transaction`；
+- 新增协作取消、逐来源进度、错误来源和默认脱敏。
+
+真实任如冰案例沿同一 Worker 链路验收：2 个输入文件、标准结果 2 个来源、2075 笔原始交易、5 项人工核实、11 项敏感候选；transaction_id 成功定位微信来源第 3 页第 3 行，证据完整性为完整。解析及标准结果构建约 14.922 秒，结果绑定及首次绘制约 76.0 毫秒。
+
 ## 2. 第九项及 schema 1.16 的 GUI 可用性
 
 ### 2.1 直接证据回跳
@@ -70,14 +83,14 @@ transaction.transaction_id == 请求的 transaction_id
 | GUI 框架 | PyQt6，`requirements.txt` 要求 `PyQt6>=6.5`；不是 PySide6 |
 | 主窗口 | `gui_v2.MainWindow(QMainWindow)` |
 | 解析工作线程 | `gui_v2.Worker(QThread)`，逐文件自动识别、专用解析、通用兜底、证据附加、日期筛选和汇总 |
-| 进度与完成信号 | `progress(str)` 更新状态栏；`finished(list, list)` 返回文件结果和问题 |
-| 当前数据持有 | GUI 直接持有 `FileResult.transactions`、`Summary` 和合并后的 `Transaction`；尚未接入 schema 1.16 标准结果 |
-| 当前表格 | 自定义 `DropTable(QTableWidget)`，支持拖放、排序、复制；`RoundedTableShell` 提供圆角外壳 |
-| 当前页面 | 月度统计、文件汇总、流水明细、异常提示；另有顶部指标卡、日期筛选、流水调整和收入测算侧栏 |
-| 当前主题 | Qt `Fusion` 风格、固定浅色 `QPalette`、`gui_v2.py` 内嵌 QSS；没有独立主题框架 |
-| 当前后台能力 | 解析在 `QThread`；没有协作取消；进度粒度为文件；单文件内部没有阶段进度 |
-| 当前大表行为 | `QTableWidget` 一次性创建全部单元格并 `resizeColumnsToContents/resizeRowsToContents`；没有分页或虚拟加载 |
-| 当前标准结果接入 | 无；`gui_v2.py` 未调用 `build_bankflow_result()` |
+| 进度与完成信号 | `progress`、`stage_progress`、`source_error`、`cancelled`、`failed`、`finished` |
+| 当前数据持有 | 原工具继续兼容 `FileResult`；核查工作台只读持有 schema 1.16 标准结果 |
+| 当前表格 | 原工具保留 `DropTable(QTableWidget)`；新增列表使用 `QTableView + QAbstractTableModel` 和 50 条分页 |
+| 当前页面 | 新增概览、人工核实、敏感交易及证据面板；原月度/文件/明细/异常工具保留 |
+| 当前主题 | 核查工作台使用集中 `BriefTheme` 与 QSS；原工具样式局部保留 |
+| 当前后台能力 | 解析和标准结果构建均在现有 `QThread`；支持文件边界协作取消和逐来源状态 |
+| 当前大表行为 | 新增核查列表按页创建索引；原工具大表行为暂不改 |
+| 当前标准结果接入 | 已接入；构建固定 `ai_config={}`，支持加载历史 schema 1.16 JSON |
 | 当前打包入口 | `BankFlowGUI.spec` 以 `gui_v2.py` 为入口，PyInstaller one-dir、无控制台，打包 `assets/`、`configs/`、发布说明和版本信息 |
 | 旧入口 | `gui_app.py` 是旧 PyQt6 界面并依赖旧 `core.pipeline`；不属于当前启动或打包入口 |
 

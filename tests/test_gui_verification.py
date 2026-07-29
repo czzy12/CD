@@ -76,6 +76,8 @@ class GuiVerificationTests(unittest.TestCase):
         model.set_result(result)
 
         self.assertEqual(model.transaction_id_at(0), "tx:gui:1")
+        self.assertNotIn("交易ID", model.headers)
+        self.assertEqual(model.columnCount(), 7)
         self.assertEqual(
             model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole),
             "候选命中",
@@ -95,6 +97,17 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIn("甲公司", text)
         self.assertNotIn("13812345678", text)
         self.assertNotIn("6222021234567890", text)
+        self.assertNotIn("交易ID：", text)
+        self.assertNotIn("证据定位：", text)
+        self.assertNotIn("原始字段", text)
+
+        panel.expand_button.setChecked(True)
+        expanded = panel.details.toPlainText()
+
+        self.assertIn("交易ID：", expanded)
+        self.assertIn("证据定位：page=2;row=2", expanded)
+        self.assertIn("引用状态：resolved", expanded)
+        self.assertIn("原始字段（已脱敏）", expanded)
 
     def test_evidence_panel_explains_that_selection_happens_in_lists(self):
         panel = EvidencePanel()
@@ -127,6 +140,8 @@ class GuiVerificationTests(unittest.TestCase):
 
         self.assertEqual(len(messages), 1)
         self.assertIn("没有直接关联的交易ID", messages[0])
+        self.assertNotIn("交易ID", table.model.headers)
+        self.assertEqual(table.model.columnCount(), 4)
 
     def test_workspace_accepts_schema_116_result(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})

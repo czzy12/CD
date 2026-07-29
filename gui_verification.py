@@ -248,7 +248,7 @@ class EmptyStateCard(ObservationCard):
 class ResultListModel(QAbstractTableModel):
     """Paged view over a standard result; stores no Transaction objects."""
 
-    MANUAL_HEADERS = ("状态", "人工核实事项", "触发原因", "证据数", "交易ID")
+    MANUAL_HEADERS = ("状态", "人工核实事项", "触发原因", "证据数")
     SENSITIVE_HEADERS = (
         "状态",
         "命中词",
@@ -257,7 +257,6 @@ class ResultListModel(QAbstractTableModel):
         "金额",
         "交易对手",
         "来源文件",
-        "交易ID",
     )
 
     def __init__(self, kind: str, page_size: int = 50, parent: QWidget | None = None):
@@ -334,7 +333,6 @@ class ResultListModel(QAbstractTableModel):
                 redact_sensitive_text(item.get("question_text", "")),
                 redact_sensitive_text(item.get("trigger_reason", "")),
                 len(evidence_ids) if isinstance(evidence_ids, list) else 0,
-                short_transaction_id(evidence_ids[0]) if evidence_ids else "无直接交易证据",
             )
         else:
             context = item.get("transaction_context", {})
@@ -366,7 +364,6 @@ class ResultListModel(QAbstractTableModel):
                 _money(amount),
                 redact_sensitive_text(counterparty),
                 Path(str(context.get("source_file") or "")).name,
-                short_transaction_id(item.get("transaction_id")),
             )
         value = values[index.column()]
         return str(value) if role == Qt.ItemDataRole.DisplayRole else str(value)
@@ -460,6 +457,10 @@ class EvidencePanel(HardShadowCard):
         layout.setSpacing(10)
         header = SectionHeader("E", "交易证据详情")
         self.status = StatusBadge("等待左侧选择", "muted")
+        self.expand_button = QPushButton("展开完整证据")
+        self.expand_button.setEnabled(False)
+        self.expand_button.setCheckable(True)
+        self.expand_button.toggled.connect(self._toggle_details)
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
         self.details.setObjectName("briefEvidenceText")
@@ -472,7 +473,10 @@ class EvidencePanel(HardShadowCard):
         )
         layout.addWidget(header)
         layout.addWidget(self.status, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.expand_button, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.details, 1)
+        self._compact_text = self.details.toPlainText()
+        self._full_text = self._compact_text
 
     def show_transaction(
         self,
@@ -526,27 +530,45 @@ class EvidencePanel(HardShadowCard):
                 if str(value or "").strip()
             )
         reference_text = "、".join(sorted(reference_statuses)) or "未登记消费者引用"
-        lines = [
-            f"交易ID：{short_transaction_id(transaction_id)}",
+        compact_lines = [
             f"日期：{str(transaction.get('transaction_time') or '')[:19]}",
             f"方向：{direction}",
             f"金额：{amount}",
             *text_fields,
-            "",
             f"来源文件：{Path(str(transaction.get('source_file') or '')).name}",
             f"页码：{transaction.get('page_no')}",
             f"行号：{transaction.get('row_no')}",
+        ]
+        full_lines = [
+            *compact_lines,
+            "",
+            "完整证据信息：",
+            f"交易ID：{short_transaction_id(transaction_id)}",
             f"证据定位：{transaction.get('evidence_locator') or '不可用'}",
             f"引用状态：{reference_text}",
             f"整体完整性：{'完整' if integrity.get('complete') else '存在缺失、重复或悬空/歧义'}",
         ]
         if raw_values:
-            lines.extend(["", "原始字段（已脱敏）：", *raw_values])
-        self.details.setPlainText("\n".join(lines))
+            full_lines.extend(["", "原始字段（已脱敏）：", *raw_values])
+        self._compact_text = "\n".join(compact_lines)
+        self._full_text = "\n".join(full_lines)
+        self.expand_button.setEnabled(True)
+        self.expand_button.setChecked(False)
+        self._toggle_details(False)
 
     def show_unavailable(self, message: str) -> None:
         self.status.set_status("无直接交易证据", "red")
+        self.expand_button.setChecked(False)
+        self.expand_button.setEnabled(False)
         self.details.setPlainText(message)
+
+    def _toggle_details(self, expanded: bool) -> None:
+        self.expand_button.setText(
+            "收起完整证据" if expanded else "展开完整证据"
+        )
+        self.details.setPlainText(
+            self._full_text if expanded else self._compact_text
+        )
 
 
 class VerificationWorkspace(QWidget):

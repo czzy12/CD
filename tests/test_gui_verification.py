@@ -16,7 +16,12 @@ from PyQt6.QtWidgets import QApplication
 from bankflow_v2.models import Transaction
 from bankflow_v2.result_export import build_bankflow_result
 from bankflow_v2.verification_worker import VerificationWorker
-from gui_verification import EvidencePanel, ResultListModel, VerificationWorkspace
+from gui_verification import (
+    EvidencePanel,
+    PagedTable,
+    ResultListModel,
+    VerificationWorkspace,
+)
 from gui_verification_app import apply_workbench_palette
 
 
@@ -91,6 +96,38 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertNotIn("13812345678", text)
         self.assertNotIn("6222021234567890", text)
 
+    def test_evidence_panel_explains_that_selection_happens_in_lists(self):
+        panel = EvidencePanel()
+
+        text = panel.details.toPlainText()
+
+        self.assertIn("不是候选列表", text)
+        self.assertIn("点击带交易ID的表格行", text)
+
+    def test_clicking_item_without_transaction_id_shows_reason(self):
+        result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
+        manual_observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item.get("observation_type") == "manual_verification_questions"
+        )
+        manual_observation["value"]["questions"] = [
+            {
+                "question_text": "请人工核实资料范围。",
+                "trigger_reason": "当前事项没有单笔交易证据。",
+                "evidence_transaction_ids": [],
+            }
+        ]
+        table = PagedTable("manual")
+        table.set_result(result)
+        messages = []
+        table.selectionUnavailable.connect(messages.append)
+
+        table._clicked(table.model.index(0, 0))
+
+        self.assertEqual(len(messages), 1)
+        self.assertIn("没有直接关联的交易ID", messages[0])
+
     def test_workspace_accepts_schema_116_result(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
         workspace = VerificationWorkspace()
@@ -101,6 +138,7 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(workspace.header.title.text(), "测试案例")
         self.assertEqual(workspace.sensitive_table.model.total_count(), 1)
         self.assertEqual(workspace.progress.value(), 100)
+        self.assertEqual(workspace.load_result_button.text(), "打开标准结果JSON")
 
     def test_worker_explicitly_disables_ai_runtime(self):
         class StubWorker(VerificationWorker):

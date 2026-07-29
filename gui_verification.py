@@ -389,6 +389,7 @@ class ResultListModel(QAbstractTableModel):
 
 class PagedTable(QWidget):
     transactionSelected = pyqtSignal(str)
+    selectionUnavailable = pyqtSignal(str)
 
     def __init__(self, kind: str, parent: QWidget | None = None):
         super().__init__(parent)
@@ -442,6 +443,11 @@ class PagedTable(QWidget):
         transaction_id = self.model.transaction_id_at(index.row())
         if transaction_id:
             self.transactionSelected.emit(transaction_id)
+            return
+        self.selectionUnavailable.emit(
+            "该事项没有直接关联的交易ID，无法展开单笔交易证据；"
+            "请查看该行的触发原因，或选择其他带交易ID的事项。"
+        )
 
 
 class EvidencePanel(HardShadowCard):
@@ -452,12 +458,18 @@ class EvidencePanel(HardShadowCard):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 14, 24, 22)
         layout.setSpacing(10)
-        header = SectionHeader("E", "交易证据")
-        self.status = StatusBadge("请选择候选", "muted")
+        header = SectionHeader("E", "交易证据详情")
+        self.status = StatusBadge("等待左侧选择", "muted")
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
         self.details.setObjectName("briefEvidenceText")
-        self.details.setPlainText("点击人工核实事项或敏感交易候选后，在此显示原交易及页/行证据。")
+        self.details.setPlainText(
+            "此处是证据详情输出区，不是候选列表。\n\n"
+            "1. 先选择案例目录或打开标准结果JSON；\n"
+            "2. 进入左侧“人工核实”或“敏感交易”；\n"
+            "3. 点击带交易ID的表格行。\n\n"
+            "随后将在此显示原交易、来源文件及页/行证据。"
+        )
         layout.addWidget(header)
         layout.addWidget(self.status, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.details, 1)
@@ -532,6 +544,10 @@ class EvidencePanel(HardShadowCard):
             lines.extend(["", "原始字段（已脱敏）：", *raw_values])
         self.details.setPlainText("\n".join(lines))
 
+    def show_unavailable(self, message: str) -> None:
+        self.status.set_status("无直接交易证据", "red")
+        self.details.setPlainText(message)
+
 
 class VerificationWorkspace(QWidget):
     selectCaseRequested = pyqtSignal()
@@ -595,7 +611,10 @@ class VerificationWorkspace(QWidget):
         action_row = QHBoxLayout()
         self.select_case_button = QPushButton("选择案例目录")
         self.select_case_button.setObjectName("briefPrimaryButton")
-        self.load_result_button = QPushButton("打开历史标准结果")
+        self.load_result_button = QPushButton("打开标准结果JSON")
+        self.load_result_button.setToolTip(
+            "打开以前保存的schema 1.16 JSON，跳过PDF重新解析并直接查看结果。"
+        )
         self.cancel_button = QPushButton("取消任务")
         self.cancel_button.setEnabled(False)
         self.select_case_button.clicked.connect(self.selectCaseRequested)
@@ -641,6 +660,12 @@ class VerificationWorkspace(QWidget):
         self.evidence_panel = EvidencePanel()
         self.manual_table.transactionSelected.connect(self.show_evidence)
         self.sensitive_table.transactionSelected.connect(self.show_evidence)
+        self.manual_table.selectionUnavailable.connect(
+            self.evidence_panel.show_unavailable
+        )
+        self.sensitive_table.selectionUnavailable.connect(
+            self.evidence_panel.show_unavailable
+        )
         root.addWidget(self.evidence_panel)
         self.setStyleSheet(brief_stylesheet())
 

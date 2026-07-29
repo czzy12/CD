@@ -153,7 +153,7 @@ class VerificationMainWindow(QMainWindow):
     def load_standard_result_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self,
-            "打开历史标准结果",
+            "打开schema 1.16标准结果JSON",
             "",
             "schema 1.16 标准结果 (*.json);;JSON 文件 (*.json)",
         )

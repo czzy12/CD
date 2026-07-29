@@ -25,7 +25,7 @@ from .mvp_report import (
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.15"
+SCHEMA_VERSION = "1.16"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -41,6 +41,8 @@ def _transaction_record(transaction: Transaction) -> dict[str, object]:
         "transaction_id": transaction.transaction_id,
         "source_file_id": transaction.source_file_id,
         "source_file": transaction.source_file,
+        "page_no": transaction.page_no,
+        "row_no": transaction.row_no,
         "evidence_locator": transaction.evidence_locator,
         "bank": transaction.bank,
         "transaction_time": transaction.transaction_time.isoformat(),
@@ -1497,6 +1499,236 @@ def _review_items(transactions: list[Transaction], summary: Summary) -> list[dic
     return review_items
 
 
+def _unique_evidence_ids(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return list(
+        dict.fromkeys(
+            item.strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        )
+    )
+
+
+def _evidence_references(
+    facts: list[dict[str, object]],
+    indicators: list[dict[str, object]],
+    observations: list[dict[str, object]],
+    review_items: list[dict[str, object]],
+    unique_transaction_ids: set[str],
+    duplicate_transaction_ids: set[str],
+) -> list[dict[str, object]]:
+    consumers: list[tuple[str, str, object]] = []
+    consumers.extend(
+        ("fact", str(item.get("fact_type", "")), item.get("evidence_transaction_ids"))
+        for item in facts
+    )
+    for item in indicators:
+        consumer_id = str(item.get("indicator_type", ""))
+        parameters = item.get("parameters")
+        if isinstance(parameters, dict) and parameters.get("window_days") is not None:
+            consumer_id += f":{parameters['window_days']}d"
+        consumers.append(
+            ("indicator", consumer_id, item.get("evidence_transaction_ids"))
+        )
+    for item in observations:
+        consumers.append(
+            (
+                "observation",
+                str(item.get("observation_type", "")),
+                item.get("evidence_transaction_ids"),
+            )
+        )
+        if item.get("observation_type") != "manual_verification_questions":
+            continue
+        value = item.get("value")
+        questions = value.get("questions", []) if isinstance(value, dict) else []
+        for question in questions:
+            if isinstance(question, dict):
+                consumers.append(
+                    (
+                        "manual_verification_question",
+                        str(question.get("question_id", "")),
+                        question.get("evidence_transaction_ids"),
+                    )
+                )
+    consumers.extend(
+        (
+            "manual_review",
+            f"manual_review:{index}",
+            item.get("evidence_transaction_ids"),
+        )
+        for index, item in enumerate(review_items, start=1)
+    )
+
+    references: list[dict[str, object]] = []
+    for consumer_type, consumer_id, raw_ids in consumers:
+        evidence_ids = _unique_evidence_ids(raw_ids)
+        resolved = [
+            transaction_id
+            for transaction_id in evidence_ids
+            if transaction_id in unique_transaction_ids
+        ]
+        ambiguous = [
+            transaction_id
+            for transaction_id in evidence_ids
+            if transaction_id in duplicate_transaction_ids
+        ]
+        unresolved = [
+            transaction_id
+            for transaction_id in evidence_ids
+            if transaction_id not in unique_transaction_ids
+            and transaction_id not in duplicate_transaction_ids
+        ]
+        status = "resolved"
+        if ambiguous:
+            status = "ambiguous"
+        elif unresolved:
+            status = "unresolved"
+        references.append(
+            {
+                "consumer_type": consumer_type,
+                "consumer_id": consumer_id,
+                "evidence_transaction_ids": evidence_ids,
+                "resolved_evidence_count": len(resolved),
+                "unresolved_transaction_ids": unresolved,
+                "ambiguous_transaction_ids": ambiguous,
+                "status": status,
+            }
+        )
+    return references
+
+
+def _evidence_output(
+    transactions: list[Transaction],
+    facts: list[dict[str, object]],
+    indicators: list[dict[str, object]],
+    observations: list[dict[str, object]],
+    review_items: list[dict[str, object]],
+) -> dict[str, object]:
+    occurrences: dict[str, list[int]] = {}
+    for index, transaction in enumerate(transactions):
+        if transaction.transaction_id:
+            occurrences.setdefault(transaction.transaction_id, []).append(index)
+    duplicate_ids = {
+        transaction_id
+        for transaction_id, indexes in occurrences.items()
+        if len(indexes) > 1
+    }
+    unique_ids = set(occurrences) - duplicate_ids
+    transaction_index = {
+        transaction.transaction_id: {
+            "original_transaction_index": index,
+            "source_file_id": transaction.source_file_id,
+            "source_file": transaction.source_file,
+            "page_no": transaction.page_no,
+            "row_no": transaction.row_no,
+            "evidence_locator": transaction.evidence_locator,
+        }
+        for index, transaction in enumerate(transactions)
+        if transaction.transaction_id in unique_ids
+    }
+    references = _evidence_references(
+        facts,
+        indicators,
+        observations,
+        review_items,
+        unique_ids,
+        duplicate_ids,
+    )
+    referenced_ids = {
+        transaction_id
+        for reference in references
+        for transaction_id in reference["evidence_transaction_ids"]
+    }
+    unresolved_ids = sorted(
+        {
+            transaction_id
+            for reference in references
+            for transaction_id in reference["unresolved_transaction_ids"]
+        }
+    )
+    ambiguous_reference_ids = sorted(
+        {
+            transaction_id
+            for reference in references
+            for transaction_id in reference["ambiguous_transaction_ids"]
+        }
+    )
+    total = len(transactions)
+    transaction_id_count = sum(bool(item.transaction_id) for item in transactions)
+    source_file_id_count = sum(bool(item.source_file_id) for item in transactions)
+    evidence_locator_count = sum(bool(item.evidence_locator) for item in transactions)
+    page_row_count = sum(
+        bool(item.evidence_locator)
+        and isinstance(item.page_no, int)
+        and isinstance(item.row_no, int)
+        for item in transactions
+    )
+    fully_traceable_count = sum(
+        bool(item.transaction_id)
+        and bool(item.source_file_id)
+        and bool(item.evidence_locator)
+        for item in transactions
+    )
+    reference_integrity_complete = (
+        not duplicate_ids
+        and not unresolved_ids
+        and not ambiguous_reference_ids
+    )
+    locator_coverage_complete = fully_traceable_count == total
+    return {
+        "transaction_index": transaction_index,
+        "references": references,
+        "coverage": {
+            "original_transaction_count": total,
+            "indexed_transaction_count": len(transaction_index),
+            "transaction_id_count": transaction_id_count,
+            "transaction_id_coverage_rate": _ratio(transaction_id_count, total),
+            "source_file_id_count": source_file_id_count,
+            "source_file_id_coverage_rate": _ratio(source_file_id_count, total),
+            "evidence_locator_count": evidence_locator_count,
+            "evidence_locator_coverage_rate": _ratio(evidence_locator_count, total),
+            "page_row_count": page_row_count,
+            "page_row_coverage_rate": _ratio(page_row_count, total),
+            "fully_traceable_transaction_count": fully_traceable_count,
+            "fully_traceable_coverage_rate": _ratio(fully_traceable_count, total),
+            "referenced_transaction_count": len(referenced_ids),
+            "consumer_reference_count": len(references),
+            "evidence_link_count": sum(
+                len(reference["evidence_transaction_ids"])
+                for reference in references
+            ),
+            "resolved_evidence_link_count": sum(
+                reference["resolved_evidence_count"]
+                for reference in references
+            ),
+            "unresolved_evidence_link_count": sum(
+                len(reference["unresolved_transaction_ids"])
+                for reference in references
+            ),
+            "ambiguous_evidence_link_count": sum(
+                len(reference["ambiguous_transaction_ids"])
+                for reference in references
+            ),
+        },
+        "integrity": {
+            "complete": reference_integrity_complete and locator_coverage_complete,
+            "reference_integrity_complete": reference_integrity_complete,
+            "locator_coverage_complete": locator_coverage_complete,
+            "missing_transaction_id_count": total - transaction_id_count,
+            "duplicate_transaction_ids": sorted(duplicate_ids),
+            "unresolved_transaction_ids": unresolved_ids,
+            "ambiguous_reference_transaction_ids": ambiguous_reference_ids,
+        },
+        "interpretation": (
+            "本目录只为既有 original_transactions 建立索引并审计事实、指标、观察和人工事项的交易证据引用；"
+            "不复制或改写交易，不形成风险、资金来源或准入结论。"
+        ),
+    }
+
+
 def build_bankflow_result(
     transactions: list[Transaction],
     metadata: object | None = None,
@@ -1551,6 +1783,15 @@ def build_bankflow_result(
             observations,
         )
     )
+    facts = _facts(original_transactions, summary)
+    indicators = _indicators(original_transactions)
+    evidence = _evidence_output(
+        original_transactions,
+        facts,
+        indicators,
+        observations,
+        review_items,
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1570,9 +1811,10 @@ def build_bankflow_result(
         "result": {
             "summary": _summary_record(summary),
             "original_transactions": [_transaction_record(transaction) for transaction in original_transactions],
-            "facts": _facts(original_transactions, summary),
-            "indicators": _indicators(original_transactions),
+            "facts": facts,
+            "indicators": indicators,
             "observations": observations,
+            "evidence": evidence,
         },
         "manual_review": {"required": bool(review_items), "items": review_items},
         "warnings": [],

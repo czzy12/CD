@@ -1911,7 +1911,38 @@ def render_mvp_markdown(
     lines.extend(
         [
             "",
-            "## 9. 重要提示",
+            "## 9. 可追溯交易证据",
+            "",
+        ]
+    )
+    evidence = result.get("result", {}).get("evidence", {})
+    evidence_coverage = evidence.get("coverage", {})
+    evidence_integrity = evidence.get("integrity", {})
+    evidence_status = (
+        "完整"
+        if evidence_integrity.get("complete")
+        else "存在缺失、重复或悬空引用，需人工复核"
+    )
+    lines.extend(
+        [
+            f"- 证据链状态：{evidence_status}。",
+            (
+                "- 原始交易："
+                f"{evidence_coverage.get('original_transaction_count', 0)} 笔；"
+                f"已建立唯一索引：{evidence_coverage.get('indexed_transaction_count', 0)} 笔；"
+                f"完整交易ID、来源文件ID及页/行定位："
+                f"{evidence_coverage.get('fully_traceable_transaction_count', 0)} 笔。"
+            ),
+            (
+                "- 被事实、指标、观察和人工事项引用的交易："
+                f"{evidence_coverage.get('referenced_transaction_count', 0)} 笔；"
+                f"证据链接：{evidence_coverage.get('evidence_link_count', 0)} 个；"
+                f"悬空：{evidence_coverage.get('unresolved_evidence_link_count', 0)} 个；"
+                f"歧义：{evidence_coverage.get('ambiguous_evidence_link_count', 0)} 个。"
+            ),
+            "- 本视图只显示汇总；结构化结果保留交易ID到 original_transactions 的索引、页/行定位及逐项引用状态，供GUI按需展开。",
+            "",
+            "## 10. 重要提示",
             "",
         ]
     )

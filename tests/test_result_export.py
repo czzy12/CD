@@ -83,12 +83,14 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.15")
+        self.assertEqual(result["schema_version"], "1.16")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
         self.assertEqual(result["source_files"], [{"source_file_id": "sha256:source", "source_file": "statement.pdf", "transaction_count": 1}])
         self.assertEqual(exported["transaction_id"], "tx:source:transaction")
+        self.assertEqual(exported["page_no"], 2)
+        self.assertEqual(exported["row_no"], 5)
         self.assertEqual(exported["evidence_locator"], "page=2;row=5")
         self.assertEqual(exported["original"]["raw_fields"], ["测试入账"])
         self.assertEqual(exported["income"], "100.00")
@@ -126,6 +128,51 @@ class ResultExportTests(unittest.TestCase):
             ],
         )
         self.assertFalse(result["manual_review"]["required"])
+        evidence = result["result"]["evidence"]
+        self.assertEqual(
+            evidence["transaction_index"]["tx:source:transaction"],
+            {
+                "original_transaction_index": 0,
+                "source_file_id": "sha256:source",
+                "source_file": "statement.pdf",
+                "page_no": 2,
+                "row_no": 5,
+                "evidence_locator": "page=2;row=5",
+            },
+        )
+        self.assertTrue(evidence["integrity"]["complete"])
+        self.assertEqual(
+            evidence["coverage"]["fully_traceable_coverage_rate"],
+            "1.0000",
+        )
+        self.assertEqual(
+            evidence["integrity"]["unresolved_transaction_ids"],
+            [],
+        )
+
+    def test_evidence_index_rejects_duplicate_transaction_ids_as_ambiguous(self):
+        first = transaction()
+        second = transaction()
+        second.page_no = 3
+        second.row_no = 1
+        second.evidence_locator = "page=3;row=1"
+
+        evidence = build_bankflow_result([first, second])["result"]["evidence"]
+
+        self.assertNotIn("tx:source:transaction", evidence["transaction_index"])
+        self.assertFalse(evidence["integrity"]["complete"])
+        self.assertEqual(
+            evidence["integrity"]["duplicate_transaction_ids"],
+            ["tx:source:transaction"],
+        )
+        self.assertEqual(
+            evidence["integrity"]["ambiguous_reference_transaction_ids"],
+            ["tx:source:transaction"],
+        )
+        self.assertGreater(
+            evidence["coverage"]["ambiguous_evidence_link_count"],
+            0,
+        )
 
     def test_reports_own_account_observation_unavailable_without_context(self):
         observation = build_bankflow_result([transaction()])["result"]["observations"][0]
@@ -464,7 +511,7 @@ class ResultExportTests(unittest.TestCase):
             for item in result["result"]["observations"]
         }
 
-        self.assertEqual(result["schema_version"], "1.15")
+        self.assertEqual(result["schema_version"], "1.16")
         self.assertIn("controlled_keyword_candidates", observations)
         self.assertIn(
             "sensitive_transaction_context_candidates",
@@ -758,6 +805,11 @@ class ResultExportTests(unittest.TestCase):
         self.assertEqual(result["manual_review"]["items"][0]["reasons"], ["缺少交易 ID", "缺少来源文件 ID"])
         self.assertEqual(result["manual_review"]["items"][0]["scope"], "transaction")
         self.assertEqual(result["manual_review"]["items"][0]["evidence_transaction_ids"], [])
+        self.assertFalse(result["result"]["evidence"]["integrity"]["complete"])
+        self.assertEqual(
+            result["result"]["evidence"]["integrity"]["missing_transaction_id_count"],
+            1,
+        )
 
     def test_exports_summary_review_with_supporting_transaction_ids(self):
         first = transaction()

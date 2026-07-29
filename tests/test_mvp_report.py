@@ -582,6 +582,26 @@ class MvpReportTests(unittest.TestCase):
         self.assertIn("王律师℡手机号已隐藏", markdown)
         self.assertNotIn("1 3609990661", markdown)
 
+    def test_markdown_summarizes_traceable_evidence_without_expanding_all_rows(self):
+        row = transaction(
+            "tx:traceable",
+            counterparty_name="甲公司",
+        )
+        row.page_no = 3
+        row.row_no = 2
+        result = build_bankflow_result([row])
+
+        markdown = render_mvp_markdown(
+            result,
+            {"case_id": "证据索引测试", "search_context": {}},
+        )
+
+        self.assertIn("## 9. 可追溯交易证据", markdown)
+        self.assertIn("证据链状态：完整", markdown)
+        self.assertIn("已建立唯一索引：1 笔", markdown)
+        self.assertIn("结构化结果保留交易ID到 original_transactions 的索引", markdown)
+        self.assertIn("## 10. 重要提示", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()

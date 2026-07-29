@@ -162,11 +162,11 @@ GUI 已新增：
 
 ## 标准 JSON 要求
 
-当前实现的 `schema_version: "1.15"` JSON 必须包含：
+当前实现的 `schema_version: "1.16"` JSON 必须包含：
 
 ```json
 {
-  "schema_version": "1.15",
+  "schema_version": "1.16",
   "module": "bankflow",
   "analysis_source": "original_transactions",
   "created_at": "",
@@ -176,7 +176,13 @@ GUI 已新增：
     "original_transactions": [],
     "facts": [],
     "indicators": [],
-    "observations": []
+    "observations": [],
+    "evidence": {
+      "transaction_index": {},
+      "references": [],
+      "coverage": {},
+      "integrity": {}
+    }
   },
   "manual_review": {
     "required": true,
@@ -187,7 +193,7 @@ GUI 已新增：
 }
 ```
 
-每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`evidence_locator`、`neutral`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`neutral` 是复算事实和指标参与范围所需的布尔值：`true` 表示该原始交易不进入收支统计及 v1B 非中性交易指标，不能仅凭金额为零或文字方向推断。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。
+每笔 `original_transactions` 必须包含 `transaction_id`、`source_file_id`、`source_file`、`page_no`、`row_no`、`evidence_locator`、`neutral`、标准金额字段和原始字段；金额以两位小数字符串输出，避免 JSON 浮点精度变化。`neutral` 是复算事实和指标参与范围所需的布尔值：`true` 表示该原始交易不进入收支统计及 v1B 非中性交易指标，不能仅凭金额为零或文字方向推断。`result.facts[]` 只输出由原始交易直接复算的事实（笔数、金额、期间和可用余额），每项必须包含 `fact_type`、`value` 与 `evidence_transaction_ids`。
 
 `result.indicators[]` 只读取 `original_transactions`，每项必须包含 `indicator_type`、`value`、`parameters`、`evidence_transaction_ids` 与 `field_coverage`。v1A 固定包含：
 
@@ -330,6 +336,14 @@ schema 1.15 新增 `manual_verification_questions`：
 - 每项包含稳定问题ID、问题类型、问题正文、触发原因、触发观察、核实要点、待核实状态、交易证据和来源文件ID；同类敏感文字和低留存路径合并，不逐笔制造重复问题。
 - 工作地点、住家地址、车辆上牌地点、车型、经销商、门店和下定描述等 `display_only_items` 不触发问题；系统明确尚未下定时，不因未发现定金支出生成问题。
 - 主要交易对手、大额入账后短期转出和敏感文字可标记为“需关注（仅供参考）”；该标记不是风险评分、风险结论、欺诈/包装判断或准入意见。
+
+schema 1.16 新增 `result.evidence` 可追溯证据目录：
+
+- `transaction_index` 以稳定交易ID指向既有 `original_transactions` 序号、来源文件ID、文件、页、行和证据定位；它不是平行交易对象，不复制或改写原始/标准交易字段。
+- `references[]` 分别登记事实、指标、观察、人工核实问题和既有人工复核项所引用的交易ID；每个消费者输出已解析数量、悬空ID、重复ID歧义和稳定状态，供GUI按需展开。
+- `coverage` 输出原始交易、唯一索引、交易ID、来源文件ID、页/行定位、被引用交易及证据链接覆盖；`integrity` 明确缺失交易ID、重复ID、悬空引用和歧义引用。
+- 重复交易ID不得静默覆盖；存在定位缺失、重复或悬空/歧义引用时完整性必须降级。Markdown只展示完整性及数量汇总，完整结构保留在JSON中。
+- 本目录只服务证据回跳和输出自检，不新增风险、资金来源、交易关系、欺诈/包装或准入结论。
 
 v1C 新增独立 `result.observations[]`，包含 `confirmed_own_account_transfer_candidates`：
 

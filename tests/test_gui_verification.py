@@ -10,12 +10,14 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
 from bankflow_v2.models import Transaction
 from bankflow_v2.result_export import build_bankflow_result
 from bankflow_v2.verification_worker import VerificationWorker
 from gui_verification import EvidencePanel, ResultListModel, VerificationWorkspace
+from gui_verification_app import apply_workbench_palette
 
 
 def sensitive_transaction(index: int) -> Transaction:
@@ -121,6 +123,23 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIn("result", captured)
         self.assertEqual(mocked.call_args.kwargs["ai_config"], {})
         self.assertIsNone(mocked.call_args.kwargs["ai_evaluator"])
+
+    def test_workbench_palette_overrides_system_dark_theme(self):
+        dark = QPalette()
+        dark.setColor(QPalette.ColorRole.Window, QColor("#1E1E1E"))
+        self.app.setPalette(dark)
+
+        apply_workbench_palette(self.app)
+
+        palette = self.app.palette()
+        self.assertEqual(
+            palette.color(QPalette.ColorRole.Window).name().upper(),
+            "#F3EDDF",
+        )
+        self.assertEqual(
+            palette.color(QPalette.ColorRole.Base).name().upper(),
+            "#FFF9EC",
+        )
 
 
 if __name__ == "__main__":

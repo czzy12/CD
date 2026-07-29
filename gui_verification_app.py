@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -25,6 +26,27 @@ from bankflow_v2.verification_worker import (
     VerificationWorker,
 )
 from gui_verification import VerificationWorkspace
+
+
+def apply_workbench_palette(app: QApplication) -> None:
+    """Keep the workbench light even when Windows uses a dark application theme."""
+    app.setStyle("Fusion")
+    palette = QPalette()
+    roles = QPalette.ColorRole
+    groups = QPalette.ColorGroup
+    palette.setColor(roles.Window, QColor("#F3EDDF"))
+    palette.setColor(roles.WindowText, QColor("#171713"))
+    palette.setColor(roles.Base, QColor("#FFF9EC"))
+    palette.setColor(roles.AlternateBase, QColor("#F7EBCF"))
+    palette.setColor(roles.Text, QColor("#171713"))
+    palette.setColor(roles.Button, QColor("#FFF9EC"))
+    palette.setColor(roles.ButtonText, QColor("#171713"))
+    palette.setColor(roles.Highlight, QColor("#F4C84A"))
+    palette.setColor(roles.HighlightedText, QColor("#171713"))
+    palette.setColor(groups.Disabled, roles.WindowText, QColor("#8F8A80"))
+    palette.setColor(groups.Disabled, roles.Text, QColor("#8F8A80"))
+    palette.setColor(groups.Disabled, roles.ButtonText, QColor("#8F8A80"))
+    app.setPalette(palette)
 
 
 class VerificationMainWindow(QMainWindow):
@@ -173,8 +195,14 @@ class VerificationMainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
+    apply_workbench_palette(app)
     window = VerificationMainWindow()
+    if "--smoke-test" in sys.argv:
+        window.show()
+        app.processEvents()
+        print("verification-workbench-started")
+        window.close()
+        return 0
     window.show()
     return app.exec()
 

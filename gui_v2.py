@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QStatusBar,
-    QStackedWidget,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -42,13 +41,7 @@ from bankflow_v2.income_proof_export import (
     write_salary_income_proof_input,
 )
 from bankflow_v2.models import StatementMetadata, get_statement_metadata
-from bankflow_v2.standard_result_view import (
-    StandardResultError,
-    build_case_context_from_directory,
-    load_standard_result,
-)
 from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_transactions, summarize
-from gui_verification import VerificationWorkspace
 
 
 SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
@@ -269,12 +262,8 @@ class DropWidget(QWidget):
 
 
 class Worker(QThread):
-    finished = pyqtSignal(list, list, object)
+    finished = pyqtSignal(list, list)
     progress = pyqtSignal(str)
-    stage_progress = pyqtSignal(int, int, str)
-    source_error = pyqtSignal(str, str)
-    cancelled = pyqtSignal()
-    failed = pyqtSignal(str)
 
     def __init__(
         self,
@@ -282,14 +271,12 @@ class Worker(QThread):
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         pdf_passwords: dict[Path, str] | None = None,
-        case_context: dict[str, object] | None = None,
     ):
         super().__init__()
         self.paths = paths
         self.start_date = start_date
         self.end_date = end_date
         self.pdf_passwords = pdf_passwords or {}
-        self.case_context = case_context or {}
 
     def _filter_transactions(self, transactions: list) -> list:
         if self.start_date is None and self.end_date is None:
@@ -360,13 +347,8 @@ class Worker(QThread):
         results: list[FileResult] = []
         all_issues: list[Issue] = []
 
-        total_paths = len(self.paths)
-        for index, path in enumerate(self.paths, start=1):
-            if self.isInterruptionRequested():
-                self.cancelled.emit()
-                return
+        for path in self.paths:
             self.progress.emit(f"处理中: {path.name}")
-            self.stage_progress.emit(index - 1, total_paths, f"正在解析 {path.name}")
             if path.suffix.lower() in (".xlsx", ".xlsm"):
                 detection = type("Detection", (), {
                     "bank_id": "excel",
@@ -426,40 +408,12 @@ class Worker(QThread):
                         statement_metadata,
                     )
                 )
-                self.stage_progress.emit(index, total_paths, f"已处理 {path.name}")
             except Exception as exc:
                 issue = Issue("需复核", path.name, "", f"解析失败: {exc}")
                 all_issues.append(issue)
                 results.append(FileResult(path, detection.bank_id, detection.label, detection.confidence, detection.reason, summarize([]), [], "需复核", str(exc), extract_account_name(path), extract_account_no(path)))
-                self.source_error.emit(path.name, str(exc))
-                self.stage_progress.emit(index, total_paths, f"{path.name} 处理失败")
 
-        if self.isInterruptionRequested():
-            self.cancelled.emit()
-            return
-
-        self.progress.emit("正在生成 schema 1.16 标准结果")
-        self.stage_progress.emit(total_paths, total_paths, "正在生成 schema 1.16 标准结果")
-        from bankflow_v2.result_export import build_bankflow_result
-
-        transactions, duplicate_issues = dedupe_transactions(
-            [transaction for result in results for transaction in result.transactions]
-        )
-        all_issues.extend(duplicate_issues)
-        try:
-            standard_result = build_bankflow_result(
-                transactions,
-                case_context=self.case_context,
-                ai_config={},
-                ai_evaluator=None,
-            )
-        except Exception as exc:
-            self.failed.emit(f"标准结果生成失败：{exc}")
-            return
-        if self.isInterruptionRequested():
-            self.cancelled.emit()
-            return
-        self.finished.emit(results, all_issues, standard_result)
+        self.finished.emit(results, all_issues)
 
 
 class MainWindow(QMainWindow):
@@ -472,9 +426,6 @@ class MainWindow(QMainWindow):
         self.results: list[FileResult] = []
         self.issues: list[Issue] = []
         self.worker: Worker | None = None
-        self.standard_result: dict[str, object] | None = None
-        self.case_dir: Path | None = None
-        self.case_context: dict[str, object] = {}
         self.adjustment_result = AdjustmentResult()
         self.cached_transactions = []
         self.setAcceptDrops(True)
@@ -515,18 +466,16 @@ class MainWindow(QMainWindow):
         add_folder = QPushButton("选择文件夹")
         clear = QPushButton("清空")
         run = QPushButton("开始处理")
-        verification = QPushButton("核查工作台")
         self.export_income_json_button = QPushButton("经营佐证")
         self.export_salary_json_button = QPushButton("工资佐证")
         run.setObjectName("primaryButton")
         self.export_income_json_button.setObjectName("exportButton")
         self.export_salary_json_button.setObjectName("exportButton")
-        for button in [run, add_folder, clear, verification, self.export_salary_json_button, self.export_income_json_button]:
+        for button in [run, add_folder, clear, self.export_salary_json_button, self.export_income_json_button]:
             button.setFixedSize(112, 40)
         add_folder.clicked.connect(self.add_folder)
         clear.clicked.connect(self.clear)
         run.clicked.connect(self.run)
-        verification.clicked.connect(self.show_verification_workspace)
         self.export_income_json_button.clicked.connect(self.export_income_proof_json)
         self.export_salary_json_button.clicked.connect(self.export_salary_income_proof_json)
 
@@ -560,7 +509,6 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(run)
         toolbar.addWidget(add_folder)
         toolbar.addWidget(clear)
-        toolbar.addWidget(verification)
         toolbar.addWidget(self.export_salary_json_button)
         toolbar.addWidget(self.export_income_json_button)
         toolbar.addStretch(1)
@@ -775,20 +723,11 @@ class MainWindow(QMainWindow):
         side_column.addWidget(side_scroll)
         content.addLayout(side_column)
         layout.addLayout(content, 1)
-        self.verification_workspace = VerificationWorkspace()
-        self.verification_workspace.selectCaseRequested.connect(self.select_case_directory)
-        self.verification_workspace.loadResultRequested.connect(self.load_standard_result_file)
-        self.verification_workspace.cancelRequested.connect(self.cancel_current_task)
-        self.verification_workspace.legacyRequested.connect(self.show_legacy_workspace)
-        self.page_stack = QStackedWidget()
-        self.page_stack.addWidget(self.verification_workspace)
-        self.page_stack.addWidget(central)
-        self.setCentralWidget(self.page_stack)
+        self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
         self._apply_style()
         self.render_empty()
-        self.page_stack.setCurrentWidget(self.verification_workspace)
 
     def table_shell(self, table: QTableWidget) -> QFrame:
         shell = RoundedTableShell()
@@ -1795,9 +1734,6 @@ class MainWindow(QMainWindow):
             self.add_paths([Path(folder)])
 
     def add_paths(self, paths: list[Path]):
-        self.case_dir = None
-        self.case_context = {}
-        self.standard_result = None
         inputs: list[Path] = []
         for path in paths:
             if path.is_dir():
@@ -1820,67 +1756,8 @@ class MainWindow(QMainWindow):
         self.paths = []
         self.results = []
         self.issues = []
-        self.case_dir = None
-        self.case_context = {}
-        self.standard_result = None
         self.adjustment_result = AdjustmentResult()
         self.render_empty()
-
-    def show_verification_workspace(self):
-        self.page_stack.setCurrentWidget(self.verification_workspace)
-
-    def show_legacy_workspace(self):
-        self.page_stack.setCurrentIndex(1)
-
-    def select_case_directory(self):
-        folder = QFileDialog.getExistingDirectory(self, "选择客户资料目录")
-        if not folder:
-            return
-        case_dir = Path(folder)
-        self.add_paths([case_dir])
-        self.case_dir = case_dir
-        try:
-            self.case_context = build_case_context_from_directory(case_dir)
-        except OSError as exc:
-            self.case_context = {}
-            self.verification_workspace.add_source_error("客户资料", str(exc))
-        self.date_filter.setChecked(False)
-        self.verification_workspace.set_busy(case_dir.name, len(self.paths))
-        if not self.paths:
-            self.verification_workspace.show_result_error("目录中未找到支持的 PDF/Excel 流水文件。")
-            return
-        self.run()
-
-    def load_standard_result_file(self):
-        filename, _ = QFileDialog.getOpenFileName(
-            self,
-            "打开历史标准结果",
-            "",
-            "schema 1.16 标准结果 (*.json);;JSON 文件 (*.json)",
-        )
-        if not filename:
-            return
-        try:
-            result = load_standard_result(Path(filename))
-        except StandardResultError as exc:
-            self.verification_workspace.show_result_error(str(exc))
-            QMessageBox.warning(self, "标准结果不兼容", str(exc))
-            return
-        except OSError as exc:
-            self.verification_workspace.show_result_error(str(exc))
-            QMessageBox.warning(self, "标准结果读取失败", str(exc))
-            return
-        self.standard_result = result
-        self.case_dir = None
-        self.case_context = {}
-        self.verification_workspace.set_result(result, Path(filename).stem)
-        self.show_verification_workspace()
-
-    def cancel_current_task(self):
-        if self.worker is None or not self.worker.isRunning():
-            return
-        self.worker.requestInterruption()
-        self.verification_workspace.set_cancel_pending()
 
     def create_metric(self, label: str, value: str, tone: str) -> QFrame:
         frame = QFrame()
@@ -1924,18 +1801,8 @@ class MainWindow(QMainWindow):
         pdf_passwords = self.collect_pdf_passwords()
         if pdf_passwords is None:
             return
-        self.worker = Worker(
-            self.paths,
-            start_date,
-            end_date,
-            pdf_passwords,
-            case_context=self.case_context,
-        )
+        self.worker = Worker(self.paths, start_date, end_date, pdf_passwords)
         self.worker.progress.connect(self.statusBar().showMessage)
-        self.worker.stage_progress.connect(self.verification_workspace.set_progress)
-        self.worker.source_error.connect(self.verification_workspace.add_source_error)
-        self.worker.cancelled.connect(self.verification_workspace.set_cancelled)
-        self.worker.failed.connect(self.on_task_failed)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
 
@@ -2000,32 +1867,11 @@ class MainWindow(QMainWindow):
         end = self.end_date.date().toPyDate()
         return datetime.combine(start, time.min), datetime.combine(end, time.max)
 
-    def on_finished(
-        self,
-        results: list[FileResult],
-        issues: list[Issue],
-        standard_result: dict[str, object],
-    ):
+    def on_finished(self, results: list[FileResult], issues: list[Issue]):
         self.results = results
         self.issues = issues
-        self.standard_result = standard_result
         self.render_results()
-        case_name = self.case_dir.name if self.case_dir else "当前案例"
-        source_messages = [
-            f"{result.path.name}: {result.status}"
-            + (f" - {result.message}" if result.message else "")
-            for result in results
-        ]
-        self.verification_workspace.set_result(
-            standard_result,
-            case_name,
-            source_messages=source_messages,
-        )
         self.statusBar().showMessage("处理完成")
-
-    def on_task_failed(self, message: str):
-        self.verification_workspace.show_result_error(message)
-        self.statusBar().showMessage(message)
 
     def on_adjustment_mode_changed(self, *_args):
         sender = self.sender()

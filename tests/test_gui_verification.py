@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import QApplication
 
 from bankflow_v2.models import Transaction
 from bankflow_v2.result_export import build_bankflow_result
+from bankflow_v2.verification_worker import VerificationWorker
 from gui_verification import EvidencePanel, ResultListModel, VerificationWorkspace
-from gui_v2 import Worker
 
 
 def sensitive_transaction(index: int) -> Transaction:
@@ -101,9 +101,9 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(workspace.progress.value(), 100)
 
     def test_worker_explicitly_disables_ai_runtime(self):
-        class StubWorker(Worker):
-            def _extract_with_fallback(self, path, detection):
-                return [sensitive_transaction(1)], "Excel导入", "", False
+        class StubWorker(VerificationWorker):
+            def _extract(self, path):
+                return [sensitive_transaction(1)], ""
 
         captured = {}
         worker = StubWorker([Path("missing.xlsx")], case_context={"case_id": "case"})

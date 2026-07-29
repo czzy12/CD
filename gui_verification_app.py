@@ -20,7 +20,10 @@ from bankflow_v2.standard_result_view import (
     build_case_context_from_directory,
     load_standard_result,
 )
-from gui_v2 import SUPPORTED_INPUTS, Worker, apply_light_palette
+from bankflow_v2.verification_worker import (
+    SUPPORTED_INPUTS,
+    VerificationWorker,
+)
 from gui_verification import VerificationWorkspace
 
 
@@ -32,7 +35,7 @@ class VerificationMainWindow(QMainWindow):
         self.setWindowTitle("流水核查工作台")
         self.resize(1500, 900)
         self.setMinimumSize(1180, 720)
-        self.worker: Worker | None = None
+        self.worker: VerificationWorker | None = None
         self.case_dir: Path | None = None
         self.workspace = VerificationWorkspace()
         self.workspace.legacy_button.hide()
@@ -68,7 +71,7 @@ class VerificationMainWindow(QMainWindow):
         if passwords is None:
             self.workspace.set_cancelled()
             return
-        self.worker = Worker(
+        self.worker = VerificationWorker(
             paths,
             pdf_passwords=passwords,
             case_context=case_context,
@@ -170,7 +173,7 @@ class VerificationMainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
-    apply_light_palette(app)
+    app.setStyle("Fusion")
     window = VerificationMainWindow()
     window.show()
     return app.exec()

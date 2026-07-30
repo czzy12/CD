@@ -62,8 +62,12 @@ class VerificationMainWindow(QMainWindow):
         self.workspace = VerificationWorkspace()
         self.workspace.legacy_button.hide()
         self.workspace.selectCaseRequested.connect(self.select_case_directory)
+        self.workspace.openCaseRequested.connect(self.open_existing_case)
         self.workspace.loadResultRequested.connect(self.load_standard_result_file)
         self.workspace.cancelRequested.connect(self.cancel_current_task)
+        self.workspace.settingsRequested.connect(
+            lambda: self.workspace.navigate("settings")
+        )
         self.setCentralWidget(self.workspace)
         self.setStatusBar(QStatusBar())
 
@@ -71,7 +75,9 @@ class VerificationMainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "选择客户资料目录")
         if not folder:
             return
-        case_dir = Path(folder)
+        self.start_case_directory(Path(folder))
+
+    def start_case_directory(self, case_dir: Path) -> None:
         paths = sorted(
             path
             for path in case_dir.rglob("*")
@@ -105,6 +111,40 @@ class VerificationMainWindow(QMainWindow):
         self.worker.failed.connect(self.on_task_failed)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
+
+    def open_existing_case(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "打开已有案件")
+        if not folder:
+            return
+        case_dir = Path(folder)
+        candidates = sorted(
+            case_dir.rglob("*.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        errors: list[str] = []
+        for candidate in candidates:
+            try:
+                result = load_standard_result(candidate)
+            except (OSError, StandardResultError) as exc:
+                errors.append(str(exc))
+                continue
+            self.case_dir = case_dir
+            self.workspace.set_result(result, case_dir.name)
+            self.statusBar().showMessage(
+                f"已读取已有标准结果：{candidate.name}"
+            )
+            return
+        message = "该案件目录中没有可读取的 schema 1.16 标准结果。"
+        if errors:
+            message += " 已发现JSON，但版本或结构不兼容。"
+        answer = QMessageBox.question(
+            self,
+            "未找到已有标准结果",
+            f"{message}\n\n是否改为解析该目录并新建流水核查？",
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.start_case_directory(case_dir)
 
     def collect_pdf_passwords(
         self,

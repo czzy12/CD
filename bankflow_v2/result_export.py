@@ -6,6 +6,7 @@ import json
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -1833,6 +1834,74 @@ def build_bankflow_result(
             "微信支付扣款关联候选仅在唯一银行卡尾号、已确认银行账户、同日同额、文字渠道和唯一商户内容同时满足时输出；不表示本人账户互转。",
         ],
     }
+
+
+def rebuild_business_context_result(
+    result: dict[str, object],
+    transactions: list[Transaction],
+    case_context: dict[str, object],
+    *,
+    ai_config: dict[str, object],
+    ai_evaluator: Callable[[dict[str, object]], object] | None = None,
+) -> dict[str, object]:
+    """Rebuild only context-dependent observations and their evidence audit."""
+    rebuilt = deepcopy(result)
+    result_body = rebuilt.get("result")
+    manual_review = rebuilt.get("manual_review")
+    if not isinstance(result_body, dict) or not isinstance(manual_review, dict):
+        raise ValueError("标准结果缺少经营上下文重建所需结构")
+    observations = result_body.get("observations")
+    facts = result_body.get("facts")
+    indicators = result_body.get("indicators")
+    review_items = manual_review.get("items")
+    if not all(
+        isinstance(value, list)
+        for value in (observations, facts, indicators, review_items)
+    ):
+        raise ValueError("标准结果缺少经营上下文重建所需列表")
+
+    replaced_types = {
+        "ai_business_relevance_candidates",
+        "declaration_flow_cross_checks",
+        "manual_verification_questions",
+    }
+    retained = [
+        observation
+        for observation in observations
+        if isinstance(observation, dict)
+        and observation.get("observation_type") not in replaced_types
+    ]
+    retained.append(
+        build_ai_business_observation(
+            transactions,
+            case_context,
+            ai_config,
+            ai_evaluator,
+        )
+    )
+    retained.append(
+        build_declaration_flow_cross_check(
+            transactions,
+            case_context,
+            retained,
+        )
+    )
+    retained.append(
+        build_manual_verification_questions(
+            transactions,
+            retained,
+        )
+    )
+    result_body["observations"] = retained
+    result_body["evidence"] = _evidence_output(
+        transactions,
+        facts,
+        indicators,
+        retained,
+        review_items,
+    )
+    rebuilt["created_at"] = datetime.now(timezone.utc).isoformat()
+    return rebuilt
 
 
 def write_bankflow_json(result: dict[str, object], output_path: str | Path) -> Path:

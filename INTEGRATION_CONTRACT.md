@@ -240,6 +240,12 @@ schema 1.8 在 `result.observations[]` 新增三项流水核查 MVP 确定性观
 
 `build_case_context(case_id, sources, business_confirmation=...)` 接受上述人工确认字段；确认状态下 `confirmed_primary_business` 必填。原始描述继续保留在 `declared_work_evidence` 中。
 
+独立流水核查GUI必须在完整解析前提供经营上下文确认页。人工输入不得写回客户原始TXT、PDF、微信、支付宝或银行流水，而应保存为案件工作区内独立的`manual_case_context.json`；该文件至少保留原始提取信息、人工确认字段、来源、确认状态、确认人和确认时间。打开已有案件时自动恢复。只有单位名称时，GUI不得把确定性名称命中表述为已确认经营关联。
+
+人工修改经营上下文后，不重新解析PDF，也不重新生成`original_transactions`。允许从当前内存交易或schema 1.16原交易记录恢复只读交易值，仅重建`ai_business_relevance_candidates`、`declaration_flow_cross_checks`、`manual_verification_questions`及证据引用审计；schema版本和原交易记录必须保持不变。
+
+GUI中的AI经营辅助默认关闭。未勾选时必须显式传入禁用配置，不得装载环境运行配置；只有用户查看拟提交字段范围、主动勾选并点击确认后，才允许装载提供方配置。GUI可提供仅本次进程使用的密码输入框覆盖环境中的API Key，但不得回显、写入`manual_case_context.json`、标准结果或日志。
+
 当前 MVP 不联网查询企业主营业务，不把工商经营范围或外部搜索结果自动写成确认事实。后续企业经营上下文发现模块另行按“企业标识→企业信息源→登记范围和外部经营证据→AI候选→人工确认→正式经营上下文”建设。
 
 schema 1.9 新增 `ai_business_relevance_candidates`：

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -37,11 +38,15 @@ class VerificationWorker(QThread):
         paths: list[Path],
         pdf_passwords: dict[Path, str] | None = None,
         case_context: dict[str, object] | None = None,
+        ai_config: dict[str, object] | None = None,
+        ai_evaluator: Callable[[dict[str, object]], object] | None = None,
     ) -> None:
         super().__init__()
         self.paths = paths
         self.pdf_passwords = pdf_passwords or {}
         self.case_context = case_context or {}
+        self.ai_config = ai_config or {}
+        self.ai_evaluator = ai_evaluator
 
     def _extract(self, path: Path) -> tuple[list, str]:
         if path.suffix.lower() in {".xlsx", ".xlsm"}:
@@ -140,8 +145,8 @@ class VerificationWorker(QThread):
                 transactions,
                 metadata=get_statement_metadata(transactions),
                 case_context=self.case_context,
-                ai_config={},
-                ai_evaluator=None,
+                ai_config=self.ai_config,
+                ai_evaluator=self.ai_evaluator,
             )
         except Exception as exc:
             self.failed.emit(f"标准结果生成失败：{exc}")

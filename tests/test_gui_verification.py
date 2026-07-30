@@ -13,14 +13,23 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel
 
 from bankflow_v2.models import Transaction
-from bankflow_v2.result_export import build_bankflow_result
+from bankflow_v2.case_context import (
+    SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+    build_case_context,
+)
+from bankflow_v2.result_export import (
+    build_bankflow_result,
+    rebuild_business_context_result,
+)
 from bankflow_v2.verification_worker import VerificationWorker
 from gui_verification import (
+    CasePreparationPage,
     CaseDashboardPage,
     EvidencePanel,
+    KeyMetricsPanel,
     ModuleDetailPage,
     PagedTable,
     ProcessingPage,
@@ -28,7 +37,13 @@ from gui_verification import (
     VerificationWorkspace,
     WelcomePage,
 )
-from gui_verification_app import VerificationMainWindow, apply_workbench_palette
+from gui_verification_app import (
+    MANUAL_CASE_CONTEXT_FILENAME,
+    VerificationMainWindow,
+    apply_workbench_palette,
+    load_manual_case_context,
+    save_manual_case_context,
+)
 
 
 def sensitive_transaction(index: int) -> Transaction:
@@ -88,6 +103,128 @@ class GuiVerificationTests(unittest.TestCase):
             model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole),
             "候选命中",
         )
+
+    def test_business_table_keeps_deterministic_rows_when_ai_is_unavailable(self):
+        transactions = [sensitive_transaction(1), sensitive_transaction(2)]
+        result = build_bankflow_result(transactions, ai_config={})
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item.get("observation_type") == "ai_business_relevance_candidates"
+        )
+        observation["value"].update(
+            {
+                "available": False,
+                "reason": "ai_data_authorization_missing",
+                "deterministic_candidates": [
+                    {
+                        "transaction_id": "tx:gui:1",
+                        "classification": "directly_related",
+                        "decision_source": "deterministic_exact_match",
+                        "reason": "可靠字段直接命中申报单位。",
+                        "used_fields": ["counterparty_name"],
+                    }
+                ],
+                "ai_candidates": [],
+                "deterministic_non_business_candidates": [
+                    {
+                        "transaction_id": "tx:gui:2",
+                        "classification": "no_relation_evidence",
+                        "evidence_strength": "none",
+                        "decision_source": "deterministic_non_business_rule",
+                        "reason": "本地确定性规则排除。",
+                        "used_fields": ["purpose"],
+                    }
+                ],
+            }
+        )
+        detail = ModuleDetailPage()
+        detail.set_result(result)
+        detail.set_module("business", "经营关联摘要")
+
+        model = detail.business_table.model
+        self.assertIs(detail.tables.currentWidget(), detail.business_table)
+        self.assertEqual(model.total_count(), 1)
+        self.assertEqual(model.transaction_id_at(0), "tx:gui:1")
+        self.assertEqual(
+            model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole),
+            "确定性文字/名称候选",
+        )
+        self.assertIn("本次分析未获得 GUI 明确授权", detail.business_notice.text())
+        self.assertIn("已有确定性结果仍单独展示", detail.business_notice.text())
+        self.assertIn("确定性排除 1 项", detail.business_notice.text())
+
+    def test_business_table_distinguishes_accepted_ai_observation(self):
+        result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item.get("observation_type") == "ai_business_relevance_candidates"
+        )
+        observation["value"].update(
+            {
+                "available": True,
+                "reason": "",
+                "deterministic_candidates": [],
+                "ai_candidates": [
+                    {
+                        "transaction_id": "tx:gui:1",
+                        "classification": "possibly_related",
+                        "evidence_strength": "medium",
+                        "decision_source": "ai_model",
+                        "reason": "可靠用途文字与已确认经营内容可能相关。",
+                        "used_fields": ["purpose"],
+                    }
+                ],
+                "deterministic_non_business_candidates": [],
+            }
+        )
+        model = ResultListModel("business")
+        model.set_result(result)
+
+        self.assertEqual(model.total_count(), 1)
+        self.assertEqual(
+            model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole),
+            "AI 观察",
+        )
+        self.assertEqual(
+            model.data(model.index(0, 1), Qt.ItemDataRole.DisplayRole),
+            "可能关联",
+        )
+        self.assertEqual(
+            model.data(model.index(0, 2), Qt.ItemDataRole.DisplayRole),
+            "中",
+        )
+
+    def test_business_row_opens_indexed_transaction_evidence(self):
+        result = build_bankflow_result(
+            [sensitive_transaction(1)],
+            case_context={
+                "search_context": {
+                    "work_units": ["甲公司"],
+                    "declared_industries": [],
+                },
+                "business_context": {
+                    "ai_business_relevance_eligible": False,
+                    "confirmation_reason": "company_name_only",
+                    "confirmation_prompt": (
+                        "请人工确认客户实际主要经营内容和主要产品或服务。"
+                    ),
+                },
+            },
+            ai_config={},
+        )
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "测试案例")
+
+        workspace.open_module("business")
+        self.assertGreater(workspace.business_table.model.total_count(), 0)
+        workspace.business_table._clicked(
+            workspace.business_table.model.index(0, 0)
+        )
+
+        self.assertFalse(workspace.evidence_panel.isHidden())
+        self.assertIn("来源文件：sample.pdf", workspace.evidence_panel.details.toPlainText())
 
     def test_evidence_panel_uses_index_and_masks_sensitive_values(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
@@ -162,6 +299,8 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(workspace.load_result_button.text(), "导入标准结果")
         self.assertIs(workspace.main_pages.currentWidget(), workspace.dashboard_page)
         self.assertFalse(workspace.evidence_panel.isVisible())
+        for route in ("dashboard", "manual", "evidence"):
+            self.assertTrue(workspace.navigation_by_route[route].isEnabled())
 
     def test_workspace_starts_on_welcome_without_empty_case_or_evidence(self):
         workspace = VerificationWorkspace()
@@ -174,15 +313,18 @@ class GuiVerificationTests(unittest.TestCase):
             navigation,
             [
                 "首页",
-                "当前案件  ·  案件概览",
-                "当前案件  ·  人工核实",
-                "当前案件  ·  分析结果",
-                "当前案件  ·  证据中心",
+                "案件概览",
+                "人工核实",
+                "证据中心",
                 "历史案件",
                 "设置",
             ],
         )
+        self.assertEqual(workspace.current_case_label.text(), "当前案件")
+        self.assertNotIn("分析结果", navigation)
         self.assertFalse(any("后续" in text for text in navigation))
+        for route in ("dashboard", "manual", "evidence"):
+            self.assertFalse(workspace.navigation_by_route[route].isEnabled())
 
     def test_processing_page_only_shows_cancel_while_running(self):
         page = ProcessingPage()
@@ -196,7 +338,7 @@ class GuiVerificationTests(unittest.TestCase):
         page.stop("已完成")
         self.assertTrue(page.cancel_button.isHidden())
 
-    def test_dashboard_uses_nine_summary_cards_and_compact_amounts(self):
+    def test_dashboard_uses_grouped_summary_cards_and_compact_amounts(self):
         result = build_bankflow_result(
             [
                 Transaction(
@@ -216,7 +358,8 @@ class GuiVerificationTests(unittest.TestCase):
 
         dashboard.set_result(result, "韩鹏飞")
 
-        self.assertEqual(len(dashboard.module_cards), 9)
+        self.assertEqual(len(dashboard.module_cards), 8)
+        self.assertNotIn("evidence", dashboard.module_cards)
         self.assertEqual(
             dashboard.metrics["income_sum"].value_label.text(),
             "2459.08万",
@@ -226,6 +369,338 @@ class GuiVerificationTests(unittest.TestCase):
             "24,590,800.00 元",
         )
         self.assertEqual(dashboard.header.title.text(), "韩鹏飞")
+        self.assertEqual(dashboard.key_metrics_panel._columns, 3)
+        responsive_panel = KeyMetricsPanel()
+        responsive_panel.resize(1400, 176)
+        responsive_panel.show()
+        self.app.processEvents()
+        self.assertEqual(responsive_panel._columns, 6)
+        responsive_panel.resize(560, 176)
+        self.app.processEvents()
+        self.assertEqual(responsive_panel._columns, 2)
+        responsive_panel.close()
+        card_text = [
+            label.text()
+            for card in dashboard.module_cards.values()
+            for label in card.findChildren(QLabel)
+        ]
+        self.assertFalse(any("ANALYSIS" in text for text in card_text))
+        self.assertIn("笔交易已建立唯一索引", dashboard.evidence_summary.detail_label.text())
+        self.assertIn("条有效证据引用", dashboard.evidence_summary.detail_label.text())
+
+    def test_dashboard_business_card_surfaces_deterministic_count_when_ai_is_off(self):
+        result = build_bankflow_result(
+            [sensitive_transaction(1)],
+            case_context={
+                "search_context": {
+                    "work_units": ["甲公司"],
+                    "declared_industries": [],
+                },
+                "business_context": {
+                    "ai_business_relevance_eligible": False,
+                    "confirmation_reason": "company_name_only",
+                    "confirmation_prompt": (
+                        "请人工确认客户实际主要经营内容和主要产品或服务。"
+                    ),
+                },
+            },
+            ai_config={},
+        )
+        dashboard = CaseDashboardPage()
+
+        dashboard.set_result(result, "测试案例")
+
+        card = dashboard.module_cards["business"]
+        self.assertEqual(card.primary_label.text(), "需补充经营内容")
+        self.assertIn("只有工作单位名称", card.summary_label.text())
+        self.assertIn("未执行行业语义判断", card.status_label.text())
+        self.assertEqual(card.open_button.text(), "补充经营信息")
+
+    def test_case_preparation_requires_primary_business_when_context_is_missing(self):
+        context = build_case_context(
+            "测试案例",
+            [
+                {
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：甲公司",
+                }
+            ],
+        )
+        page = CasePreparationPage()
+        payloads = []
+        page.confirmed.connect(payloads.append)
+        page.set_context(context)
+        page.ai_enabled.setChecked(True)
+        page.resize(1200, 700)
+        page.show()
+        self.app.processEvents()
+
+        self.assertIn("只有工作单位名称", page.context_status.text())
+        self.assertIn("客户资料.txt", page.source_text.toPlainText())
+        self.assertGreater(
+            page.form_card.geometry().left(),
+            page.extracted_card.geometry().left(),
+        )
+        self.assertLessEqual(
+            page.ai_scope.geometry().bottom(),
+            page.form_card.contentsRect().bottom(),
+        )
+        self.assertGreaterEqual(
+            page.ai_scope.height(),
+            page.ai_scope.minimumHeight(),
+        )
+        page.confirm_button.click()
+        self.assertEqual(payloads, [])
+        self.assertIn("实际主要经营内容", page.error_label.text())
+        self.assertFalse(page.error_label.isHidden())
+        self.assertTrue(page.primary_business.property("invalid"))
+
+        page.primary_business.setText("环保工程")
+        page.products_services.setText("环境治理服务")
+        page.confirm_button.click()
+        self.assertIn("确认人", page.error_label.text())
+        self.assertTrue(page.confirmed_by.property("invalid"))
+        self.assertTrue(page.confirmed_by.hasFocus())
+        page.confirmed_by.setText("调查员A")
+        page.confirm_button.click()
+        self.assertEqual(payloads[0]["confirmation_status"], "confirmed")
+        self.assertEqual(payloads[0]["confirmed_by"], "调查员A")
+        page.close()
+
+    def test_manual_case_context_is_separate_and_restorable(self):
+        context = build_case_context(
+            "测试案例",
+            [
+                {
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：甲公司",
+                }
+            ],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            original = case_dir / "客户资料.txt"
+            original.write_text("工作单位全称：甲公司", encoding="utf-8")
+            record = save_manual_case_context(
+                case_dir,
+                context,
+                {
+                    "confirmed_primary_business": "环保工程",
+                    "confirmed_products_or_services": "环境治理服务",
+                    "confirmation_note": "现场确认",
+                    "confirmation_status": "confirmed",
+                    "confirmed_by": "调查员A",
+                    "ai_business_assistance_enabled": False,
+                },
+            )
+
+            restored = load_manual_case_context(case_dir)
+
+            self.assertEqual(original.read_text(encoding="utf-8"), "工作单位全称：甲公司")
+            self.assertTrue((case_dir / MANUAL_CASE_CONTEXT_FILENAME).exists())
+            self.assertEqual(restored, record)
+            self.assertEqual(restored["confirmed_by"], "调查员A")
+            self.assertTrue(restored["confirmed_at"])
+            self.assertIn("original_extracted_information", restored)
+
+    def test_scoped_business_rebuild_preserves_original_transactions(self):
+        transaction = sensitive_transaction(1)
+        initial_context = build_case_context(
+            "测试案例",
+            [
+                {
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：甲公司",
+                }
+            ],
+        )
+        result = build_bankflow_result(
+            [transaction],
+            case_context=initial_context,
+            ai_config={},
+        )
+        original_records = json.loads(
+            json.dumps(result["result"]["original_transactions"])
+        )
+        confirmed_context = build_case_context(
+            "测试案例",
+            [
+                {
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：甲公司",
+                }
+            ],
+            business_confirmation={
+                "confirmed_primary_business": "环保工程",
+                "confirmed_products_or_services": "环境治理服务",
+                "confirmation_note": "现场确认",
+                "confirmation_status": "confirmed",
+            },
+        )
+
+        rebuilt = rebuild_business_context_result(
+            result,
+            [transaction],
+            confirmed_context,
+            ai_config={},
+        )
+
+        self.assertEqual(
+            rebuilt["result"]["original_transactions"],
+            original_records,
+        )
+        business = next(
+            item
+            for item in rebuilt["result"]["observations"]
+            if item.get("observation_type") == "ai_business_relevance_candidates"
+        )
+        self.assertEqual(
+            business["value"]["reason"],
+            "ai_data_authorization_missing",
+        )
+
+    def test_ai_runtime_is_never_loaded_without_gui_opt_in(self):
+        window = VerificationMainWindow()
+        with patch(
+            "bankflow_v2.deepseek_adapter.load_deepseek_runtime",
+            return_value=({"enabled": True}, object()),
+        ) as mocked:
+            config, evaluator = window._explicit_ai_runtime(False)
+            self.assertEqual(config, {})
+            self.assertIsNone(evaluator)
+            mocked.assert_not_called()
+
+            window._explicit_ai_runtime(True, "session-secret")
+            mocked.assert_called_once()
+            self.assertEqual(
+                mocked.call_args.args[0]["BANKFLOW_AI_API_KEY"],
+                "session-secret",
+            )
+
+    def test_new_case_stops_on_preparation_before_pdf_parsing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            (case_dir / "客户资料.txt").write_text(
+                "工作单位全称：甲公司",
+                encoding="utf-8",
+            )
+            (case_dir / "流水.pdf").write_bytes(b"%PDF-placeholder")
+            window = VerificationMainWindow()
+
+            window.start_case_directory(case_dir)
+
+            self.assertIsNone(window.worker)
+            self.assertIs(
+                window.workspace.main_pages.currentWidget(),
+                window.workspace.preparation_page,
+            )
+            self.assertIn(
+                "只有工作单位名称",
+                window.workspace.preparation_page.context_status.text(),
+            )
+
+    def test_preparation_confirmation_persists_before_analysis(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            (case_dir / "客户资料.txt").write_text(
+                "工作单位全称：甲公司",
+                encoding="utf-8",
+            )
+            (case_dir / "流水.pdf").write_bytes(b"%PDF-placeholder")
+            window = VerificationMainWindow()
+            window.start_case_directory(case_dir)
+            page = window.workspace.preparation_page
+            page.primary_business.setText("环保工程")
+            page.products_services.setText("环境治理服务")
+            page.confirmed_by.setText("调查员A")
+
+            with patch.object(window, "_start_full_analysis") as start:
+                page.confirm_button.click()
+
+            start.assert_called_once()
+            context, ai_enabled, ai_api_key = start.call_args.args
+            self.assertFalse(ai_enabled)
+            self.assertEqual(ai_api_key, "")
+            self.assertTrue(
+                context["business_context"]["ai_business_relevance_eligible"]
+            )
+            record = load_manual_case_context(case_dir)
+            self.assertEqual(record["confirmed_by"], "调查员A")
+            self.assertEqual(
+                record["manual_confirmation"][
+                    "confirmed_primary_business"
+                ],
+                "环保工程",
+            )
+
+    def test_preparation_ai_opt_in_reaches_analysis_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            (case_dir / "客户资料.txt").write_text(
+                "工作单位全称：甲公司",
+                encoding="utf-8",
+            )
+            (case_dir / "流水.pdf").write_bytes(b"%PDF-placeholder")
+            window = VerificationMainWindow()
+            window.start_case_directory(case_dir)
+            page = window.workspace.preparation_page
+            page.primary_business.setText("食品销售")
+            page.confirmed_by.setText("调查员A")
+            page.ai_enabled.setChecked(True)
+            page.ai_api_key.setText("session-secret")
+
+            with patch.object(window, "_start_full_analysis") as start:
+                page.confirm_button.click()
+
+            start.assert_called_once()
+            self.assertTrue(start.call_args.args[1])
+            self.assertEqual(start.call_args.args[2], "session-secret")
+            saved_text = (
+                case_dir / MANUAL_CASE_CONTEXT_FILENAME
+            ).read_text(encoding="utf-8")
+            self.assertNotIn("session-secret", saved_text)
+            self.assertNotIn("ai_api_key", saved_text)
+            self.assertTrue(
+                load_manual_case_context(case_dir)[
+                    "ai_business_assistance_enabled"
+                ]
+            )
+
+    def test_hidden_analysis_route_redirects_to_dashboard(self):
+        result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "测试案例")
+
+        workspace.navigate("analysis")
+
+        self.assertIs(workspace.main_pages.currentWidget(), workspace.dashboard_page)
+        self.assertTrue(workspace.navigation_by_route["dashboard"].isChecked())
+
+    def test_dashboard_cards_and_evidence_summary_open_shared_detail_page(self):
+        result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "测试案例")
+
+        workspace.dashboard_page.module_cards["sensitive"].open_button.click()
+        self.assertIs(
+            workspace.main_pages.currentWidget(),
+            workspace.module_detail_page,
+        )
+        self.assertEqual(workspace.module_detail_page.title.text(), "敏感交易")
+        self.assertFalse(workspace.evidence_panel.isVisible())
+
+        workspace.navigate("dashboard")
+        workspace.dashboard_page.evidence_summary.open_button.click()
+        self.assertIs(
+            workspace.main_pages.currentWidget(),
+            workspace.module_detail_page,
+        )
+        self.assertEqual(workspace.module_detail_page.title.text(), "证据中心")
+        self.assertFalse(workspace.evidence_panel.isVisible())
 
     def test_module_detail_reuses_manual_and_sensitive_paged_tables(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})

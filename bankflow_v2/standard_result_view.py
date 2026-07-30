@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Mapping
 
@@ -12,6 +14,7 @@ from .case_context import (
     SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
     build_case_context,
 )
+from .models import Transaction
 
 
 SUPPORTED_SCHEMA_VERSION = "1.16"
@@ -75,7 +78,11 @@ def load_standard_result(path: str | Path) -> dict[str, object]:
     return validate_standard_result(payload)
 
 
-def build_case_context_from_directory(case_dir: str | Path) -> dict[str, object]:
+def build_case_context_from_directory(
+    case_dir: str | Path,
+    *,
+    business_confirmation: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     directory = Path(case_dir)
     sources: list[dict[str, str]] = []
     for text_path in sorted(directory.glob("*.txt")):
@@ -95,7 +102,93 @@ def build_case_context_from_directory(case_dir: str | Path) -> dict[str, object]
                 "text": text,
             }
         )
-    return build_case_context(directory.name, sources)
+    return build_case_context(
+        directory.name,
+        sources,
+        business_confirmation=business_confirmation,
+    )
+
+
+def transactions_from_standard_result(
+    result: Mapping[str, object],
+) -> list[Transaction]:
+    """Restore Transaction values needed for scoped result rebuilding."""
+    validated = validate_standard_result(result)
+    records = validated["result"]["original_transactions"]
+    transactions: list[Transaction] = []
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise StandardResultError(
+                "original_transaction_invalid",
+                "标准结果包含无效的原交易记录。",
+            )
+        original = record.get("original")
+        standard = record.get("standard_fields")
+        original = original if isinstance(original, Mapping) else {}
+        standard = standard if isinstance(standard, Mapping) else {}
+        try:
+            transaction_time = datetime.fromisoformat(
+                str(record.get("transaction_time") or "")
+            )
+        except ValueError as exc:
+            raise StandardResultError(
+                "transaction_time_invalid",
+                "标准结果包含无法恢复的交易时间。",
+            ) from exc
+        transaction = Transaction(
+            transaction_time=transaction_time,
+            income=Decimal(str(record.get("income") or "0")),
+            expense=Decimal(str(record.get("expense") or "0")),
+            balance=(
+                Decimal(str(record["balance"]))
+                if record.get("balance") is not None
+                else None
+            ),
+            bank=str(record.get("bank") or ""),
+            page_no=int(record.get("page_no") or 0),
+            row_no=int(record.get("row_no") or 0),
+            raw_time=str(original.get("raw_time") or ""),
+            raw_amount=str(original.get("raw_amount") or ""),
+            raw_balance=str(original.get("raw_balance") or ""),
+            raw_text=str(original.get("raw_text") or ""),
+            raw_fields=list(original.get("raw_fields") or []),
+            raw_headers=list(original.get("raw_headers") or []),
+            status=str(record.get("status") or "ok"),
+            issues=list(record.get("issues") or []),
+            counterparty_name=str(standard.get("counterparty_name") or ""),
+            counterparty_account=str(
+                standard.get("counterparty_account") or ""
+            ),
+            counterparty_bank=str(standard.get("counterparty_bank") or ""),
+            summary=str(standard.get("summary") or ""),
+            remark=str(standard.get("remark") or ""),
+            purpose=str(standard.get("purpose") or ""),
+            transaction_type=str(standard.get("transaction_type") or ""),
+            transaction_direction=str(
+                standard.get("transaction_direction") or ""
+            ),
+            transaction_method=str(
+                standard.get("transaction_method") or ""
+            ),
+            payment_method=str(standard.get("payment_method") or ""),
+            product_description=str(
+                standard.get("product_description") or ""
+            ),
+            merchant_name=str(standard.get("merchant_name") or ""),
+            merchant_category=str(standard.get("merchant_category") or ""),
+            merchant_location=str(standard.get("merchant_location") or ""),
+            field_sources=dict(standard.get("field_sources") or {}),
+            field_confidence=dict(standard.get("field_confidence") or {}),
+            manual_review=dict(record.get("manual_review") or {}),
+            source_fields=dict(original.get("source_fields") or {}),
+            source_file=str(record.get("source_file") or ""),
+            source_file_id=str(record.get("source_file_id") or ""),
+            evidence_locator=str(record.get("evidence_locator") or ""),
+            transaction_id=str(record.get("transaction_id") or ""),
+        )
+        transaction.neutral = bool(record.get("neutral"))
+        transactions.append(transaction)
+    return transactions
 
 
 def observation_by_type(

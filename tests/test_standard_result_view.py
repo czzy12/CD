@@ -17,6 +17,7 @@ from bankflow_v2.standard_result_view import (
     redact_sensitive_text,
     result_summary,
     short_transaction_id,
+    transactions_from_standard_result,
     validate_standard_result,
 )
 
@@ -79,6 +80,23 @@ class StandardResultViewTests(unittest.TestCase):
             loaded = load_standard_result(path)
 
         self.assertEqual(loaded["schema_version"], "1.16")
+
+    def test_restores_transactions_for_scoped_context_rebuild(self):
+        source = transaction()
+        source.raw_headers = ["用途"]
+        source.raw_fields = ["环保工程款"]
+        source.raw_text = "测试公司 环保工程款"
+        source.field_sources["counterparty_name"] = "raw_headers[0]"
+        result = build_bankflow_result([source], ai_config={})
+
+        restored = transactions_from_standard_result(result)
+
+        self.assertEqual(len(restored), 1)
+        self.assertEqual(restored[0].transaction_id, source.transaction_id)
+        self.assertEqual(restored[0].income, source.income)
+        self.assertEqual(restored[0].raw_text, source.raw_text)
+        self.assertEqual(restored[0].counterparty_name, source.counterparty_name)
+        self.assertEqual(restored[0].evidence_locator, source.evidence_locator)
 
     def test_evidence_lookup_uses_index_and_checks_transaction_id(self):
         result = build_bankflow_result([transaction()], ai_config={})

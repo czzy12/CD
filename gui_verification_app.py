@@ -93,8 +93,11 @@ def save_manual_case_context(
         ),
         "confirmed_by": confirmation.get("confirmed_by", ""),
         "confirmed_at": confirmed_at,
-        "ai_business_assistance_enabled": bool(
-            confirmation.get("ai_business_assistance_enabled")
+        "enable_ai_business_analysis": bool(
+            confirmation.get(
+                "enable_ai_business_analysis",
+                confirmation.get("ai_business_assistance_enabled"),
+            )
         ),
     }
     path = case_dir / MANUAL_CASE_CONTEXT_FILENAME
@@ -222,7 +225,10 @@ class VerificationMainWindow(QMainWindow):
             ),
         )
         ai_enabled = bool(
-            self._manual_context.get("ai_business_assistance_enabled")
+            self._manual_context.get(
+                "enable_ai_business_analysis",
+                self._manual_context.get("ai_business_assistance_enabled"),
+            )
         )
         ai_api_key = str(confirmation.get("ai_api_key") or "")
         if self._preparation_reanalysis:
@@ -253,7 +259,7 @@ class VerificationMainWindow(QMainWindow):
             "confirmation_note": "用户选择暂不补充，继续分析。",
             "confirmation_status": "unconfirmed",
             "confirmed_by": "",
-            "ai_business_assistance_enabled": False,
+            "enable_ai_business_analysis": False,
         }
         self._manual_context = save_manual_case_context(
             self.case_dir,
@@ -368,7 +374,12 @@ class VerificationMainWindow(QMainWindow):
             rebuilt,
             self.case_dir / STANDARD_RESULT_FILENAME,
         )
-        self.workspace.set_result(rebuilt, self.case_dir.name)
+        self.workspace.set_result(
+            rebuilt,
+            self.case_dir.name,
+            case_context=self._base_case_context,
+            manual_context=self._manual_context,
+        )
         self.workspace.open_module("business")
         self._preparation_reanalysis = False
         self.statusBar().showMessage("经营关联及相关核实事项已重新分析")
@@ -404,7 +415,12 @@ class VerificationMainWindow(QMainWindow):
             )
             self._manual_context = load_manual_case_context(case_dir)
             self._transactions = transactions_from_standard_result(result)
-            self.workspace.set_result(result, case_dir.name)
+            self.workspace.set_result(
+                result,
+                case_dir.name,
+                case_context=self._base_case_context,
+                manual_context=self._manual_context,
+            )
             self.statusBar().showMessage(
                 f"已读取已有标准结果：{candidate.name}"
             )
@@ -505,6 +521,8 @@ class VerificationMainWindow(QMainWindow):
             standard_result,
             case_name,
             source_messages=source_messages,
+            case_context=self._base_case_context,
+            manual_context=self._manual_context,
         )
         if self.case_dir is not None:
             write_bankflow_json(

@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QLabel
+from PyQt6.QtWidgets import QApplication, QLabel, QProgressBar
 
 from bankflow_v2.models import Transaction
 from bankflow_v2.case_context import (
@@ -26,14 +26,21 @@ from bankflow_v2.result_export import (
 )
 from bankflow_v2.verification_worker import VerificationWorker
 from gui_verification import (
+    AttentionItemCard,
+    CandidateCategoryButton,
     CasePreparationPage,
     CaseDashboardPage,
     EvidencePanel,
+    KeyFindingCard,
     KeyMetricsPanel,
     ModuleDetailPage,
+    ModuleSummaryHeader,
+    ModuleSummaryPage,
     PagedTable,
     ProcessingPage,
     ResultListModel,
+    SummaryMetric,
+    TransactionListPanel,
     VerificationWorkspace,
     WelcomePage,
 )
@@ -218,6 +225,13 @@ class GuiVerificationTests(unittest.TestCase):
         workspace.set_result(result, "测试案例")
 
         workspace.open_module("business")
+        self.assertIs(
+            workspace.case_content_pages.currentWidget(),
+            workspace.module_summary_page,
+        )
+        workspace.module_summary_page.choice_buttons[
+            ("business", "positive")
+        ].click()
         self.assertGreater(workspace.business_table.model.total_count(), 0)
         workspace.business_table._clicked(
             workspace.business_table.model.index(0, 0)
@@ -297,10 +311,13 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(workspace.sensitive_table.model.total_count(), 1)
         self.assertEqual(workspace.progress.value(), 100)
         self.assertEqual(workspace.load_result_button.text(), "导入标准结果")
-        self.assertIs(workspace.main_pages.currentWidget(), workspace.dashboard_page)
+        self.assertIs(workspace.main_pages.currentWidget(), workspace.current_case_page)
+        self.assertIs(
+            workspace.case_content_pages.currentWidget(),
+            workspace.dashboard_page,
+        )
         self.assertFalse(workspace.evidence_panel.isVisible())
-        for route in ("dashboard", "manual", "evidence"):
-            self.assertTrue(workspace.navigation_by_route[route].isEnabled())
+        self.assertTrue(workspace.navigation_by_route["case"].isEnabled())
 
     def test_workspace_starts_on_welcome_without_empty_case_or_evidence(self):
         workspace = VerificationWorkspace()
@@ -313,18 +330,14 @@ class GuiVerificationTests(unittest.TestCase):
             navigation,
             [
                 "首页",
-                "案件概览",
-                "人工核实",
-                "证据中心",
+                "当前案件",
                 "历史案件",
                 "设置",
             ],
         )
-        self.assertEqual(workspace.current_case_label.text(), "当前案件")
         self.assertNotIn("分析结果", navigation)
-        self.assertFalse(any("后续" in text for text in navigation))
-        for route in ("dashboard", "manual", "evidence"):
-            self.assertFalse(workspace.navigation_by_route[route].isEnabled())
+        self.assertFalse(workspace.navigation_by_route["case"].isEnabled())
+        self.assertFalse(hasattr(workspace.welcome_page, "settings_button"))
 
     def test_processing_page_only_shows_cancel_while_running(self):
         page = ProcessingPage()
@@ -338,12 +351,13 @@ class GuiVerificationTests(unittest.TestCase):
         page.stop("已完成")
         self.assertTrue(page.cancel_button.isHidden())
 
-    def test_dashboard_uses_grouped_summary_cards_and_compact_amounts(self):
+    def test_dashboard_uses_four_combined_cards_and_compact_amounts(self):
         result = build_bankflow_result(
             [
                 Transaction(
                     transaction_time=datetime(2026, 1, 2, 9, 30),
                     income=Decimal("24590800.00"),
+                    balance=Decimal("100800.00"),
                     source_file="sample.pdf",
                     source_file_id="sha256:sample",
                     transaction_id="tx:dashboard:1",
@@ -358,7 +372,16 @@ class GuiVerificationTests(unittest.TestCase):
 
         dashboard.set_result(result, "韩鹏飞")
 
-        self.assertEqual(len(dashboard.module_cards), 8)
+        self.assertEqual(
+            list(dashboard.module_cards),
+            [
+                "verification_declaration",
+                "purchase_business",
+                "funds_balance",
+                "counterparty",
+            ],
+        )
+        self.assertEqual(len(dashboard.module_cards), 4)
         self.assertNotIn("evidence", dashboard.module_cards)
         self.assertEqual(
             dashboard.metrics["income_sum"].value_label.text(),
@@ -370,6 +393,14 @@ class GuiVerificationTests(unittest.TestCase):
         )
         self.assertEqual(dashboard.header.title.text(), "韩鹏飞")
         self.assertEqual(dashboard.key_metrics_panel._columns, 3)
+        dashboard.resize(800, 900)
+        dashboard.show()
+        self.app.processEvents()
+        self.assertEqual(dashboard._columns, 1)
+        dashboard.resize(1200, 900)
+        self.app.processEvents()
+        self.assertEqual(dashboard._columns, 2)
+        dashboard.close()
         responsive_panel = KeyMetricsPanel()
         responsive_panel.resize(1400, 176)
         responsive_panel.show()
@@ -385,8 +416,14 @@ class GuiVerificationTests(unittest.TestCase):
             for label in card.findChildren(QLabel)
         ]
         self.assertFalse(any("ANALYSIS" in text for text in card_text))
+        self.assertEqual(dashboard.life_status.text(), "生活轨迹：当前未分析")
+        self.assertEqual(dashboard.vehicle_status.text(), "用车信息：当前未分析")
         self.assertIn("笔交易已建立唯一索引", dashboard.evidence_summary.detail_label.text())
         self.assertIn("条有效证据引用", dashboard.evidence_summary.detail_label.text())
+        self.assertIn(
+            "余额日期：2026-01-02",
+            dashboard.module_cards["funds_balance"].body_label.text(),
+        )
 
     def test_dashboard_business_card_surfaces_deterministic_count_when_ai_is_off(self):
         result = build_bankflow_result(
@@ -410,11 +447,151 @@ class GuiVerificationTests(unittest.TestCase):
 
         dashboard.set_result(result, "测试案例")
 
-        card = dashboard.module_cards["business"]
-        self.assertEqual(card.primary_label.text(), "需补充经营内容")
-        self.assertIn("只有工作单位名称", card.summary_label.text())
-        self.assertIn("未执行行业语义判断", card.status_label.text())
-        self.assertEqual(card.open_button.text(), "补充经营信息")
+        card = dashboard.module_cards["purchase_business"]
+        self.assertIn("工作单位对照：直接命中", card.body_label.text())
+        self.assertIn("经营内容对照：未提供申报项", card.body_label.text())
+        self.assertIn("经营上下文：待人工补充", card.body_label.text())
+        self.assertIn("确定性文字/企业名称候选", card.body_label.text())
+        self.assertIn("未执行完整行业语义判断", card.status_label.text())
+        self.assertFalse(card.secondary_button.isHidden())
+        self.assertEqual(card.open_button.text(), "查看概要 →")
+
+    def test_dashboard_restores_confirmed_business_context_without_second_model(self):
+        extracted = build_case_context(
+            "测试案例",
+            [
+                {
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：甲公司",
+                }
+            ],
+            business_confirmation={
+                "confirmation_status": "confirmed",
+                "confirmed_primary_business": "食品销售",
+                "confirmed_products_or_services": "预包装食品",
+            },
+        )
+        result = build_bankflow_result(
+            [sensitive_transaction(1)],
+            case_context=extracted,
+            ai_config={},
+        )
+        manual = {
+            "manual_confirmation": {
+                "confirmation_status": "confirmed",
+                "confirmed_primary_business": "食品销售",
+                "confirmed_products_or_services": "预包装食品",
+            }
+        }
+        dashboard = CaseDashboardPage()
+
+        dashboard.set_result(
+            result,
+            "测试案例",
+            case_context=extracted,
+            manual_context=manual,
+        )
+
+        card = dashboard.module_cards["purchase_business"]
+        self.assertIn("经营上下文：已人工确认", card.body_label.text())
+        self.assertIn("经营内容：食品销售", card.body_label.text())
+        self.assertTrue(card.secondary_button.isHidden())
+
+    def test_dashboard_header_attention_and_common_summary_components(self):
+        result = build_bankflow_result(
+            [sensitive_transaction(1)],
+            ai_config={},
+        )
+        questions = next(
+            item
+            for item in result["result"]["observations"]
+            if item.get("observation_type") == "manual_verification_questions"
+        )["value"]["questions"]
+        self.assertTrue(questions)
+        questions[:] = [
+            {
+                **questions[0],
+                "question_id": f"question:dashboard:{index}",
+            }
+            for index in range(6)
+        ]
+        dashboard = CaseDashboardPage()
+        attention_opened = []
+        dashboard.attentionRequested.connect(
+            lambda: attention_opened.append(True)
+        )
+
+        dashboard.set_result(result, "测试案例")
+
+        self.assertIn("资料覆盖期间：", dashboard.header.subtitle.text())
+        self.assertIn("资料来源：1 个", dashboard.header.facts.text())
+        self.assertIn("交易笔数：1 笔", dashboard.header.facts.text())
+        self.assertEqual(dashboard.completed_badge.text(), "已完成")
+        self.assertEqual(dashboard.findChildren(QProgressBar), [])
+        self.assertEqual(len(dashboard.attention_cards), 1)
+        self.assertTrue(
+            all(
+                isinstance(card, AttentionItemCard)
+                for card in dashboard.attention_cards
+            )
+        )
+        first = dashboard.attention_cards[0]
+        self.assertIn("1 项待核实", first.module_badge.text())
+        self.assertIn("客观触发事实：", first.fact_label.text())
+        self.assertIn("建议核实内容：", first.verification_label.text())
+        self.assertIn("对应证据：", first.evidence_label.text())
+        self.assertEqual(first.availability_badge.text(), "数据可用")
+        first.open_button.click()
+        self.assertEqual(attention_opened, [True])
+        self.assertNotIn(
+            "重点：",
+            dashboard.module_cards[
+                "verification_declaration"
+            ].body_label.text(),
+        )
+        self.assertNotIn(
+            "最值得注意",
+            dashboard.module_cards["funds_balance"].body_label.text(),
+        )
+        self.assertTrue(
+            all(
+                isinstance(metric, SummaryMetric)
+                for metric in dashboard.metrics.values()
+            )
+        )
+        self.assertTrue(
+            all(
+                isinstance(card, KeyFindingCard)
+                for card in dashboard.module_cards.values()
+            )
+        )
+
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "测试案例")
+        workspace.dashboard_page.module_cards[
+            "verification_declaration"
+        ].open_button.click()
+        self.assertIsInstance(
+            workspace.module_summary_page.summary_header,
+            ModuleSummaryHeader,
+        )
+        self.assertTrue(
+            all(
+                isinstance(button, CandidateCategoryButton)
+                for button in workspace.module_summary_page.choice_buttons.values()
+            )
+        )
+        workspace.navigate("dashboard")
+        workspace.dashboard_page.attention_cards[0].open_button.click()
+        self.assertIs(
+            workspace.case_content_pages.currentWidget(),
+            workspace.transaction_list_panel,
+        )
+        self.assertEqual(
+            workspace.transaction_list_panel.title.text(),
+            "人工核实",
+        )
 
     def test_case_preparation_requires_primary_business_when_context_is_missing(self):
         context = build_case_context(
@@ -436,7 +613,9 @@ class GuiVerificationTests(unittest.TestCase):
         page.show()
         self.app.processEvents()
 
+        self.assertEqual(page.case_name.text(), "测试案例")
         self.assertIn("只有工作单位名称", page.context_status.text())
+        self.assertIn("实际主要经营内容", page.missing_information.text())
         self.assertIn("客户资料.txt", page.source_text.toPlainText())
         self.assertGreater(
             page.form_card.geometry().left(),
@@ -466,6 +645,7 @@ class GuiVerificationTests(unittest.TestCase):
         page.confirm_button.click()
         self.assertEqual(payloads[0]["confirmation_status"], "confirmed")
         self.assertEqual(payloads[0]["confirmed_by"], "调查员A")
+        self.assertTrue(payloads[0]["enable_ai_business_analysis"])
         page.close()
 
     def test_manual_case_context_is_separate_and_restorable(self):
@@ -492,7 +672,7 @@ class GuiVerificationTests(unittest.TestCase):
                     "confirmation_note": "现场确认",
                     "confirmation_status": "confirmed",
                     "confirmed_by": "调查员A",
-                    "ai_business_assistance_enabled": False,
+                    "enable_ai_business_analysis": False,
                 },
             )
 
@@ -504,6 +684,7 @@ class GuiVerificationTests(unittest.TestCase):
             self.assertEqual(restored["confirmed_by"], "调查员A")
             self.assertTrue(restored["confirmed_at"])
             self.assertIn("original_extracted_information", restored)
+            self.assertFalse(restored["enable_ai_business_analysis"])
 
     def test_scoped_business_rebuild_preserves_original_transactions(self):
         transaction = sensitive_transaction(1)
@@ -666,9 +847,40 @@ class GuiVerificationTests(unittest.TestCase):
             self.assertNotIn("ai_api_key", saved_text)
             self.assertTrue(
                 load_manual_case_context(case_dir)[
-                    "ai_business_assistance_enabled"
+                    "enable_ai_business_analysis"
                 ]
             )
+
+    def test_preparation_restores_legacy_ai_opt_in_field(self):
+        context = build_case_context(
+            "测试案例",
+            [
+                {
+                    "source_ref": "客户资料.txt",
+                    "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                    "text": "工作单位全称：甲公司",
+                }
+            ],
+        )
+        page = CasePreparationPage()
+        page.set_context(
+            context,
+            {
+                "case_id": "测试案例",
+                "manual_confirmation": {
+                    "confirmation_status": "confirmed",
+                    "confirmed_primary_business": "食品销售",
+                },
+                "confirmed_by": "调查员A",
+                "ai_business_assistance_enabled": True,
+            },
+        )
+
+        self.assertTrue(page.ai_enabled.isChecked())
+        self.assertEqual(
+            page.missing_information.text(),
+            "无必填缺口（已恢复人工确认）",
+        )
 
     def test_hidden_analysis_route_redirects_to_dashboard(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
@@ -677,29 +889,50 @@ class GuiVerificationTests(unittest.TestCase):
 
         workspace.navigate("analysis")
 
-        self.assertIs(workspace.main_pages.currentWidget(), workspace.dashboard_page)
-        self.assertTrue(workspace.navigation_by_route["dashboard"].isChecked())
+        self.assertIs(workspace.main_pages.currentWidget(), workspace.current_case_page)
+        self.assertIs(
+            workspace.case_content_pages.currentWidget(),
+            workspace.dashboard_page,
+        )
+        self.assertTrue(workspace.navigation_by_route["case"].isChecked())
 
     def test_dashboard_cards_and_evidence_summary_open_shared_detail_page(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
         workspace = VerificationWorkspace()
         workspace.set_result(result, "测试案例")
 
-        workspace.dashboard_page.module_cards["sensitive"].open_button.click()
+        workspace.dashboard_page.module_cards[
+            "verification_declaration"
+        ].open_button.click()
         self.assertIs(
-            workspace.main_pages.currentWidget(),
-            workspace.module_detail_page,
+            workspace.case_content_pages.currentWidget(),
+            workspace.module_summary_page,
         )
-        self.assertEqual(workspace.module_detail_page.title.text(), "敏感交易")
+        self.assertEqual(
+            workspace.module_summary_page.title.text(),
+            "核实与申报概要",
+        )
         self.assertFalse(workspace.evidence_panel.isVisible())
+        workspace.module_summary_page.choice_buttons[
+            ("sensitive", "all")
+        ].click()
+        self.assertIs(
+            workspace.case_content_pages.currentWidget(),
+            workspace.transaction_list_panel,
+        )
+        self.assertEqual(workspace.transaction_list_panel.title.text(), "敏感交易")
 
         workspace.navigate("dashboard")
         workspace.dashboard_page.evidence_summary.open_button.click()
         self.assertIs(
-            workspace.main_pages.currentWidget(),
-            workspace.module_detail_page,
+            workspace.case_content_pages.currentWidget(),
+            workspace.module_summary_page,
         )
-        self.assertEqual(workspace.module_detail_page.title.text(), "证据中心")
+        self.assertEqual(workspace.module_summary_page.title.text(), "证据中心")
+        self.assertIn(
+            "证据中心",
+            workspace.module_summary_page.breadcrumb_label.text(),
+        )
         self.assertFalse(workspace.evidence_panel.isVisible())
 
     def test_module_detail_reuses_manual_and_sensitive_paged_tables(self):
@@ -709,10 +942,117 @@ class GuiVerificationTests(unittest.TestCase):
 
         detail.set_module("manual", "人工核实摘要")
         self.assertIs(detail.tables.currentWidget(), detail.manual_table)
-        self.assertIn("案件概览 > 人工核实", detail.breadcrumb_label.text())
+        self.assertIn("当前案件 > 人工核实", detail.breadcrumb_label.text())
         detail.set_module("sensitive", "敏感交易摘要")
         self.assertIs(detail.tables.currentWidget(), detail.sensitive_table)
         self.assertEqual(detail.sensitive_table.model.total_count(), 1)
+
+    def test_top_navigation_and_combined_cards_build_three_level_skeleton(self):
+        result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "测试案例")
+
+        self.assertIsInstance(workspace.module_summary_page, ModuleSummaryPage)
+        self.assertIsInstance(
+            workspace.transaction_list_panel,
+            TransactionListPanel,
+        )
+        self.assertFalse(hasattr(workspace, "case_tab_buttons"))
+        workspace.dashboard_page.module_cards[
+            "purchase_business"
+        ].open_button.click()
+        self.assertIs(
+            workspace.case_content_pages.currentWidget(),
+            workspace.module_summary_page,
+        )
+        self.assertEqual(
+            workspace.module_summary_page.title.text(),
+            "购车与经营概要",
+        )
+        preparation_requests = []
+        workspace.businessPreparationRequested.connect(
+            lambda: preparation_requests.append(True)
+        )
+        workspace.module_summary_page.business_prepare_button.click()
+        self.assertEqual(preparation_requests, [True])
+        self.assertEqual(
+            workspace.dashboard_page.life_status.text(),
+            "生活轨迹：当前未分析",
+        )
+        self.assertEqual(
+            workspace.dashboard_page.vehicle_status.text(),
+            "用车信息：当前未分析",
+        )
+        self.assertFalse(workspace.evidence_panel.isVisible())
+
+    def test_business_default_filter_hides_none_and_exposes_all_categories(self):
+        transactions = [
+            sensitive_transaction(index)
+            for index in range(1, 6)
+        ]
+        result = build_bankflow_result(transactions, ai_config={})
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item.get("observation_type") == "ai_business_relevance_candidates"
+        )
+        observation["value"].update(
+            {
+                "available": True,
+                "reason": "",
+                "deterministic_candidates": [
+                    {
+                        "transaction_id": "tx:gui:1",
+                        "classification": "directly_related",
+                        "evidence_strength": "strong",
+                        "reason": "确定性正向。",
+                    }
+                ],
+                "ai_candidates": [
+                    {
+                        "transaction_id": "tx:gui:2",
+                        "classification": "possibly_related",
+                        "evidence_strength": "medium",
+                        "reason": "AI 中强度候选。",
+                    },
+                    {
+                        "transaction_id": "tx:gui:3",
+                        "classification": "undetermined",
+                        "evidence_strength": "none",
+                        "reason": "待人工判断。",
+                    },
+                    {
+                        "transaction_id": "tx:gui:5",
+                        "classification": "no_relation_evidence",
+                        "evidence_strength": "none",
+                        "reason": "AI 未发现关联依据。",
+                    },
+                ],
+                "deterministic_non_business_candidates": [
+                    {
+                        "transaction_id": "tx:gui:4",
+                        "classification": "no_relation_evidence",
+                        "evidence_strength": "none",
+                        "reason": "确定性排除。",
+                    }
+                ],
+            }
+        )
+        table = PagedTable("business")
+        table.set_result(result)
+
+        self.assertEqual(table.model.total_count(), 2)
+        displayed_sources = {
+            table.model.data(table.model.index(row, 0))
+            for row in range(table.model.rowCount())
+        }
+        self.assertNotIn("确定性排除", displayed_sources)
+        table.set_view_filter("manual")
+        self.assertEqual(table.model.total_count(), 1)
+        table.set_view_filter("excluded")
+        self.assertEqual(table.model.total_count(), 2)
+        table.set_view_filter("all")
+        self.assertEqual(table.model.total_count(), 5)
 
     def test_evidence_panel_supports_sequence_navigation(self):
         result = build_bankflow_result(

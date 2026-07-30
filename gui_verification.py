@@ -122,22 +122,56 @@ def _business_reason_label(reason: object) -> str:
     return _BUSINESS_REASON_LABELS.get(code, code or "原始状态未提供")
 
 
-def _business_rows(result: Mapping[str, object]) -> list[dict[str, object]]:
+BUSINESS_FILTER_LABELS = {
+    "positive": "正向候选",
+    "manual": "待人工判断",
+    "excluded": "已排除 / 无关联",
+    "all": "全部结果",
+}
+
+
+def _business_rows(
+    result: Mapping[str, object],
+    view_filter: str = "positive",
+) -> list[dict[str, object]]:
     observation = observation_by_type(result, "ai_business_relevance_candidates")
     value = observation.get("value")
     if not isinstance(value, Mapping):
         return []
     rows: list[dict[str, object]] = []
-    for key, source in (
-        ("deterministic_candidates", "确定性文字/名称候选"),
-        ("ai_candidates", "AI 观察"),
-    ):
-        candidates = value.get(key, [])
-        if not isinstance(candidates, list):
-            continue
+    deterministic = value.get("deterministic_candidates", [])
+    ai_candidates = value.get("ai_candidates", [])
+    excluded = value.get("deterministic_non_business_candidates", [])
+
+    if view_filter in {"positive", "all"} and isinstance(deterministic, list):
         rows.extend(
-            {"source": source, "candidate": candidate}
-            for candidate in candidates
+            {"source": "确定性文字/名称候选", "candidate": candidate}
+            for candidate in deterministic
+            if isinstance(candidate, Mapping)
+        )
+    if isinstance(ai_candidates, list):
+        for candidate in ai_candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            classification = str(candidate.get("classification") or "")
+            strength = str(candidate.get("evidence_strength") or "")
+            is_positive = strength in {"strong", "medium", "weak"}
+            is_manual = classification == "undetermined"
+            is_excluded = (
+                strength == "none"
+                or classification == "no_relation_evidence"
+            ) and not is_manual
+            if (
+                view_filter == "all"
+                or (view_filter == "positive" and is_positive)
+                or (view_filter == "manual" and is_manual)
+                or (view_filter == "excluded" and is_excluded)
+            ):
+                rows.append({"source": "AI 观察", "candidate": candidate})
+    if view_filter in {"excluded", "all"} and isinstance(excluded, list):
+        rows.extend(
+            {"source": "确定性排除", "candidate": candidate}
+            for candidate in excluded
             if isinstance(candidate, Mapping)
         )
     return rows
@@ -188,6 +222,62 @@ def _direction_and_amount(transaction: Mapping[str, object]) -> tuple[str, str]:
     return "中性", "0.00"
 
 
+def _indicator_by_type(
+    result: Mapping[str, object],
+    indicator_type: str,
+) -> Mapping[str, object]:
+    body = result.get("result", {})
+    indicators = body.get("indicators", []) if isinstance(body, Mapping) else []
+    for indicator in indicators if isinstance(indicators, list) else []:
+        if (
+            isinstance(indicator, Mapping)
+            and indicator.get("indicator_type") == indicator_type
+        ):
+            return indicator
+    return {}
+
+
+def _percentage(value: object, digits: int = 1) -> str:
+    if value in (None, ""):
+        return "不可用"
+    try:
+        return f"{Decimal(str(value)) * 100:.{digits}f}%"
+    except (InvalidOperation, ValueError):
+        return "不可用"
+
+
+def _sensitive_term_summary(
+    candidates: object,
+) -> str:
+    counts: dict[str, int] = {}
+    for candidate in candidates if isinstance(candidates, list) else []:
+        if not isinstance(candidate, Mapping):
+            continue
+        for term in {
+            str(value)
+            for value in candidate.get("matched_terms", [])
+            if str(value)
+        }:
+            counts[term] = counts.get(term, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    rendered = [f"{term}{count}" for term, count in ranked[:3]]
+    if len(ranked) > 3:
+        rendered.append(f"其他受控词组{len(ranked) - 3}类")
+    return "｜".join(rendered) or "当前无候选"
+
+
+def _change_label(value: object) -> str:
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return "不可用"
+    if amount > 0:
+        return "上升"
+    if amount < 0:
+        return "下降"
+    return "基本持平"
+
+
 class HardShadowCard(QFrame):
     """Square editorial card with a painted hard shadow."""
 
@@ -230,7 +320,7 @@ class HardShadowCard(QFrame):
 class BriefPageHeader(HardShadowCard):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(BriefTheme.SURFACE_STRONG, parent)
-        self.setMinimumHeight(132)
+        self.setMinimumHeight(154)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 26, 22)
         layout.setSpacing(5)
@@ -241,9 +331,13 @@ class BriefPageHeader(HardShadowCard):
         self.subtitle = QLabel("后台生成或直接加载标准结果后，可查看人工核实与敏感交易证据。")
         self.subtitle.setObjectName("briefSubtitle")
         self.subtitle.setWordWrap(True)
+        self.facts = QLabel("资料期间、来源和交易笔数将在案件完成后显示。")
+        self.facts.setObjectName("briefHeaderFacts")
+        self.facts.setWordWrap(True)
         layout.addWidget(self.eyebrow)
         layout.addWidget(self.title)
         layout.addWidget(self.subtitle)
+        layout.addWidget(self.facts)
 
     def set_summary(
         self,
@@ -251,15 +345,23 @@ class BriefPageHeader(HardShadowCard):
         period_start: str,
         period_end: str,
         status: str,
+        source_count: object | None = None,
+        transaction_count: object | None = None,
     ) -> None:
         self.title.setText(case_name)
         period = "覆盖期间不可用"
         if period_start or period_end:
             period = f"{str(period_start)[:10] or '未知'} → {str(period_end)[:10] or '未知'}"
-        self.subtitle.setText(f"核查日期：当前任务 · {period} · {status}")
+        self.subtitle.setText(f"资料覆盖期间：{period}")
+        facts = [f"分析状态：{status}"]
+        if source_count is not None:
+            facts.append(f"资料来源：{source_count} 个")
+        if transaction_count is not None:
+            facts.append(f"交易笔数：{transaction_count} 笔")
+        self.facts.setText(" · ".join(facts))
 
 
-class KeyMetricCell(QFrame):
+class SummaryMetric(QFrame):
     def __init__(
         self,
         label: str,
@@ -313,8 +415,8 @@ class KeyMetricsPanel(HardShadowCard):
             ("manual_question_count", "人工核实", "yellow"),
             ("sensitive_candidate_count", "敏感候选", "orange"),
         )
-        self.metrics: dict[str, KeyMetricCell] = {
-            key: KeyMetricCell(label, "0", tone)
+        self.metrics: dict[str, SummaryMetric] = {
+            key: SummaryMetric(label, "0", tone)
             for key, label, tone in definitions
         }
         self._columns = 0
@@ -336,6 +438,9 @@ class KeyMetricsPanel(HardShadowCard):
             self.grid.addWidget(cell, index // columns, index % columns)
         for column in range(columns):
             self.grid.setColumnStretch(column, 1)
+
+
+KeyMetricCell = SummaryMetric
 
 
 class SectionHeader(QWidget):
@@ -399,7 +504,7 @@ class AnalysisModuleCard(HardShadowCard):
         self.status_label = QLabel("不可用")
         self.status_label.setObjectName("briefModuleStatus")
         self.status_label.setWordWrap(True)
-        self.open_button = QPushButton("查看详情 →")
+        self.open_button = QPushButton("查看概要 →")
         self.open_button.clicked.connect(lambda: self.clicked.emit(self.module_key))
         layout.addWidget(self.title_label)
         layout.addWidget(self.primary_label)
@@ -421,6 +526,146 @@ class AnalysisModuleCard(HardShadowCard):
         self.status_label.setProperty("tone", tone)
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
+
+
+class KeyFindingCard(HardShadowCard):
+    clicked = pyqtSignal(str)
+    secondaryClicked = pyqtSignal(str)
+
+    def __init__(
+        self,
+        section_key: str,
+        title: str,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(BriefTheme.SURFACE, parent)
+        self.section_key = section_key
+        self.setMinimumHeight(292)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 24, 22)
+        layout.setSpacing(8)
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("briefCardTitle")
+        self.body_label = QLabel("等待标准结果。")
+        self.body_label.setObjectName("briefCombinedCardText")
+        self.body_label.setWordWrap(True)
+        self.body_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.status_label = QLabel("不可用")
+        self.status_label.setObjectName("briefModuleStatus")
+        self.status_label.setWordWrap(True)
+        actions = QHBoxLayout()
+        self.secondary_button = QPushButton("补充经营信息")
+        self.secondary_button.clicked.connect(
+            lambda: self.secondaryClicked.emit(self.section_key)
+        )
+        self.secondary_button.hide()
+        self.open_button = QPushButton("查看概要 →")
+        self.open_button.clicked.connect(
+            lambda: self.clicked.emit(self.section_key)
+        )
+        actions.addWidget(self.secondary_button)
+        actions.addStretch(1)
+        actions.addWidget(self.open_button)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.body_label)
+        layout.addWidget(self.status_label)
+        layout.addStretch(1)
+        layout.addLayout(actions)
+
+    def set_content(
+        self,
+        body: str,
+        status_text: str,
+        tone: str = "muted",
+        *,
+        show_secondary: bool = False,
+    ) -> None:
+        self.body_label.setText(body)
+        self.status_label.setText(status_text)
+        self.status_label.setProperty("tone", tone)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        self.secondary_button.setVisible(show_secondary)
+
+
+CombinedOverviewCard = KeyFindingCard
+
+
+class CandidateCategoryButton(QPushButton):
+    def __init__(
+        self,
+        text: str,
+        category: str,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(text, parent)
+        self.category = category
+        self.setObjectName("briefCandidateCategoryButton")
+
+
+class AttentionItemCard(HardShadowCard):
+    openRequested = pyqtSignal(str)
+
+    def __init__(
+        self,
+        fact: str,
+        verification: str,
+        module_key: str,
+        module_title: str,
+        question_count: int,
+        evidence_count: int,
+        availability: str,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(BriefTheme.SURFACE, parent)
+        self.module_key = module_key
+        self.setMinimumHeight(154)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 13, 22, 18)
+        layout.setSpacing(6)
+        top = QHBoxLayout()
+        self.module_badge = StatusBadge(
+            f"{module_title} · {question_count} 项待核实",
+            "orange",
+        )
+        availability_tone = (
+            "mint"
+            if availability == "数据可用"
+            else "orange" if availability == "部分数据可用" else "muted"
+        )
+        self.availability_badge = StatusBadge(
+            availability,
+            availability_tone,
+        )
+        top.addWidget(self.module_badge)
+        top.addWidget(self.availability_badge)
+        top.addStretch(1)
+        self.fact_label = QLabel(f"客观触发事实：{fact}")
+        self.fact_label.setObjectName("briefCardText")
+        self.fact_label.setWordWrap(True)
+        self.verification_label = QLabel(f"建议核实内容：{verification}")
+        self.verification_label.setObjectName("briefCardText")
+        self.verification_label.setWordWrap(True)
+        bottom = QHBoxLayout()
+        self.evidence_label = QLabel(f"对应证据：{evidence_count} 笔")
+        self.evidence_label.setObjectName("briefPageNote")
+        self.open_button = QPushButton("进入人工核实 →")
+        self.open_button.clicked.connect(
+            lambda: self.openRequested.emit("manual")
+        )
+        bottom.addWidget(self.evidence_label)
+        bottom.addStretch(1)
+        bottom.addWidget(self.open_button)
+        layout.addLayout(top)
+        layout.addWidget(self.fact_label)
+        layout.addWidget(self.verification_label)
+        layout.addLayout(bottom)
 
 
 class EvidenceSummaryPanel(HardShadowCard):
@@ -512,6 +757,7 @@ class ResultListModel(QAbstractTableModel):
         self.kind = kind
         self.page_size = page_size
         self.page = 0
+        self.view_filter = "positive" if kind == "business" else "all"
         self._result: Mapping[str, object] | None = None
         self._row_indices: range = range(0)
         self._business_transactions: dict[str, Mapping[str, object]] = {}
@@ -530,8 +776,24 @@ class ResultListModel(QAbstractTableModel):
         if self.kind == "manual":
             return manual_verification_questions(self._result)
         if self.kind == "business":
-            return _business_rows(self._result)
+            return _business_rows(self._result, self.view_filter)
         return sensitive_transaction_candidates(self._result)
+
+    def set_view_filter(self, view_filter: str) -> None:
+        if self.kind != "business":
+            return
+        resolved = (
+            view_filter
+            if view_filter in BUSINESS_FILTER_LABELS
+            else "positive"
+        )
+        if resolved == self.view_filter:
+            return
+        self.beginResetModel()
+        self.view_filter = resolved
+        self.page = 0
+        self._row_indices = range(len(self._rows()))
+        self.endResetModel()
 
     def set_result(self, result: Mapping[str, object] | None) -> None:
         self.beginResetModel()
@@ -740,6 +1002,10 @@ class PagedTable(QWidget):
         self.model.set_result(result)
         self._refresh_footer()
 
+    def set_view_filter(self, view_filter: str) -> None:
+        self.model.set_view_filter(view_filter)
+        self._refresh_footer()
+
     def _move_page(self, delta: int) -> None:
         self.model.set_page(self.model.page + delta)
         self._refresh_footer()
@@ -942,7 +1208,6 @@ class WelcomePage(QWidget):
     newCaseRequested = pyqtSignal()
     openCaseRequested = pyqtSignal()
     importResultRequested = pyqtSignal()
-    settingsRequested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -1009,12 +1274,6 @@ class WelcomePage(QWidget):
         recent_layout.addWidget(recent_title)
         recent_layout.addWidget(self.recent_label)
         layout.addWidget(recent)
-        settings_row = QHBoxLayout()
-        settings_row.addStretch(1)
-        self.settings_button = QPushButton("设置")
-        self.settings_button.clicked.connect(self.settingsRequested)
-        settings_row.addWidget(self.settings_button)
-        layout.addLayout(settings_row)
         layout.addStretch(1)
 
     def _action_card(
@@ -1093,11 +1352,15 @@ class CasePreparationPage(QWidget):
         self.work_unit = QLabel("未提取")
         self.work_content = QLabel("未提取")
         self.context_status = QLabel("待扫描")
+        self.case_name = QLabel("未命名案例")
+        self.missing_information = QLabel("待扫描")
         for row, (label, widget) in enumerate(
             (
+                ("案例名称", self.case_name),
                 ("工作单位", self.work_unit),
                 ("明确工作内容", self.work_content),
                 ("经营上下文状态", self.context_status),
+                ("当前缺少信息", self.missing_information),
             )
         ):
             key = QLabel(label)
@@ -1108,9 +1371,10 @@ class CasePreparationPage(QWidget):
         self.source_text = QPlainTextEdit()
         self.source_text.setReadOnly(True)
         self.source_text.setMinimumHeight(180)
-        extracted_layout.addWidget(QLabel("原始文字和来源"), 3, 0)
-        extracted_layout.addWidget(self.source_text, 3, 1)
-        extracted_layout.setRowStretch(3, 1)
+        source_row = 5
+        extracted_layout.addWidget(QLabel("提取原文与来源"), source_row, 0)
+        extracted_layout.addWidget(self.source_text, source_row, 1)
+        extracted_layout.setRowStretch(source_row, 1)
 
         self.form_card = HardShadowCard(BriefTheme.SURFACE)
         self.form_card.setSizePolicy(
@@ -1214,6 +1478,9 @@ class CasePreparationPage(QWidget):
         search = search if isinstance(search, Mapping) else {}
         business = context.get("business_context")
         business = business if isinstance(business, Mapping) else {}
+        self.case_name.setText(
+            str(context.get("case_id") or record.get("case_id") or "未命名案例")
+        )
         work_units = search.get("work_units", [])
         if not work_units:
             work_units = original_info.get("work_units", [])
@@ -1251,6 +1518,17 @@ class CasePreparationPage(QWidget):
             if business.get("ai_business_relevance_eligible")
             else status_labels.get(reason, "经营上下文待确认")
         )
+        if business.get("ai_business_relevance_eligible"):
+            missing_text = "无必填缺口；请核对已提取的明确工作内容"
+        elif reason == "work_description_missing":
+            missing_text = (
+                "实际主要经营内容（必填）；工作单位和主要产品或服务如有请补充"
+            )
+        else:
+            missing_text = (
+                "实际主要经营内容（必填）；主要产品或服务建议补充"
+            )
+        self.missing_information.setText(missing_text)
         evidence = business.get("declared_work_evidence", [])
         if not evidence:
             original_business = original_info.get("business_context")
@@ -1287,6 +1565,9 @@ class CasePreparationPage(QWidget):
             self.context_status.setText(
                 "已恢复案件工作区中的人工经营确认，可修改后重新确认"
             )
+            self.missing_information.setText(
+                "无必填缺口（已恢复人工确认）"
+            )
         self.primary_business.setText(
             str(confirmation.get("confirmed_primary_business") or "")
         )
@@ -1298,7 +1579,12 @@ class CasePreparationPage(QWidget):
         )
         self.confirmed_by.setText(str(record.get("confirmed_by") or ""))
         self.ai_enabled.setChecked(
-            bool(record.get("ai_business_assistance_enabled"))
+            bool(
+                record.get(
+                    "enable_ai_business_analysis",
+                    record.get("ai_business_assistance_enabled"),
+                )
+            )
         )
         self.ai_api_key.clear()
         self.confirm_button.setText(
@@ -1338,7 +1624,7 @@ class CasePreparationPage(QWidget):
                 "confirmation_note": self.confirmation_note.text().strip(),
                 "confirmation_status": "confirmed" if primary else "unconfirmed",
                 "confirmed_by": self.confirmed_by.text().strip(),
-                "ai_business_assistance_enabled": self.ai_enabled.isChecked(),
+                "enable_ai_business_analysis": self.ai_enabled.isChecked(),
                 "ai_api_key": self.ai_api_key.text(),
             }
         )
@@ -1460,7 +1746,206 @@ class ProcessingPage(QWidget):
         self.cancel_button.hide()
 
 
-class ModuleDetailPage(QWidget):
+class ModuleSummaryHeader(QWidget):
+    backRequested = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        top_row = QHBoxLayout()
+        self.back_button = QPushButton("返回案件概览")
+        self.back_button.clicked.connect(self.backRequested)
+        self.breadcrumb_label = QLabel("当前案件 > 概览")
+        self.breadcrumb_label.setObjectName("briefBreadcrumb")
+        top_row.addWidget(self.back_button)
+        top_row.addWidget(self.breadcrumb_label)
+        top_row.addStretch(1)
+        self.title = QLabel("模块分析概要")
+        self.title.setObjectName("briefHeroTitle")
+        self.note = QLabel("先选择候选分类，再进入交易明细。")
+        self.note.setObjectName("briefPageNote")
+        self.note.setWordWrap(True)
+        layout.addLayout(top_row)
+        layout.addWidget(self.title)
+        layout.addWidget(self.note)
+
+    def set_content(self, breadcrumb: str, title: str, note: str) -> None:
+        self.breadcrumb_label.setText(breadcrumb)
+        self.title.setText(title)
+        self.note.setText(note)
+
+
+class ModuleSummaryPage(QScrollArea):
+    backRequested = pyqtSignal()
+    categoryRequested = pyqtSignal(str, str)
+    businessPreparationRequested = pyqtSignal()
+
+    SECTION_TITLES = {
+        "overview": "概览",
+        "verification_declaration": "核实与申报概要",
+        "purchase_business": "购车与经营概要",
+        "funds_balance": "资金与余额概要",
+        "counterparty": "主要交易关系概要",
+        "evidence_center": "证据中心",
+    }
+    SECTION_MODULES = {
+        "overview": (),
+        "verification_declaration": ("manual", "sensitive", "declaration"),
+        "purchase_business": ("purchase", "business"),
+        "funds_balance": ("funds", "balance"),
+        "counterparty": ("counterparty",),
+        "evidence_center": ("evidence",),
+    }
+    MODULE_TITLES = {
+        "manual": "人工核实",
+        "sensitive": "敏感交易",
+        "business": "经营关联",
+        "purchase": "下定购车",
+        "counterparty": "交易对手",
+        "funds": "资金观察",
+        "balance": "余额与月度",
+        "declaration": "申报对照",
+        "evidence": "证据中心",
+    }
+    CATEGORY_CHOICES = {
+        "manual": (("查看待核实事项", "all"),),
+        "sensitive": (("查看敏感候选", "all"),),
+        "business": (
+            ("正向候选", "positive"),
+            ("待人工判断", "manual"),
+            ("已排除 / 无关联", "excluded"),
+            ("全部结果", "all"),
+        ),
+    }
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self._summaries: dict[str, tuple[str, str]] = {}
+        self.choice_buttons: dict[tuple[str, str], QPushButton] = {}
+        self.business_prepare_button: QPushButton | None = None
+        self.container = QWidget()
+        self.setWidget(self.container)
+        layout = QVBoxLayout(self.container)
+        layout.setContentsMargins(0, 0, 8, 8)
+        layout.setSpacing(12)
+        self.summary_header = ModuleSummaryHeader()
+        self.summary_header.backRequested.connect(self.backRequested.emit)
+        self.back_button = self.summary_header.back_button
+        self.breadcrumb_label = self.summary_header.breadcrumb_label
+        self.title = self.summary_header.title
+        self.note = self.summary_header.note
+        layout.addWidget(self.summary_header)
+        self.cards_container = QWidget()
+        self.cards_layout = QVBoxLayout(self.cards_container)
+        self.cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.cards_layout.setSpacing(12)
+        layout.addWidget(self.cards_container)
+        layout.addStretch(1)
+
+    def set_module_summaries(
+        self,
+        summaries: Mapping[str, tuple[str, str]],
+    ) -> None:
+        self._summaries = dict(summaries)
+
+    def set_section(
+        self,
+        section_key: str,
+        focus_module: str = "",
+    ) -> None:
+        resolved = (
+            section_key
+            if section_key in self.SECTION_TITLES
+            else "overview"
+        )
+        section_title = self.SECTION_TITLES[resolved]
+        breadcrumb = f"当前案件 > {section_title}"
+        if focus_module in self.MODULE_TITLES:
+            breadcrumb += f" > {self.MODULE_TITLES[focus_module]}"
+        self.summary_header.set_content(
+            breadcrumb,
+            section_title,
+            "先查看模块概要，再主动选择候选分类进入交易明细。",
+        )
+        modules = list(self.SECTION_MODULES[resolved])
+        if focus_module in modules:
+            modules = [focus_module]
+        self._clear_cards()
+        if not modules:
+            self.summary_header.set_content(
+                breadcrumb,
+                section_title,
+                "请从案件概览的组合卡片进入对应模块概要。",
+            )
+            return
+        for module_key in modules:
+            self.cards_layout.addWidget(self._module_card(module_key))
+
+    def _module_card(self, module_key: str) -> QWidget:
+        card = HardShadowCard(BriefTheme.SURFACE)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 24, 22)
+        layout.setSpacing(8)
+        title = QLabel(self.MODULE_TITLES[module_key])
+        title.setObjectName("briefCardTitle")
+        summary, status = self._summaries.get(
+            module_key,
+            ("等待标准结果。", "不可用"),
+        )
+        summary_label = QLabel(summary)
+        summary_label.setObjectName("briefCardText")
+        summary_label.setWordWrap(True)
+        status_label = QLabel(status)
+        status_label.setObjectName("briefPageNote")
+        status_label.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(summary_label)
+        layout.addWidget(status_label)
+        if module_key == "business":
+            prepare_button = QPushButton("补充经营信息")
+            prepare_button.clicked.connect(
+                self.businessPreparationRequested
+            )
+            self.business_prepare_button = prepare_button
+            layout.addWidget(
+                prepare_button,
+                0,
+                Qt.AlignmentFlag.AlignLeft,
+            )
+        choices = self.CATEGORY_CHOICES.get(module_key, ())
+        if not choices:
+            disabled = QPushButton("后续接入")
+            disabled.setEnabled(False)
+            layout.addWidget(disabled, 0, Qt.AlignmentFlag.AlignLeft)
+            return card
+        choices_row = QHBoxLayout()
+        for label, category in choices:
+            button = CandidateCategoryButton(label, category)
+            button.clicked.connect(
+                lambda checked=False, key=module_key, value=category:
+                self.categoryRequested.emit(key, value)
+            )
+            self.choice_buttons[(module_key, category)] = button
+            choices_row.addWidget(button)
+        choices_row.addStretch(1)
+        layout.addLayout(choices_row)
+        return card
+
+    def _clear_cards(self) -> None:
+        self.choice_buttons.clear()
+        self.business_prepare_button = None
+        while self.cards_layout.count():
+            item = self.cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+
+class TransactionListPanel(QWidget):
     backRequested = pyqtSignal()
     businessPreparationRequested = pyqtSignal()
     transactionSelected = pyqtSignal(str, object)
@@ -1486,9 +1971,9 @@ class ModuleDetailPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
         breadcrumb = QHBoxLayout()
-        self.back_button = QPushButton("案件概览")
+        self.back_button = QPushButton("返回模块概要")
         self.back_button.clicked.connect(self.backRequested)
-        self.breadcrumb_label = QLabel("案件概览 > 人工核实")
+        self.breadcrumb_label = QLabel("当前案件 > 概览 > 人工核实")
         self.breadcrumb_label.setObjectName("briefBreadcrumb")
         breadcrumb.addWidget(self.back_button)
         breadcrumb.addWidget(self.breadcrumb_label)
@@ -1540,11 +2025,29 @@ class ModuleDetailPage(QWidget):
         self.business_table.set_result(result)
         self.business_notice.setText(_business_status_text(result))
 
-    def set_module(self, module_key: str, summary: str) -> None:
+    def set_module(
+        self,
+        module_key: str,
+        summary: str,
+        *,
+        view_filter: str = "positive",
+        breadcrumb: str = "",
+    ) -> None:
         self._module_key = module_key
         title = self.MODULE_TITLES[module_key]
-        self.breadcrumb_label.setText(f"案件概览 > {title}")
-        self.title.setText(title)
+        self.breadcrumb_label.setText(
+            breadcrumb or f"当前案件 > {title}"
+        )
+        resolved_filter = (
+            view_filter
+            if view_filter in BUSINESS_FILTER_LABELS
+            else "positive"
+        )
+        self.title.setText(
+            f"{title} · {BUSINESS_FILTER_LABELS[resolved_filter]}"
+            if module_key == "business"
+            else title
+        )
         self.summary.setText(summary)
         self.business_notice.setVisible(module_key == "business")
         self.business_prepare_button.setVisible(module_key == "business")
@@ -1553,32 +2056,34 @@ class ModuleDetailPage(QWidget):
         elif module_key == "sensitive":
             self.tables.setCurrentWidget(self.sensitive_table)
         elif module_key == "business":
+            self.business_table.set_view_filter(resolved_filter)
             self.tables.setCurrentWidget(self.business_table)
         else:
             self.tables.setCurrentWidget(self.generic_table)
 
 
+class ModuleDetailPage(TransactionListPanel):
+    """Compatibility name for older imports; new workspace uses TransactionListPanel."""
+
+
 class CaseDashboardPage(QScrollArea):
     moduleRequested = pyqtSignal(str)
+    attentionRequested = pyqtSignal()
+    businessPreparationRequested = pyqtSignal()
 
-    MODULE_GROUPS = (
-        ("priority", "优先处理", (
-            ("manual", "人工核实"),
-            ("sensitive", "敏感交易"),
-            ("declaration", "申报对照"),
-        )),
-        ("business", "业务与购车", (
-            ("business", "经营关联"),
-            ("purchase", "下定购车"),
-            ("counterparty", "交易对手"),
-        )),
-        ("funds", "资金情况", (
-            ("funds", "资金观察"),
-            ("balance", "余额与月度"),
-        )),
+    CARD_DEFINITIONS = (
+        ("verification_declaration", "核实与申报"),
+        ("purchase_business", "购车与经营"),
+        ("funds_balance", "资金与余额"),
+        ("counterparty", "主要交易关系"),
     )
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        include_case_header: bool = True,
+    ):
         super().__init__(parent)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -1588,8 +2093,9 @@ class CaseDashboardPage(QScrollArea):
         layout.setContentsMargins(0, 0, 8, 8)
         layout.setSpacing(14)
         self.header = BriefPageHeader()
-        layout.addWidget(self.header)
-        header_meta = QHBoxLayout()
+        self.header_meta = QWidget()
+        header_meta = QHBoxLayout(self.header_meta)
+        header_meta.setContentsMargins(0, 0, 0, 0)
         self.completed_badge = StatusBadge("已完成", "mint")
         self.schema_badge = StatusBadge("schema 1.16", "mint")
         self.evidence_badge = StatusBadge("证据待核验", "muted")
@@ -1597,64 +2103,80 @@ class CaseDashboardPage(QScrollArea):
         header_meta.addWidget(self.schema_badge)
         header_meta.addWidget(self.evidence_badge)
         header_meta.addStretch(1)
-        layout.addLayout(header_meta)
+        if include_case_header:
+            layout.addWidget(self.header)
+            layout.addWidget(self.header_meta)
+        self.breadcrumb_label = QLabel("当前案件 > 概览")
+        self.breadcrumb_label.setObjectName("briefBreadcrumb")
+        layout.addWidget(self.breadcrumb_label)
         layout.addWidget(SectionHeader("DATA", "关键数据"))
         self.key_metrics_panel = KeyMetricsPanel()
         self.metrics = self.key_metrics_panel.metrics
         layout.addWidget(self.key_metrics_panel)
-        layout.addWidget(SectionHeader("FOCUS", "最需人工关注"))
+        layout.addWidget(SectionHeader("OVERVIEW", "案件整体画像"))
+        self.module_cards: dict[str, KeyFindingCard] = {}
+        self.module_grid = QGridLayout()
+        self.module_grid.setSpacing(14)
+        for key, title in self.CARD_DEFINITIONS:
+            card = KeyFindingCard(key, title)
+            card.clicked.connect(self.moduleRequested)
+            card.secondaryClicked.connect(
+                lambda _key: self.businessPreparationRequested.emit()
+            )
+            self.module_cards[key] = card
+        layout.addLayout(self.module_grid)
+        layout.addWidget(SectionHeader("FOCUS", "需关注事项（人工核实待办）"))
         self.attention_container = QWidget()
         self.attention_layout = QVBoxLayout(self.attention_container)
         self.attention_layout.setContentsMargins(0, 0, 0, 0)
         self.attention_layout.setSpacing(8)
+        self.attention_cards: list[AttentionItemCard] = []
         layout.addWidget(self.attention_container)
-        layout.addWidget(SectionHeader("MODULES", "分析模块"))
-        self.module_cards: dict[str, AnalysisModuleCard] = {}
-        self.module_grids: dict[str, QGridLayout] = {}
-        for group_key, group_title, modules in self.MODULE_GROUPS:
-            group_label = QLabel(group_title)
-            group_label.setObjectName("briefAnalysisGroup")
-            layout.addWidget(group_label)
-            group_grid = QGridLayout()
-            group_grid.setSpacing(14)
-            self.module_grids[group_key] = group_grid
-            for key, title in modules:
-                card = AnalysisModuleCard(key, title)
-                card.clicked.connect(self.moduleRequested)
-                self.module_cards[key] = card
-            layout.addLayout(group_grid)
         layout.addWidget(SectionHeader("EVIDENCE", "证据完整性"))
         self.evidence_summary = EvidenceSummaryPanel()
         self.evidence_summary.openRequested.connect(
             lambda: self.moduleRequested.emit("evidence")
         )
         layout.addWidget(self.evidence_summary)
+        layout.addWidget(SectionHeader("LATER", "后续分析能力"))
+        future = QFrame()
+        future.setObjectName("briefFutureCapabilities")
+        future_layout = QHBoxLayout(future)
+        future_layout.setContentsMargins(14, 10, 14, 10)
+        future_layout.setSpacing(12)
+        self.life_status = StatusBadge("生活轨迹：当前未分析", "muted")
+        self.vehicle_status = StatusBadge("用车信息：当前未分析", "muted")
+        future_layout.addWidget(self.life_status)
+        future_layout.addWidget(self.vehicle_status)
+        future_layout.addStretch(1)
+        layout.addWidget(future)
         layout.addStretch(1)
         self._columns = 0
-        self._reflow(3)
+        self.module_summaries: dict[str, tuple[str, str]] = {}
+        self._reflow(2)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._reflow(2 if self.viewport().width() < 930 else 3)
+        self._reflow(1 if self.viewport().width() < 860 else 2)
 
     def _reflow(self, columns: int) -> None:
         if columns == self._columns:
             return
         self._columns = columns
-        for group_key, _group_title, modules in self.MODULE_GROUPS:
-            group_grid = self.module_grids[group_key]
-            cards = [self.module_cards[key] for key, _title in modules]
-            for card in cards:
-                group_grid.removeWidget(card)
-            for index, card in enumerate(cards):
-                group_grid.addWidget(card, index // columns, index % columns)
-            for column in range(columns):
-                group_grid.setColumnStretch(column, 1)
+        cards = list(self.module_cards.values())
+        for card in cards:
+            self.module_grid.removeWidget(card)
+        for index, card in enumerate(cards):
+            self.module_grid.addWidget(card, index // columns, index % columns)
+        for column in range(columns):
+            self.module_grid.setColumnStretch(column, 1)
 
     def set_result(
         self,
         result: Mapping[str, object],
         case_name: str,
+        case_context: Mapping[str, object] | None = None,
+        manual_context: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         summary = result_summary(result, case_name)
         status = "证据完整" if summary["evidence_complete"] else "证据需复核"
@@ -1662,11 +2184,14 @@ class CaseDashboardPage(QScrollArea):
             str(summary["case_name"]),
             str(summary["period_start"]),
             str(summary["period_end"]),
-            status,
+            "已完成",
+            summary["source_count"],
+            summary["transaction_count"],
         )
         self.header.eyebrow.setText(
-            f"// 核查日期 {date.today().isoformat()} · {summary['source_count']} 个来源"
+            f"// 案件整体画像 · 核查日期 {date.today().isoformat()}"
         )
+        self.completed_badge.set_status("已完成", "mint")
         self.schema_badge.set_status(f"schema {summary['schema_version']}", "mint")
         self.evidence_badge.set_status(
             status,
@@ -1681,7 +2206,12 @@ class CaseDashboardPage(QScrollArea):
             else:
                 card.set_value(value)
         self._set_attention(result)
-        self._set_module_summaries(result, summary)
+        self._set_module_summaries(
+            result,
+            summary,
+            case_context=case_context,
+            manual_context=manual_context,
+        )
         return summary
 
     def _clear_layout(self, layout: QVBoxLayout) -> None:
@@ -1693,6 +2223,7 @@ class CaseDashboardPage(QScrollArea):
 
     def _set_attention(self, result: Mapping[str, object]) -> None:
         self._clear_layout(self.attention_layout)
+        self.attention_cards.clear()
         questions = manual_verification_questions(result)
         if not questions:
             card = EmptyStateCard(
@@ -1700,16 +2231,122 @@ class CaseDashboardPage(QScrollArea):
             )
             self.attention_layout.addWidget(card)
             return
-        for item in questions[:3]:
+        module_mapping = {
+            "declaration_flow_cross_checks": ("declaration", "核实与申报"),
+            "sensitive_transaction_context_candidates": (
+                "sensitive",
+                "核实与申报",
+            ),
+            "top_counterparties": ("counterparty", "主要交易关系"),
+            "large_inflow_balance_paths": ("funds", "资金与余额"),
+            "ai_business_relevance_candidates": (
+                "business",
+                "购车与经营",
+            ),
+            "purchase_prepayment_funding_candidates": (
+                "purchase",
+                "购车与经营",
+            ),
+        }
+        groups: dict[str, dict[str, object]] = {}
+        for item in questions:
             if not isinstance(item, Mapping):
                 continue
-            button = QPushButton(
-                redact_sensitive_text(item.get("question_text", "待人工核实"))
+            observation_type = str(
+                item.get("trigger_observation_type") or ""
             )
-            button.setObjectName("briefAttentionButton")
-            button.setToolTip(redact_sensitive_text(item.get("trigger_reason", "")))
-            button.clicked.connect(lambda: self.moduleRequested.emit("manual"))
-            self.attention_layout.addWidget(button)
+            module_key, module_title = module_mapping.get(
+                observation_type,
+                ("manual", "人工核实"),
+            )
+            group = groups.setdefault(
+                module_key,
+                {
+                    "module_title": module_title,
+                    "question_types": set(),
+                    "facts": [],
+                    "verifications": [],
+                    "evidence_ids": set(),
+                    "availability": [],
+                },
+            )
+            question_type = str(
+                item.get("question_type")
+                or item.get("question_id")
+                or "verification_item"
+            )
+            question_types = group["question_types"]
+            if not isinstance(question_types, set):
+                continue
+            is_new_type = question_type not in question_types
+            question_types.add(question_type)
+            observation = observation_by_type(result, observation_type)
+            value = observation.get("value")
+            if isinstance(value, Mapping):
+                group["availability"].append(bool(value.get("available")))
+            else:
+                group["availability"].append(None)
+            evidence_ids = item.get("evidence_transaction_ids", [])
+            if isinstance(evidence_ids, list):
+                group["evidence_ids"].update(
+                    str(value)
+                    for value in evidence_ids
+                    if str(value)
+                )
+            if not is_new_type:
+                continue
+            group["facts"].append(
+                redact_sensitive_text(
+                    item.get("trigger_reason")
+                    or "确定性观察触发人工核实"
+                )
+            )
+            group["verifications"].append(
+                redact_sensitive_text(
+                    item.get("question_text")
+                    or "请结合原始资料人工核实。"
+                )
+            )
+
+        def render_items(values: object) -> str:
+            rows = list(values) if isinstance(values, list) else []
+            rendered = "\n".join(f"• {value}" for value in rows[:3])
+            if len(rows) > 3:
+                rendered += f"\n• 另有 {len(rows) - 3} 项，请进入人工核实查看"
+            return rendered or "• 请进入人工核实查看"
+
+        for module_key, group in list(groups.items())[:5]:
+            availability_values = group["availability"]
+            available_count = sum(
+                value is True for value in availability_values
+            )
+            unavailable_count = sum(
+                value is False for value in availability_values
+            )
+            if available_count and unavailable_count:
+                availability = "部分数据可用"
+            elif available_count:
+                availability = "数据可用"
+            elif unavailable_count:
+                availability = "数据不可用"
+            else:
+                availability = "数据状态未提供"
+            question_types = group["question_types"]
+            evidence_ids = group["evidence_ids"]
+            card = AttentionItemCard(
+                render_items(group["facts"]),
+                render_items(group["verifications"]),
+                module_key,
+                str(group["module_title"]),
+                len(question_types),
+                len(evidence_ids),
+                availability,
+            )
+            card.openRequested.connect(
+                lambda _route: self.attentionRequested.emit()
+            )
+            self.attention_cards.append(card)
+            self.attention_layout.addWidget(card)
 
     def _observation_value(
         self,
@@ -1724,27 +2361,98 @@ class CaseDashboardPage(QScrollArea):
         self,
         result: Mapping[str, object],
         summary: Mapping[str, object],
+        *,
+        case_context: Mapping[str, object] | None = None,
+        manual_context: Mapping[str, object] | None = None,
     ) -> None:
         manual_count = int(summary.get("manual_question_count", 0))
         sensitive_count = int(summary.get("sensitive_candidate_count", 0))
-        self.module_cards["manual"].set_summary(
-            str(manual_count),
-            "待人工确认的问题与确定性触发依据。",
-            f"候选命中 {manual_count} · 可点击复核",
-            "orange" if manual_count else "mint",
+        questions = manual_verification_questions(result)
+        focus = [
+            redact_sensitive_text(item.get("question_text", "待人工核实"))
+            for item in questions[:2]
+            if isinstance(item, Mapping)
+        ]
+        sensitive = self._observation_value(
+            result,
+            "sensitive_transaction_context_candidates",
         )
-        self.module_cards["sensitive"].set_summary(
-            str(sensitive_count),
-            "可靠文字字段中的敏感词组候选。",
-            f"候选命中 {sensitive_count} · 不代表风险",
-            "orange" if sensitive_count else "mint",
+        sensitive_rows = sensitive.get("candidates", [])
+        category_text = _sensitive_term_summary(sensitive_rows)
+        declaration = self._observation_value(
+            result,
+            "declaration_flow_cross_checks",
         )
+        checks = declaration.get("items", [])
+        declaration_counts = {
+            "direct_match": 0,
+            "candidate_match": 0,
+            "no_evidence_in_reliable_fields": 0,
+            "unavailable": 0,
+        }
+        for item in checks if isinstance(checks, list) else []:
+            if isinstance(item, Mapping) and item.get("status") in declaration_counts:
+                declaration_counts[str(item["status"])] += 1
+        check_status_labels = {
+            "direct_match": "直接命中",
+            "candidate_match": "候选命中",
+            "no_evidence_in_reliable_fields": "可靠字段内未发现",
+            "unavailable": "不可用",
+        }
+        checks_by_type = {
+            str(item.get("check_type")): item
+            for item in checks if isinstance(checks, list)
+            and isinstance(item, Mapping)
+        }
+        work_unit_check = checks_by_type.get("work_unit", {})
+        business_check = checks_by_type.get("declared_industry", {})
+        work_unit_status = check_status_labels.get(
+            str(work_unit_check.get("status") or ""),
+            "未提供申报项",
+        )
+        business_check_status = check_status_labels.get(
+            str(business_check.get("status") or ""),
+            "未提供申报项",
+        )
+        verification_body = (
+            f"待人工核实：{manual_count} 项\n"
+            f"具体核实内容请查看下方人工核实待办。\n\n"
+            f"敏感候选：{sensitive_count} 项\n{category_text}\n\n"
+            "申报对照：\n"
+            f"直接命中 {declaration_counts['direct_match']}｜"
+            f"候选 {declaration_counts['candidate_match']}｜"
+            f"未发现 {declaration_counts['no_evidence_in_reliable_fields']}｜"
+            f"不可用 {declaration_counts['unavailable']}"
+        )
+        declaration_reason = str(declaration.get("reason") or "")
+        self.module_cards["verification_declaration"].set_content(
+            verification_body,
+            (
+                "数据可用；候选与未发现状态均需人工结合证据核实"
+                if declaration.get("available")
+                else f"申报对照不可用：{declaration_reason or '标准结果未提供'}"
+            ),
+            "orange" if manual_count or sensitive_count else "mint",
+        )
+
         business = self._observation_value(result, "ai_business_relevance_candidates")
         deterministic = business.get("deterministic_candidates", [])
         ai_candidates = business.get("ai_candidates", [])
         deterministic_count = len(deterministic)
-        ai_count = len(ai_candidates)
-        business_count = deterministic_count + ai_count
+        positive_ai = [
+            item
+            for item in ai_candidates if isinstance(ai_candidates, list)
+            and isinstance(item, Mapping)
+            and str(item.get("evidence_strength") or "")
+            in {"strong", "medium", "weak"}
+        ]
+        undetermined_ai = [
+            item
+            for item in ai_candidates if isinstance(ai_candidates, list)
+            and isinstance(item, Mapping)
+            and item.get("classification") == "undetermined"
+        ]
+        ai_count = len(positive_ai)
         business_reason = str(business.get("reason") or "")
         business_available = bool(business.get("available"))
         confirmation = business.get("business_context_confirmation")
@@ -1752,97 +2460,336 @@ class CaseDashboardPage(QScrollArea):
             isinstance(confirmation, Mapping)
             and confirmation.get("required")
         )
-        self.module_cards["business"].set_summary(
-            (
-                "需补充经营内容"
-                if confirmation_required
-                else str(business_count) if business_count else (
-                    "可用" if business_available else "不可用"
-                )
-            ),
-            (
-                "当前只有工作单位名称，无法确认实际主营。"
-                if confirmation_required
-                else "只展示 schema 既有经营观察；AI 默认关闭。"
-            ),
-            (
-                "经营上下文待确认，未执行行业语义判断"
-                if confirmation_required
-                else (
-                    f"确定性文字/名称候选 {deterministic_count} · "
-                    f"AI观察 {ai_count}"
-                )
-                if business_available
-                else f"AI 观察不可用 · {_business_reason_label(business_reason)}"
-            ),
-            "orange" if business_count else ("mint" if business_available else "muted"),
-        )
-        self.module_cards["business"].open_button.setText(
-            "补充经营信息"
-            if confirmation_required
-            else "查看详情 →"
-        )
         purchase = self._observation_value(
             result,
             "purchase_prepayment_funding_candidates",
         )
         purchase_rows = purchase.get("purchase_candidates", [])
         purchase_count = len(purchase_rows) if isinstance(purchase_rows, list) else 0
-        self.module_cards["purchase"].set_summary(
-            str(purchase_count),
-            "下定、定金、购车款及此前收入的非归因候选。",
-            (
-                f"候选命中 {purchase_count}"
-                if purchase_count
-                else "可靠字段内未发现"
-            ),
-            "orange" if purchase_count else "mint",
+        lead_purchase = (
+            purchase_rows[0]
+            if isinstance(purchase_rows, list)
+            and purchase_rows
+            and isinstance(purchase_rows[0], Mapping)
+            else {}
         )
+        purchase_detail = (
+            f"{_money(lead_purchase.get('expense'))} 元｜"
+            f"{str(lead_purchase.get('transaction_time') or '')[:10]}"
+            if lead_purchase
+            else "可靠字段内未发现明确下定支出"
+        )
+        extracted_business = (
+            case_context.get("business_context", {})
+            if isinstance(case_context, Mapping)
+            else {}
+        )
+        manual_confirmation = (
+            manual_context.get("manual_confirmation", {})
+            if isinstance(manual_context, Mapping)
+            else {}
+        )
+        if (
+            isinstance(manual_confirmation, Mapping)
+            and manual_confirmation.get("confirmation_status") == "confirmed"
+        ):
+            context_text = "已人工确认"
+            business_content = str(
+                manual_confirmation.get("confirmed_primary_business") or ""
+            )
+        elif (
+            isinstance(extracted_business, Mapping)
+            and extracted_business.get("declared_work_description")
+        ):
+            context_text = "已从系统资料提取"
+            business_content = str(
+                extracted_business.get("declared_work_description") or ""
+            )
+        else:
+            context_text = "待人工补充" if confirmation_required else "状态已确认"
+            business_content = ""
+        purchase_business_body = (
+            f"下定候选：{purchase_count} 笔\n{purchase_detail}\n\n"
+            f"工作单位对照：{work_unit_status}\n"
+            f"经营内容对照：{business_check_status}\n\n"
+            f"经营上下文：{context_text}\n"
+            + (
+                f"经营内容：{redact_sensitive_text(business_content)}\n"
+                if business_content
+                else ""
+            )
+            + f"确定性文字/企业名称候选：{deterministic_count} 笔\n"
+            f"AI 正向候选：{ai_count} 笔\n"
+            f"待人工判断：{len(undetermined_ai)} 笔\n"
+            f"AI：{'已启用并产生观察' if business_available else '未启用或不可用'}"
+        )
+        self.module_cards["purchase_business"].set_content(
+            purchase_business_body,
+            (
+                "需补充实际主要经营内容和主要产品/服务；"
+                "经营上下文待确认，未执行完整行业语义判断"
+                if confirmation_required
+                else (
+                    "下定及此前收入仅为时间金额并列，不表示资金来源；"
+                    f"{_business_reason_label(business_reason)}"
+                    if not business_available
+                    else "下定及此前收入仅为时间金额并列，不表示资金来源"
+                )
+            ),
+            "orange" if confirmation_required or purchase_count else "mint",
+            show_secondary=confirmation_required,
+        )
+
         counterparties = self._observation_value(result, "top_counterparties")
         income_top = counterparties.get("income", [])
         expense_top = counterparties.get("expense", [])
-        counterparty_count = (
-            len(income_top) + len(expense_top)
-            if isinstance(income_top, list) and isinstance(expense_top, list)
-            else 0
+        def counterparty_lines(rows: object) -> str:
+            rendered = []
+            for index, item in enumerate(
+                rows[:3] if isinstance(rows, list) else [],
+                start=1,
+            ):
+                if not isinstance(item, Mapping):
+                    continue
+                identity = (
+                    mask_account(item.get("identity_value", ""))
+                    if item.get("identity_field") == "counterparty_account"
+                    else redact_sensitive_text(item.get("identity_value", ""))
+                )
+                rendered.append(
+                    f"{index}. {identity} {_percentage(item.get('direction_amount_share'), 0)}"
+                )
+            return "\n".join(rendered) or "暂无可靠可识别对手"
+
+        income_summary = counterparties.get("income_summary", {})
+        expense_summary = counterparties.get("expense_summary", {})
+        income_coverage = (
+            income_summary.get("amount_coverage_rate")
+            if isinstance(income_summary, Mapping)
+            else None
         )
-        self.module_cards["counterparty"].set_summary(
-            str(counterparty_count),
-            "收入与支出主要交易对手摘要。",
-            "可用" if counterparties else "不可用",
-            "mint" if counterparties else "muted",
+        expense_coverage = (
+            expense_summary.get("amount_coverage_rate")
+            if isinstance(expense_summary, Mapping)
+            else None
         )
+        all_top = [
+            item
+            for rows in (income_top, expense_top)
+            for item in (rows if isinstance(rows, list) else [])
+            if isinstance(item, Mapping)
+        ]
+        months = sorted(
+            {
+                str(month)
+                for item in all_top
+                for month in item.get("months", [])
+            }
+        )
+        max_share = max(
+            (
+                Decimal(str(item.get("direction_amount_share") or "0"))
+                for item in all_top
+            ),
+            default=Decimal("0"),
+        )
+        occurrences = self._observation_value(
+            result,
+            "cross_source_counterparty_occurrences",
+        )
+        occurrence_rows = occurrences.get("counterparties", [])
+        relationship_body = (
+            "收入主要对手：\n"
+            f"{counterparty_lines(income_top)}\n\n"
+            "支出主要对手：\n"
+            f"{counterparty_lines(expense_top)}\n\n"
+            f"可识别覆盖：收入 {_percentage(income_coverage)}｜"
+            f"支出 {_percentage(expense_coverage)}\n"
+            f"主要对手覆盖月份：{months[0] + ' 至 ' + months[-1] if months else '不可用'}\n"
+            f"跨来源同名候选："
+            f"{len(occurrence_rows) if isinstance(occurrence_rows, list) else 0} 项"
+        )
+        self.module_cards["counterparty"].set_content(
+            relationship_body,
+            (
+                f"集中程度未自动定性；当前最高单一对手金额占比"
+                f"{_percentage(max_share, 0)}。排名不表示对手关系"
+                if all_top
+                else "集中程度不可用：没有可靠可识别对手"
+            ),
+            "mint" if counterparties.get("available") else "muted",
+        )
+
         large = self._observation_value(result, "large_transaction_candidates")
         large_rows = large.get("candidates", [])
         large_count = len(large_rows) if isinstance(large_rows, list) else 0
-        self.module_cards["funds"].set_summary(
-            str(large_count),
-            "大额交易与既有 1/3/7 日资金观察。",
-            "可用" if large else "不可用",
-            "mint" if large else "muted",
+        large_income_count = sum(
+            Decimal(str(item.get("income") or "0")) > 0
+            for item in large_rows if isinstance(large_rows, list)
+            and isinstance(item, Mapping)
+        )
+        large_expense_count = sum(
+            Decimal(str(item.get("expense") or "0")) > 0
+            for item in large_rows if isinstance(large_rows, list)
+            and isinstance(item, Mapping)
+        )
+        proximity_counts: dict[int, int] = {}
+        body = result.get("result", {})
+        indicators = body.get("indicators", []) if isinstance(body, Mapping) else []
+        for indicator in indicators if isinstance(indicators, list) else []:
+            if (
+                isinstance(indicator, Mapping)
+                and indicator.get("indicator_type") == "fund_time_proximity"
+            ):
+                parameters = indicator.get("parameters", {})
+                value = indicator.get("value", {})
+                if isinstance(parameters, Mapping) and isinstance(value, Mapping):
+                    proximity_counts[int(parameters.get("window_days", 0))] = int(
+                        value.get("time_proximity_pair_count", 0)
+                    )
+        paths = self._observation_value(result, "large_inflow_balance_paths")
+        path_rows = paths.get("candidates", [])
+        low_retention = sum(
+            any(
+                isinstance(window, Mapping)
+                and window.get("low_retained_balance_increment")
+                for window in item.get("windows", [])
+            )
+            for item in path_rows if isinstance(path_rows, list)
+            and isinstance(item, Mapping)
         )
         balance = self._observation_value(
             result,
             "end_of_day_balance_and_interest",
         )
-        self.module_cards["balance"].set_summary(
-            "可用" if balance else "不可用",
-            "日末余额、结息与月度变化摘要。",
-            "可用" if balance else "不可用",
-            "mint" if balance else "muted",
+        sources = balance.get("sources", [])
+        balance_sources = [
+            source
+            for source in sources if isinstance(sources, list)
+            and isinstance(source, Mapping)
+            and source.get("balance_available")
+        ]
+        latest_balance = "不可用"
+        latest_balance_date = "不可用"
+        latest_candidates: list[tuple[str, object]] = []
+        interest_records: list[Mapping[str, object]] = []
+        for source in sources if isinstance(sources, list) else []:
+            if not isinstance(source, Mapping):
+                continue
+            stats = source.get("balance_statistics", {})
+            ids = source.get("balance_snapshot_transaction_ids", [])
+            if isinstance(stats, Mapping) and ids:
+                transaction = evidence_transaction(result, str(ids[-1]))
+                transaction_record = (
+                    transaction.get("transaction", {})
+                    if isinstance(transaction, Mapping)
+                    else {}
+                )
+                if isinstance(transaction_record, Mapping):
+                    latest_candidates.append(
+                        (
+                            str(transaction_record.get("transaction_time") or ""),
+                            stats.get("closing"),
+                        )
+                    )
+            interest_records.extend(
+                item
+                for item in source.get("interest_records", [])
+                if isinstance(item, Mapping)
+            )
+        if latest_candidates:
+            latest_date_value, latest_amount = max(latest_candidates)
+            latest_balance = _money_compact(latest_amount)[0]
+            latest_balance_date = latest_date_value[:10]
+        recent_interest = max(
+            (str(item.get("transaction_time") or "") for item in interest_records),
+            default="",
         )
-        declaration = self._observation_value(
-            result,
-            "declaration_flow_cross_checks",
+        cashflow = _indicator_by_type(result, "cashflow_scale_and_recent_change")
+        cashflow_value = cashflow.get("value", {})
+        comparison = (
+            cashflow_value.get("recent_comparison", {})
+            if isinstance(cashflow_value, Mapping)
+            else {}
         )
-        checks = declaration.get("items", [])
-        check_count = len(checks) if isinstance(checks, list) else 0
-        self.module_cards["declaration"].set_summary(
-            str(check_count),
-            "申报信息与可靠流水字段的四状态对照。",
-            "可用" if declaration else "不可用",
-            "mint" if declaration else "muted",
+        recent_change = (
+            f"收入{_change_label(comparison.get('income_change'))}、"
+            f"支出{_change_label(comparison.get('expense_change'))}"
+            if isinstance(comparison, Mapping) and comparison.get("available")
+            else "不足连续六个日历月，无法比较最近三个月"
         )
+        funds_body = (
+            f"最近可靠日末余额：{latest_balance}\n"
+            f"余额日期：{latest_balance_date}｜余额字段："
+            f"{'可用' if balance_sources else '不可用'}\n"
+            f"结息记录：{len(interest_records)} 笔"
+            + (f"｜最近 {recent_interest[:10]}" if recent_interest else "")
+            + f"\n\n大额收入：{large_income_count} 笔｜大额支出：{large_expense_count} 笔\n"
+            f"1/3/7日资金观察：{proximity_counts.get(1, 0)}/"
+            f"{proximity_counts.get(3, 0)}/{proximity_counts.get(7, 0)} 组\n"
+            f"低留存候选：{low_retention} 项\n\n"
+            f"最近三个月：{recent_change}"
+        )
+        self.module_cards["funds_balance"].set_content(
+            funds_body,
+            (
+                "时间并列不表示资金来源；不判断实际停留时长；"
+                "日末余额不是日均余额；结息不能反推本金或偿债能力"
+            ),
+            "orange" if low_retention or max(proximity_counts.values(), default=0) else "mint",
+        )
+
+        self.module_summaries = {
+            "manual": (
+                f"待人工核实 {manual_count} 项；"
+                + ("重点：" + "；".join(focus) if focus else "当前无确定性核实事项"),
+                "仅供人工核实",
+            ),
+            "sensitive": (
+                f"敏感候选 {sensitive_count} 项；{category_text}",
+                "候选命中不代表风险",
+            ),
+            "declaration": (
+                "直接命中 {direct_match}｜候选 {candidate_match}｜"
+                "未发现 {no_evidence_in_reliable_fields}｜不可用 {unavailable}".format(
+                    **declaration_counts
+                ),
+                "未发现或不可用不等于申报不真实",
+            ),
+            "purchase": (
+                f"下定候选 {purchase_count} 笔；{purchase_detail}",
+                "只展示可靠字段候选，不作购车归因",
+            ),
+            "business": (
+                f"确定性候选 {deterministic_count}｜AI正向 {ai_count}｜"
+                f"待人工判断 {len(undetermined_ai)}",
+                (
+                    "经营上下文待确认，未执行完整行业语义判断"
+                    if confirmation_required
+                    else _business_reason_label(business_reason)
+                    if not business_available
+                    else "AI观察可用，仍需结合交易证据人工核实"
+                ),
+            ),
+            "funds": (
+                f"大额收入 {large_income_count}｜大额支出 {large_expense_count}；"
+                f"1/3/7日并列 {proximity_counts.get(1, 0)}/"
+                f"{proximity_counts.get(3, 0)}/{proximity_counts.get(7, 0)}",
+                "时间并列不表示资金来源",
+            ),
+            "balance": (
+                f"最近可靠日末余额 {latest_balance}（{latest_balance_date}）；"
+                f"结息 {len(interest_records)} 笔；{recent_change}",
+                "日末余额不是日均余额；结息不能反推本金或偿债能力",
+            ),
+            "counterparty": (
+                f"收入覆盖 {_percentage(income_coverage)}｜"
+                f"支出覆盖 {_percentage(expense_coverage)}；"
+                f"跨来源同名候选 "
+                f"{len(occurrence_rows) if isinstance(occurrence_rows, list) else 0}",
+                "排名只表示可靠字段金额汇总，不表示对手关系",
+            ),
+        }
         result_body = result.get("result", {})
         evidence = (
             result_body.get("evidence", {})
@@ -1876,30 +2823,29 @@ class VerificationWorkspace(QWidget):
         self._result: Mapping[str, object] | None = None
         self._source_errors: list[str] = []
         self._recent_cases: list[str] = []
+        self._active_section = "overview"
         self._active_module = "manual"
         self.setObjectName("briefWorkspace")
         self.setFont(QFont("Microsoft YaHei UI", 10))
-        root = QHBoxLayout(self)
+        root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(18)
+        root.setSpacing(12)
 
         navigation = QFrame()
-        navigation.setObjectName("briefNavigation")
-        navigation.setFixedWidth(220)
-        nav_layout = QVBoxLayout(navigation)
-        nav_layout.setContentsMargins(14, 16, 14, 16)
+        navigation.setObjectName("briefTopNavigation")
+        nav_layout = QHBoxLayout(navigation)
+        nav_layout.setContentsMargins(14, 10, 14, 10)
         nav_layout.setSpacing(8)
-        brand = QLabel("BANKFLOW\nBRIEF")
+        brand = QLabel("BANKFLOW BRIEF")
         brand.setObjectName("briefBrand")
         nav_layout.addWidget(brand)
-        nav_layout.addSpacing(10)
+        nav_layout.addSpacing(20)
         self.navigation_buttons: list[FilterButton] = []
         self.navigation_by_route: dict[str, FilterButton] = {}
 
-        def add_navigation_button(route: str, title: str, nested: bool = False) -> None:
+        def add_navigation_button(route: str, title: str) -> None:
             button = FilterButton(title)
             button.setProperty("route", route)
-            button.setProperty("nested", nested)
             button.clicked.connect(
                 lambda checked, selected_route=route: self.navigate(selected_route)
             )
@@ -1908,21 +2854,13 @@ class VerificationWorkspace(QWidget):
             nav_layout.addWidget(button)
 
         add_navigation_button("home", "首页")
-        self.current_case_label = QLabel("当前案件")
-        self.current_case_label.setObjectName("briefNavigationGroup")
-        nav_layout.addWidget(self.current_case_label)
-        for route, title in (
-            ("dashboard", "案件概览"),
-            ("manual", "人工核实"),
-            ("evidence", "证据中心"),
-        ):
-            add_navigation_button(route, title, nested=True)
+        add_navigation_button("case", "当前案件")
         add_navigation_button("history", "历史案件")
         add_navigation_button("settings", "设置")
         self.navigation_by_route["home"].setChecked(True)
-        for route in ("dashboard", "manual", "evidence"):
-            button = self.navigation_by_route[route]
-            button.setEnabled(False)
+        self.navigation_by_route["case"].setEnabled(False)
+        self.navigation_by_route["dashboard"] = self.navigation_by_route["case"]
+        self.navigation_by_route["analysis"] = self.navigation_by_route["case"]
         nav_layout.addStretch(1)
         self.legacy_button = QPushButton("返回原流水工具")
         self.legacy_button.clicked.connect(self.legacyRequested)
@@ -1933,8 +2871,24 @@ class VerificationWorkspace(QWidget):
         self.welcome_page = WelcomePage()
         self.processing_page = ProcessingPage()
         self.preparation_page = CasePreparationPage()
-        self.dashboard_page = CaseDashboardPage()
-        self.module_detail_page = ModuleDetailPage()
+        self.dashboard_page = CaseDashboardPage(include_case_header=False)
+        self.module_summary_page = ModuleSummaryPage()
+        self.transaction_list_panel = TransactionListPanel()
+        self.module_detail_page = self.transaction_list_panel
+        self.current_case_page = QWidget()
+        case_layout = QVBoxLayout(self.current_case_page)
+        case_layout.setContentsMargins(0, 0, 0, 0)
+        case_layout.setSpacing(10)
+        case_layout.addWidget(self.dashboard_page.header)
+        case_layout.addWidget(self.dashboard_page.header_meta)
+        self.case_content_pages = QStackedWidget()
+        for page in (
+            self.dashboard_page,
+            self.module_summary_page,
+            self.transaction_list_panel,
+        ):
+            self.case_content_pages.addWidget(page)
+        case_layout.addWidget(self.case_content_pages, 1)
         self.history_page = self._simple_page(
             "历史案件",
             "最近处理案件显示在首页；已有 schema 1.16 结果可直接导入。",
@@ -1948,8 +2902,7 @@ class VerificationWorkspace(QWidget):
             self.welcome_page,
             self.preparation_page,
             self.processing_page,
-            self.dashboard_page,
-            self.module_detail_page,
+            self.current_case_page,
             self.history_page,
             self.settings_page,
         ):
@@ -1968,24 +2921,40 @@ class VerificationWorkspace(QWidget):
         self.welcome_page.newCaseRequested.connect(self.selectCaseRequested)
         self.welcome_page.openCaseRequested.connect(self.openCaseRequested)
         self.welcome_page.importResultRequested.connect(self.loadResultRequested)
-        self.welcome_page.settingsRequested.connect(self.settingsRequested)
         self.processing_page.cancelRequested.connect(self.cancelRequested)
         self.preparation_page.confirmed.connect(self.preparationConfirmed)
         self.preparation_page.skipped.connect(self.preparationSkipped)
         self.preparation_page.backRequested.connect(
             self.preparationBackRequested
         )
-        self.dashboard_page.moduleRequested.connect(self.open_module)
-        self.module_detail_page.backRequested.connect(
-            lambda: self.navigate("dashboard")
+        self.dashboard_page.moduleRequested.connect(
+            self.show_module_summary_for_module
         )
-        self.module_detail_page.businessPreparationRequested.connect(
+        self.dashboard_page.attentionRequested.connect(
+            lambda: self.open_transaction_list("manual", "all")
+        )
+        self.dashboard_page.businessPreparationRequested.connect(
             self.businessPreparationRequested
         )
-        self.module_detail_page.transactionSelected.connect(
+        self.module_summary_page.backRequested.connect(
+            lambda: self.show_case_section("overview")
+        )
+        self.module_summary_page.categoryRequested.connect(
+            self.open_transaction_list
+        )
+        self.module_summary_page.businessPreparationRequested.connect(
+            self.businessPreparationRequested
+        )
+        self.transaction_list_panel.backRequested.connect(
+            self._return_to_module_summary
+        )
+        self.transaction_list_panel.businessPreparationRequested.connect(
+            self.businessPreparationRequested
+        )
+        self.transaction_list_panel.transactionSelected.connect(
             self._show_evidence_from_table
         )
-        self.module_detail_page.selectionUnavailable.connect(
+        self.transaction_list_panel.selectionUnavailable.connect(
             self._show_unavailable_evidence
         )
         self.evidence_panel.closeRequested.connect(self.close_evidence)
@@ -1997,9 +2966,9 @@ class VerificationWorkspace(QWidget):
         self.progress_label = self.processing_page.progress_label
         self.header = self.dashboard_page.header
         self.metrics = self.dashboard_page.metrics
-        self.manual_table = self.module_detail_page.manual_table
-        self.sensitive_table = self.module_detail_page.sensitive_table
-        self.business_table = self.module_detail_page.business_table
+        self.manual_table = self.transaction_list_panel.manual_table
+        self.sensitive_table = self.transaction_list_panel.sensitive_table
+        self.business_table = self.transaction_list_panel.business_table
         self.source_status = self.processing_page.source_status
         self.setStyleSheet(brief_stylesheet())
 
@@ -2038,19 +3007,20 @@ class VerificationWorkspace(QWidget):
             self.navigate(routes[index])
 
     def navigate(self, route: str) -> None:
-        effective_route = "dashboard" if route == "analysis" else route
+        effective_route = "case" if route in {"dashboard", "analysis"} else route
         if effective_route == "home":
             self.main_pages.setCurrentWidget(self.welcome_page)
             self.close_evidence()
-        elif effective_route == "dashboard":
+        elif effective_route == "case":
             if self._result is None:
                 return
-            self.main_pages.setCurrentWidget(self.dashboard_page)
+            self.main_pages.setCurrentWidget(self.current_case_page)
+            self.show_case_section("overview")
             self.close_evidence()
         elif effective_route in {"manual", "sensitive", "evidence"}:
             if self._result is None:
                 return
-            self.open_module(effective_route)
+            self.show_module_summary_for_module(effective_route)
         elif effective_route == "history":
             self.main_pages.setCurrentWidget(self.history_page)
             self.close_evidence()
@@ -2060,11 +3030,105 @@ class VerificationWorkspace(QWidget):
         for button in self.navigation_buttons:
             button.setChecked(str(button.property("route")) == effective_route)
 
+    def show_case_section(self, section_key: str) -> None:
+        if self._result is None:
+            return
+        resolved = (
+            section_key
+            if section_key in ModuleSummaryPage.SECTION_TITLES
+            else "overview"
+        )
+        self._active_section = resolved
+        self.main_pages.setCurrentWidget(self.current_case_page)
+        if resolved == "overview":
+            self.case_content_pages.setCurrentWidget(self.dashboard_page)
+        else:
+            self.module_summary_page.set_section(resolved)
+            self.case_content_pages.setCurrentWidget(self.module_summary_page)
+        self._set_top_route("case")
+        self.close_evidence()
+
+    def show_module_summary_for_module(self, module_key: str) -> None:
+        if self._result is None:
+            return
+        section = self._section_for_module(module_key)
+        self._active_section = section
+        self._active_module = module_key
+        self.main_pages.setCurrentWidget(self.current_case_page)
+        self.module_summary_page.set_section(section, module_key)
+        self.case_content_pages.setCurrentWidget(self.module_summary_page)
+        self._set_top_route("case")
+        self.close_evidence()
+
+    def open_transaction_list(
+        self,
+        module_key: str,
+        view_filter: str = "all",
+    ) -> None:
+        if (
+            self._result is None
+            or module_key
+            not in {"manual", "sensitive", "business"}
+        ):
+            return
+        self._active_module = module_key
+        section = self._section_for_module(module_key)
+        self._active_section = section
+        summary_text, status_text = self.dashboard_page.module_summaries.get(
+            module_key,
+            ("等待标准结果。", "不可用"),
+        )
+        summary = f"{summary_text}\n{status_text}"
+        section_title = ModuleSummaryPage.SECTION_TITLES[section]
+        module_title = TransactionListPanel.MODULE_TITLES[module_key]
+        filter_suffix = (
+            f" > {BUSINESS_FILTER_LABELS.get(view_filter, '正向候选')}"
+            if module_key == "business"
+            else ""
+        )
+        self.transaction_list_panel.set_module(
+            module_key,
+            summary,
+            view_filter=view_filter,
+            breadcrumb=(
+                f"当前案件 > {section_title} > {module_title}{filter_suffix}"
+            ),
+        )
+        self.main_pages.setCurrentWidget(self.current_case_page)
+        self.case_content_pages.setCurrentWidget(self.transaction_list_panel)
+        self._set_top_route("case")
+        self.close_evidence()
+
+    def _return_to_module_summary(self) -> None:
+        self.show_module_summary_for_module(self._active_module)
+
+    def _section_for_module(self, module_key: str) -> str:
+        mapping = {
+            "verification_declaration": "verification_declaration",
+            "manual": "verification_declaration",
+            "sensitive": "verification_declaration",
+            "declaration": "verification_declaration",
+            "purchase_business": "purchase_business",
+            "purchase": "purchase_business",
+            "business": "purchase_business",
+            "funds": "funds_balance",
+            "balance": "funds_balance",
+            "funds_balance": "funds_balance",
+            "counterparty": "counterparty",
+            "evidence": "evidence_center",
+        }
+        return mapping.get(module_key, "overview")
+
+    def _set_top_route(self, route: str) -> None:
+        for button in self.navigation_buttons:
+            button.setChecked(str(button.property("route")) == route)
+
     def set_busy(self, case_name: str, total_sources: int) -> None:
         self._result = None
         self._source_errors = []
         self.processing_page.start(case_name, total_sources)
-        self.module_detail_page.set_result(None)
+        self.transaction_list_panel.set_result(None)
+        self.navigation_by_route["case"].setEnabled(False)
         self.main_pages.setCurrentWidget(self.processing_page)
         self.close_evidence()
 
@@ -2088,11 +3152,24 @@ class VerificationWorkspace(QWidget):
         result: Mapping[str, object],
         case_name: str = "",
         source_messages: list[str] | None = None,
+        case_context: Mapping[str, object] | None = None,
+        manual_context: Mapping[str, object] | None = None,
     ) -> None:
         validated = validate_standard_result(result)
         self._result = validated
-        summary = self.dashboard_page.set_result(validated, case_name)
-        self.module_detail_page.set_result(validated)
+        summary = self.dashboard_page.set_result(
+            validated,
+            case_name,
+            case_context=case_context,
+            manual_context=manual_context,
+        )
+        self.transaction_list_panel.set_result(validated)
+        module_summaries = dict(self.dashboard_page.module_summaries)
+        module_summaries["evidence"] = (
+            self.dashboard_page.evidence_summary.detail_label.text(),
+            self.dashboard_page.evidence_summary.status_label.text(),
+        )
+        self.module_summary_page.set_module_summaries(module_summaries)
         self.progress.setValue(100)
         self.processing_page.stop(
             f"schema {summary['schema_version']} 已就绪。"
@@ -2103,12 +3180,10 @@ class VerificationWorkspace(QWidget):
             *(name for name in self._recent_cases if name != resolved_name),
         ][:5]
         self.welcome_page.set_recent_cases(self._recent_cases)
-        for route in ("dashboard", "manual", "evidence"):
-            self.navigation_by_route[route].setEnabled(True)
-        self.main_pages.setCurrentWidget(self.dashboard_page)
+        self.navigation_by_route["case"].setEnabled(True)
+        self.main_pages.setCurrentWidget(self.current_case_page)
+        self.show_case_section("overview")
         self.close_evidence()
-        for button in self.navigation_buttons:
-            button.setChecked(str(button.property("route")) == "dashboard")
 
     def show_result_error(self, message: str) -> None:
         self.processing_page.stop(message)
@@ -2122,19 +3197,7 @@ class VerificationWorkspace(QWidget):
         self._open_evidence_panel()
 
     def open_module(self, module_key: str) -> None:
-        if self._result is None:
-            return
-        if module_key not in ModuleDetailPage.MODULE_TITLES:
-            module_key = "manual"
-        if module_key == "evidence":
-            summary = self.dashboard_page.evidence_summary.detail_label.text()
-        else:
-            card = self.dashboard_page.module_cards[module_key]
-            summary = f"{card.summary_label.text()}\n{card.status_label.text()}"
-        self._active_module = module_key
-        self.module_detail_page.set_module(module_key, summary)
-        self.main_pages.setCurrentWidget(self.module_detail_page)
-        self.close_evidence()
+        self.show_module_summary_for_module(module_key)
 
     def _show_evidence_from_table(
         self,
@@ -2171,7 +3234,7 @@ def brief_stylesheet() -> str:
         color: {BriefTheme.INK};
         font-family: "Microsoft YaHei UI";
     }}
-    QFrame#briefNavigation {{
+    QFrame#briefTopNavigation {{
         background: {BriefTheme.INK};
         border: {BriefTheme.BORDER}px solid {BriefTheme.INK};
     }}
@@ -2217,6 +3280,11 @@ def brief_stylesheet() -> str:
         color: {BriefTheme.MUTED};
         font-size: 13px;
     }}
+    QLabel#briefHeaderFacts {{
+        color: {BriefTheme.INK};
+        font-size: 13px;
+        font-weight: 800;
+    }}
     QLabel#briefError {{
         padding: 7px 10px;
         color: {BriefTheme.RED};
@@ -2246,6 +3314,16 @@ def brief_stylesheet() -> str:
         color: {BriefTheme.INK};
         font-size: 12px;
         font-weight: 600;
+    }}
+    QLabel#briefCombinedCardText {{
+        color: {BriefTheme.INK};
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.35;
+    }}
+    QFrame#briefFutureCapabilities {{
+        background: {BriefTheme.SURFACE_STRONG};
+        border: 1px solid {BriefTheme.INK};
     }}
     QFrame#briefKeyMetricCell {{
         background: #F7EBCF;
@@ -2312,6 +3390,10 @@ def brief_stylesheet() -> str:
         text-align: left;
         background: {BriefTheme.SURFACE};
         border-left: 8px solid {BriefTheme.ORANGE};
+    }}
+    QPushButton#briefCandidateCategoryButton {{
+        background: {BriefTheme.SURFACE_STRONG};
+        border-left: 6px solid {BriefTheme.MINT};
     }}
     QPushButton#briefFilterButton {{
         text-align: left;

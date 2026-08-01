@@ -72,13 +72,14 @@ class MvpReportTests(unittest.TestCase):
         self.assertEqual(items["work_unit"]["status"], "direct_match")
         self.assertEqual(
             items["purchase_deposit_expense"]["status"],
-            "candidate_match",
+            "direct_match",
         )
         self.assertNotIn("residence_location", items)
         self.assertEqual(
             display_only["residence_location"]["handling"],
             "system_information_display_only",
         )
+        self.assertNotIn("vehicle_model", display_only)
         self.assertIn("客户资料.txt", display_only["residence_location"]["source_refs"])
         self.assertIn("tx:unit", items["work_unit"]["evidence_transaction_ids"])
         self.assertEqual(
@@ -93,7 +94,10 @@ class MvpReportTests(unittest.TestCase):
                 "purchase_deposit_expense",
             ],
         )
-        self.assertEqual(cross_check["parameters"]["purchase_direction"], "expense")
+        self.assertEqual(
+            cross_check["parameters"]["purchase_direction"],
+            "income_or_expense",
+        )
         self.assertIn(
             "declared_industry",
             cross_check["value"]["missing_automatic_fields"],
@@ -128,14 +132,14 @@ class MvpReportTests(unittest.TestCase):
         self.assertIn("系统信息（仅展示）", markdown)
         self.assertIn("自动对照搜索范围", markdown)
         self.assertIn("工作地点和住家地址留待后续生活轨迹模块共同对照", markdown)
-        self.assertIn("下定定金支出", markdown)
+        self.assertIn("下定相关流水", markdown)
         self.assertIn("人工核实事项与需关注提示", markdown)
         self.assertIn("只作参考，不是风险结论、评分或准入意见", markdown)
         self.assertIn("tx:purchase", markdown)
         self.assertIn("counterparty_name=重庆问界汽车销售有限公司", markdown)
         self.assertIn("expense", markdown)
         self.assertIn("不输出欺诈、包装、资金来源、实际控制、通过或拒绝结论", markdown)
-        self.assertIn("purchase_deposit_expense", question_types)
+        self.assertNotIn("purchase_deposit_expense", question_types)
         self.assertNotIn("work_location", question_types)
         self.assertNotIn("residence_location", question_types)
         self.assertTrue(
@@ -145,7 +149,7 @@ class MvpReportTests(unittest.TestCase):
             )
         )
 
-    def test_purchase_cross_check_only_accepts_expense_candidate(self):
+    def test_purchase_cross_check_accepts_income_match_as_direct(self):
         incoming = Transaction(
             datetime(2026, 1, 9, 10),
             income=Decimal("10000"),
@@ -170,11 +174,11 @@ class MvpReportTests(unittest.TestCase):
 
         self.assertEqual(
             items["purchase_deposit_expense"]["status"],
-            "no_evidence_in_reliable_fields",
+            "direct_match",
         )
         self.assertEqual(
             items["purchase_deposit_expense"]["evidence_transaction_ids"],
-            [],
+            ["tx:incoming"],
         )
         question_observation = next(
             item
@@ -189,7 +193,7 @@ class MvpReportTests(unittest.TestCase):
             },
         )
 
-    def test_purchase_cross_check_rejects_unrelated_vehicle_payment(self):
+    def test_purchase_cross_check_accepts_explicit_vehicle_payment_term(self):
         unrelated_purchase = transaction(
             "tx:unrelated-purchase",
             counterparty_name="其他汽车销售有限公司",
@@ -211,11 +215,11 @@ class MvpReportTests(unittest.TestCase):
 
         self.assertEqual(
             items["purchase_deposit_expense"]["status"],
-            "no_evidence_in_reliable_fields",
+            "direct_match",
         )
         self.assertEqual(
             items["purchase_deposit_expense"]["evidence_transaction_ids"],
-            [],
+            ["tx:unrelated-purchase"],
         )
 
     def test_declared_completed_purchase_without_flow_creates_question(self):

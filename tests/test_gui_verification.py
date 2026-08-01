@@ -26,11 +26,15 @@ from bankflow_v2.result_export import (
 )
 from bankflow_v2.verification_worker import VerificationWorker
 from gui_verification import (
+    AnimatedStackedWidget,
     AttentionItemCard,
     CandidateCategoryButton,
     CasePreparationPage,
     CaseDashboardPage,
+    EvidenceCenterPage,
+    EvidenceIndexModel,
     EvidencePanel,
+    HardShadowCard,
     KeyFindingCard,
     KeyMetricsPanel,
     ModuleDetailPage,
@@ -264,7 +268,9 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIn("交易ID：", expanded)
         self.assertIn("证据定位：page=2;row=2", expanded)
         self.assertIn("引用状态：resolved", expanded)
-        self.assertIn("原始字段（已脱敏）", expanded)
+        self.assertIn("原始字段：", expanded)
+        self.assertIn("13812345678", expanded)
+        self.assertIn("6222021234567890", expanded)
 
     def test_evidence_panel_explains_that_selection_happens_in_lists(self):
         panel = EvidencePanel()
@@ -920,7 +926,10 @@ class GuiVerificationTests(unittest.TestCase):
             workspace.case_content_pages.currentWidget(),
             workspace.transaction_list_panel,
         )
-        self.assertEqual(workspace.transaction_list_panel.title.text(), "敏感交易")
+        self.assertEqual(
+            workspace.transaction_list_panel.title.text(),
+            "敏感交易 · 全部候选",
+        )
 
         workspace.navigate("dashboard")
         workspace.dashboard_page.evidence_summary.open_button.click()
@@ -1053,6 +1062,476 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(table.model.total_count(), 2)
         table.set_view_filter("all")
         self.assertEqual(table.model.total_count(), 5)
+
+    def test_manual_and_sensitive_summaries_precede_filtered_details(self):
+        first = sensitive_transaction(1)
+        second = sensitive_transaction(2)
+        second.purpose = "医院贷款"
+        second.raw_text = "医院贷款"
+        result = build_bankflow_result([first, second], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "测试案例")
+
+        workspace.open_module("manual")
+        manual_summary = workspace.module_summary_page._summaries["manual"][0]
+        self.assertIn("待核实数量：", manual_summary)
+        self.assertIn("主要触发类型：", manual_summary)
+        self.assertIn("证据数量：2 笔唯一交易", manual_summary)
+        self.assertIn("最重要的 1 至 3 项：", manual_summary)
+        self.assertIn("当前数据可用状态：数据可用", manual_summary)
+
+        workspace.open_module("sensitive")
+        sensitive_summary = workspace.module_summary_page._summaries["sensitive"][0]
+        self.assertIn("各敏感类别数量：", sensitive_summary)
+        self.assertIn("借贷 / 融资 1", sensitive_summary)
+        self.assertIn("医疗 1", sensitive_summary)
+        self.assertIn("套现 / 套转 1", sensitive_summary)
+        self.assertIn("主要命中词：", sensitive_summary)
+        self.assertIn("来源分布：sample.pdf 2", sensitive_summary)
+        self.assertIn("月份分布：2026-01 2", sensitive_summary)
+        self.assertIn("需核实上下文：", sensitive_summary)
+        workspace.module_summary_page.choice_buttons[
+            ("sensitive", "medical")
+        ].click()
+        self.assertEqual(workspace.sensitive_table.model.total_count(), 1)
+        self.assertEqual(
+            workspace.transaction_list_panel.title.text(),
+            "敏感交易 · 医疗",
+        )
+
+    def test_business_summary_exposes_requested_counts_and_defaults_related(self):
+        transactions = [sensitive_transaction(index) for index in range(1, 5)]
+        result = build_bankflow_result(transactions, ai_config={})
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item.get("observation_type") == "ai_business_relevance_candidates"
+        )
+        observation["value"].update(
+            {
+                "available": True,
+                "reason": "",
+                "deterministic_candidates": [
+                    {
+                        "transaction_id": "tx:gui:1",
+                        "classification": "directly_related",
+                        "reason": "工作单位文字直接命中。",
+                        "matched_anchors": ["环保工程"],
+                    }
+                ],
+                "ai_candidates": [
+                    {
+                        "transaction_id": "tx:gui:2",
+                        "classification": "possibly_related",
+                        "evidence_strength": "medium",
+                        "reason": "用途与申报经营相关。",
+                    },
+                    {
+                        "transaction_id": "tx:gui:3",
+                        "classification": "undetermined",
+                        "evidence_strength": "none",
+                        "reason": "用途信息不足，待人工判断。",
+                    },
+                ],
+                "deterministic_non_business_candidates": [
+                    {
+                        "transaction_id": "tx:gui:4",
+                        "classification": "no_relation_evidence",
+                        "evidence_strength": "none",
+                        "reason": "明确生活消费。",
+                    }
+                ],
+            }
+        )
+        workspace = VerificationWorkspace()
+        workspace.set_result(
+            result,
+            "测试案例",
+            case_context={
+                "search_context": {"work_units": ["环保工程有限公司"]},
+                "business_context": {
+                    "declared_work_description": "环保工程施工",
+                },
+            },
+            manual_context={
+                "manual_confirmation": {
+                    "confirmation_status": "confirmed",
+                    "confirmed_primary_business": "环保工程",
+                    "confirmed_products_or_services": "环保设备与施工",
+                }
+            },
+        )
+
+        workspace.open_module("business")
+        business_summary = workspace.module_summary_page._summaries["business"][0]
+        self.assertIn("工作单位：环保工程有限公司", business_summary)
+        self.assertIn("申报工作描述：环保工程施工", business_summary)
+        self.assertIn("人工确认经营内容：环保工程", business_summary)
+        self.assertIn("主要产品或服务：环保设备与施工", business_summary)
+        self.assertIn("AI 状态：可用", business_summary)
+        self.assertIn("确定性正向：1", business_summary)
+        self.assertIn("medium：1", business_summary)
+        self.assertIn("undetermined：1", business_summary)
+        self.assertIn("none：0", business_summary)
+        self.assertIn("确定性排除：1", business_summary)
+        self.assertIn("主要相关交易对手：甲公司 2", business_summary)
+        self.assertIn("主要用途关键词：信用卡套现还款 2", business_summary)
+        self.assertIn("覆盖月份：2026-01 2", business_summary)
+        self.assertIn("最多 3 项关注内容：", business_summary)
+        workspace.module_summary_page.choice_buttons[
+            ("business", "positive")
+        ].click()
+        self.assertEqual(workspace.business_table.model.view_filter, "positive")
+        self.assertEqual(
+            workspace.transaction_list_panel.title.text(),
+            "经营关联 · 相关候选",
+        )
+
+    def test_purchase_module_uses_categories_details_and_evidence(self):
+        purchase = sensitive_transaction(1)
+        purchase.purpose = "问界购车定金补款"
+        purchase.raw_text = "问界购车定金补款"
+        prior_income = sensitive_transaction(2)
+        prior_income.transaction_time = datetime(2026, 1, 1, 9, 30)
+        prior_income.income = Decimal("50000.00")
+        prior_income.expense = Decimal("0.00")
+        result = build_bankflow_result([prior_income, purchase], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "购车案例")
+
+        dashboard_text = workspace.dashboard_page.module_cards[
+            "purchase_business"
+        ].body_label.text()
+        for text in ("下定 1", "订金 0", "定金 1", "购车款 0", "首付款 0", "补款 1"):
+            self.assertIn(text, dashboard_text)
+        workspace.open_module("purchase")
+        summary = workspace.module_summary_page._summaries["purchase"][0]
+        self.assertIn("关键词分类：", summary)
+        self.assertIn("定金 1", summary)
+        self.assertIn("补款 1", summary)
+        self.assertIn("候选数量：1 笔", summary)
+        self.assertIn("当前状态：直接命中", summary)
+        self.assertIn("来源分布：sample.pdf 1", summary)
+        self.assertIn("主要时间点：2026-01-02 1", summary)
+        self.assertIn("最多 3 项提示内容：", summary)
+        self.assertIn(
+            "此前收入与购车支出只作时间并列，不表示资金来源。",
+            summary,
+        )
+        workspace.module_summary_page.choice_buttons[
+            ("purchase", "deposit")
+        ].click()
+        self.assertLessEqual(
+            workspace.transaction_list_panel.summary.maximumHeight(),
+            84,
+        )
+        self.assertNotIn(
+            "关键词分类：",
+            workspace.transaction_list_panel.summary.text(),
+        )
+        self.assertEqual(workspace.purchase_table.model.total_count(), 1)
+        self.assertIn("transaction_id", workspace.purchase_table.model.headers)
+        self.assertEqual(
+            workspace.purchase_table.model.transaction_id_at(0),
+            "tx:gui:1",
+        )
+        workspace.purchase_table._clicked(
+            workspace.purchase_table.model.index(0, 0)
+        )
+        self.assertEqual(
+            workspace.evidence_panel._transaction_ids[
+                workspace.evidence_panel._current_index
+            ],
+            "tx:gui:1",
+        )
+
+    def test_purchase_module_displays_wenjie_income_refund_as_direct_order(self):
+        payment = sensitive_transaction(1)
+        payment.counterparty_name = "重庆问界汽车销售有限公司"
+        payment.purpose = "快捷支付 订单"
+        payment.raw_text = "快捷支付 订单 重庆问界汽车销售有限公司"
+        payment.expense = Decimal("10000.00")
+        refund = sensitive_transaction(2)
+        refund.transaction_time = datetime(2026, 1, 3, 11, 2, 4)
+        refund.counterparty_name = "重庆问界汽车销售有限公司"
+        refund.purpose = "退款"
+        refund.raw_text = "退款 重庆问界汽车销售有限公司"
+        refund.income = Decimal("10000.00")
+        refund.expense = Decimal("0.00")
+        result = build_bankflow_result([payment, refund], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "问界退款案例")
+
+        dashboard_text = workspace.dashboard_page.module_cards[
+            "purchase_business"
+        ].body_label.text()
+        self.assertIn("下定 2", dashboard_text)
+        self.assertIn("当前状态：直接命中", dashboard_text)
+        workspace.open_module("purchase")
+        workspace.module_summary_page.choice_buttons[
+            ("purchase", "order")
+        ].click()
+        model = workspace.purchase_table.model
+        self.assertEqual(model.total_count(), 2)
+        displayed_directions = {
+            model.data(model.index(row, 2), Qt.ItemDataRole.DisplayRole)
+            for row in range(model.rowCount())
+        }
+        self.assertEqual(displayed_directions, {"收入", "支出"})
+        self.assertEqual(
+            model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole),
+            "直接命中",
+        )
+        summary = workspace.module_summary_page._summaries["purchase"][0]
+        self.assertIn("原文为退款，仅提示，不判断订单是否取消", summary)
+
+    def test_counterparty_module_filters_one_identity_and_masks_accounts(self):
+        income = sensitive_transaction(1)
+        income.income = Decimal("8000.00")
+        income.expense = Decimal("0.00")
+        expense = sensitive_transaction(2)
+        expense.expense = Decimal("3000.00")
+        account_only = sensitive_transaction(3)
+        account_only.counterparty_name = ""
+        account_only.field_confidence.pop("counterparty_name", None)
+        account_only.counterparty_account = "6222021234567890"
+        result = build_bankflow_result(
+            [income, expense, account_only],
+            ai_config={},
+        )
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "对手案例")
+
+        workspace.open_module("counterparty")
+        summary = workspace.module_summary_page._summaries["counterparty"][0]
+        self.assertIn("收入 Top 5", summary)
+        self.assertIn("支出 Top 5", summary)
+        self.assertIn("可识别金额", summary)
+        self.assertIn("全部收入金额", summary)
+        self.assertIn("主要对手覆盖月份", summary)
+        self.assertIn("跨来源同名候选", summary)
+        self.assertIn("不可识别金额", summary)
+        account_button = next(
+            button
+            for (module, category), button
+            in workspace.module_summary_page.choice_buttons.items()
+            if module == "counterparty" and "counterparty_account" in category
+        )
+        self.assertNotIn("6222021234567890", account_button.text())
+        account_button.click()
+        self.assertEqual(workspace.counterparty_table.model.total_count(), 1)
+        displayed = workspace.counterparty_table.model.data(
+            workspace.counterparty_table.model.index(0, 4)
+        )
+        self.assertNotIn("6222021234567890", displayed)
+        self.assertTrue(displayed.endswith("7890"))
+
+    def test_funds_balance_uses_five_tabs_and_keeps_boundaries(self):
+        rows = []
+        for month in range(1, 8):
+            row = sensitive_transaction(month)
+            row.transaction_time = datetime(2026, month, 1, 9, 30)
+            row.income = Decimal("50000.00") if month == 1 else Decimal("1000.00")
+            row.expense = Decimal("0.00")
+            row.balance = Decimal(str(month * 10000))
+            if month == 7:
+                row.purpose = "结息"
+            rows.append(row)
+        outflow = sensitive_transaction(20)
+        outflow.transaction_time = datetime(2026, 1, 2, 9, 30)
+        outflow.expense = Decimal("40000.00")
+        outflow.balance = Decimal("10000.00")
+        rows.append(outflow)
+        result = build_bankflow_result(rows, ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "资金案例")
+
+        workspace.open_module("funds")
+        summary = workspace.module_summary_page._summaries["funds"][0]
+        for text in (
+            "最近可靠余额",
+            "余额字段覆盖",
+            "结息数量",
+            "大额交易数量",
+            "1/3/7日资金路径数量",
+            "低留存候选",
+            "最近三个月收支变化",
+            "最多 3 项需关注事实",
+        ):
+            self.assertIn(text, summary)
+        self.assertIn("不作资金来源归因", summary)
+        self.assertIn("不断言实际停留时长", summary)
+        self.assertIn("日末余额不是日均余额", summary)
+        self.assertIn("结息不能反推存款本金或偿债能力", summary)
+        self.assertIn("月度变化不表示收入稳定性或经营趋势", summary)
+        workspace.module_summary_page.choice_buttons[
+            ("funds", "all")
+        ].click()
+        self.assertEqual(workspace.transaction_list_panel.funds_tabs.count(), 5)
+        self.assertEqual(
+            [
+                workspace.transaction_list_panel.funds_tabs.tabText(index)
+                for index in range(5)
+            ],
+            ["大额交易", "资金路径", "余额", "结息", "月度变化"],
+        )
+        self.assertGreater(workspace.transaction_list_panel.large_table.model.total_count(), 0)
+        self.assertGreater(workspace.transaction_list_panel.path_table.model.total_count(), 0)
+        self.assertGreater(workspace.transaction_list_panel.balance_table.model.total_count(), 0)
+        self.assertGreater(workspace.transaction_list_panel.interest_table.model.total_count(), 0)
+        self.assertEqual(workspace.transaction_list_panel.monthly_table.model.total_count(), 1)
+
+    def test_declaration_summary_uses_four_status_contract_and_evidence_list(self):
+        unit = sensitive_transaction(1)
+        unit.counterparty_name = "甲装修工程有限公司"
+        unit.field_confidence["counterparty_name"] = 1.0
+        purchase = sensitive_transaction(2)
+        purchase.counterparty_name = "重庆问界汽车销售有限公司"
+        purchase.purpose = "问界定金"
+        purchase.expense = Decimal("10000")
+        case = build_case_context(
+            "测试客户",
+            [{
+                "source_ref": "客户资料.txt",
+                "source_role": SOURCE_ROLE_SYSTEM_CUSTOMER_DATA,
+                "text": (
+                    "客户姓名：测试客户\n"
+                    "工作单位全称：甲装修工程有限公司\n"
+                    "购买车型：问界M9\n"
+                    "下定人及试驾情况：本人微信下定\n"
+                    "家庭住址：河南省郑州市\n"
+                ),
+            }],
+        )
+        result = build_bankflow_result(
+            [unit, purchase],
+            case_context=case,
+            ai_config={},
+        )
+        workspace = VerificationWorkspace()
+        workspace.set_result(result, "申报案例", case_context=case)
+
+        workspace.open_module("declaration")
+        summary = workspace.module_summary_page._summaries["declaration"][0]
+        for text in (
+            "工作单位",
+            "下定相关流水",
+            "申报原文",
+            "来源角色",
+            "来源引用",
+            "当前覆盖期",
+            "搜索覆盖",
+            "证据数量",
+            "直接命中",
+            "仅展示",
+            "展示说明",
+        ):
+            self.assertIn(text, summary)
+        self.assertIn(
+            "可靠字段内未发现不表示客户没有该行为，也不表示申报虚假",
+            workspace.module_summary_page._summaries["declaration"][1],
+        )
+        workspace.module_summary_page.choice_buttons[
+            ("declaration", "work_unit")
+        ].click()
+        self.assertEqual(workspace.declaration_table.model.total_count(), 1)
+        self.assertEqual(
+            workspace.declaration_table.model.transaction_id_at(0),
+            "tx:gui:1",
+        )
+
+    def test_evidence_center_pages_filters_and_keeps_only_row_indices(self):
+        rows = [sensitive_transaction(index) for index in range(120)]
+        result = build_bankflow_result(rows, ai_config={})
+        model = EvidenceIndexModel(page_size=50)
+        model.set_result(result)
+
+        self.assertIs(model._result, result)
+        self.assertTrue(all(isinstance(index, int) for index in model._row_indices))
+        self.assertEqual(model.rowCount(), 50)
+        self.assertEqual(model.page_count(), 3)
+        model.set_filters(transaction_id="tx:gui:119")
+        self.assertEqual(model.total_count(), 1)
+        self.assertEqual(model.transaction_id_at(0), "tx:gui:119")
+        model.set_filters(
+            transaction_id="",
+            direction="expense",
+            date_from="2026-01-02",
+            date_to="2026-01-02",
+        )
+        self.assertEqual(model.total_count(), 120)
+
+        center = EvidenceCenterPage()
+        center.set_result(result)
+        self.assertIn("原始交易 120", center.integrity_summary.text())
+        self.assertIn("证据索引完整", center.integrity_summary.text())
+        self.assertNotIn("悬空", center.integrity_summary.text())
+        self.assertEqual(center.model.total_count(), 120)
+
+    def test_evidence_center_explains_unresolved_reference_consumers(self):
+        result = build_bankflow_result(
+            [sensitive_transaction(1)],
+            ai_config={},
+        )
+        evidence = result["result"]["evidence"]
+        evidence["coverage"]["unresolved_evidence_link_count"] = 1
+        evidence["integrity"]["complete"] = False
+        evidence["integrity"]["unresolved_transaction_ids"] = ["tx:missing"]
+        evidence["references"].append(
+            {
+                "consumer_type": "observation",
+                "consumer_id": "purchase_candidates",
+                "evidence_transaction_ids": [],
+                "unresolved_transaction_ids": ["tx:missing"],
+                "status": "unresolved",
+            }
+        )
+        center = EvidenceCenterPage()
+
+        center.set_result(result)
+
+        self.assertIn(
+            "1 条结果引用找不到对应原始交易",
+            center.integrity_summary.text(),
+        )
+        self.assertIn("tx:missing", center.integrity_details.text())
+        self.assertIn(
+            "observation:purchase_candidates",
+            center.integrity_details.text(),
+        )
+        self.assertIn("无法打开原始交易", center.integrity_details.text())
+
+    def test_designated_cards_and_navigation_use_lightweight_animation(self):
+        welcome = WelcomePage()
+        action_card = welcome.new_case_button.parentWidget()
+        dashboard = CaseDashboardPage()
+        workspace = VerificationWorkspace()
+
+        self.assertIsInstance(action_card, HardShadowCard)
+        self.assertTrue(action_card._hover_enabled)
+        self.assertEqual(action_card._hover_animation.duration(), 150)
+        self.assertTrue(
+            all(card._hover_enabled for card in dashboard.module_cards.values())
+        )
+        self.assertIsInstance(workspace.main_pages, AnimatedStackedWidget)
+        self.assertIsInstance(
+            workspace.case_content_pages,
+            AnimatedStackedWidget,
+        )
+        self.assertIsInstance(
+            workspace.transaction_list_panel.tables,
+            AnimatedStackedWidget,
+        )
+
+    def test_detail_tables_keep_readable_height_and_explicit_column_widths(self):
+        table = PagedTable("purchase")
+        center = EvidenceCenterPage()
+
+        self.assertGreaterEqual(table.table.minimumHeight(), 360)
+        self.assertEqual(table.table.verticalHeader().defaultSectionSize(), 34)
+        self.assertGreaterEqual(table.table.columnWidth(5), 300)
+        self.assertGreaterEqual(center.table.minimumHeight(), 360)
+        self.assertGreaterEqual(center.table.columnWidth(7), 280)
 
     def test_evidence_panel_supports_sequence_navigation(self):
         result = build_bankflow_result(

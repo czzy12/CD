@@ -9,16 +9,23 @@ from typing import Mapping
 
 from PyQt6.QtCore import (
     QAbstractTableModel,
+    QAbstractAnimation,
+    QEasingCurve,
     QModelIndex,
+    QPoint,
+    QPropertyAnimation,
     QRect,
     Qt,
+    QVariantAnimation,
     pyqtSignal,
 )
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -32,6 +39,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QTableView,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -123,7 +131,7 @@ def _business_reason_label(reason: object) -> str:
 
 
 BUSINESS_FILTER_LABELS = {
-    "positive": "正向候选",
+    "positive": "相关候选",
     "manual": "待人工判断",
     "excluded": "已排除 / 无关联",
     "all": "全部结果",
@@ -266,6 +274,1005 @@ def _sensitive_term_summary(
     return "｜".join(rendered) or "当前无候选"
 
 
+SENSITIVE_CATEGORY_LABELS = {
+    "loan_financing": "借贷 / 融资",
+    "pledge": "抵押 / 质押",
+    "legal": "司法 / 法律",
+    "medical": "医疗",
+    "cash_out": "套现 / 套转",
+    "secondhand_leasing": "二手 / 租赁",
+    "other": "其他敏感文字",
+}
+_SENSITIVE_TERM_CATEGORIES = {
+    "抵押": "pledge",
+    "质押": "pledge",
+    "借款": "loan_financing",
+    "借贷": "loan_financing",
+    "贷款": "loan_financing",
+    "网贷": "loan_financing",
+    "融资": "loan_financing",
+    "典当": "loan_financing",
+    "法院": "legal",
+    "司法": "legal",
+    "诉讼": "legal",
+    "律师": "legal",
+    "医院": "medical",
+    "医疗": "medical",
+    "套现": "cash_out",
+    "套转": "cash_out",
+    "二手": "secondhand_leasing",
+    "租赁": "secondhand_leasing",
+}
+
+
+def _sensitive_categories(candidate: Mapping[str, object]) -> set[str]:
+    categories = {
+        _SENSITIVE_TERM_CATEGORIES.get(str(term), "other")
+        for term in candidate.get("matched_terms", [])
+        if str(term)
+    }
+    return categories or {"other"}
+
+
+def _sensitive_rows(
+    result: Mapping[str, object],
+    view_filter: str = "all",
+) -> list[object]:
+    rows = sensitive_transaction_candidates(result)
+    if view_filter == "all":
+        return rows
+    return [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and view_filter in _sensitive_categories(row)
+    ]
+
+
+def _ranked_text(
+    counts: Mapping[str, int],
+    *,
+    limit: int = 3,
+    empty: str = "无",
+) -> str:
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return "｜".join(
+        f"{redact_sensitive_text(label)} {count}"
+        for label, count in ranked[:limit]
+    ) or empty
+
+
+def _manual_overview(result: Mapping[str, object]) -> str:
+    questions = manual_verification_questions(result)
+    trigger_counts: dict[str, int] = {}
+    evidence_ids: set[str] = set()
+    availability: list[bool] = []
+    trigger_labels = {
+        "declaration_flow_cross_checks": "申报对照",
+        "sensitive_transaction_context_candidates": "敏感文字上下文",
+        "top_counterparties": "主要交易关系",
+        "large_inflow_balance_paths": "资金与余额",
+        "ai_business_relevance_candidates": "经营关联",
+        "purchase_prepayment_funding_candidates": "购车下定",
+    }
+    for question in questions:
+        if not isinstance(question, Mapping):
+            continue
+        trigger = str(question.get("trigger_observation_type") or "unknown")
+        label = trigger_labels.get(trigger, trigger or "未提供")
+        trigger_counts[label] = trigger_counts.get(label, 0) + 1
+        values = question.get("evidence_transaction_ids", [])
+        if isinstance(values, list):
+            evidence_ids.update(str(value) for value in values if value)
+        observation = observation_by_type(result, trigger)
+        value = observation.get("value")
+        if isinstance(value, Mapping):
+            availability.append(bool(value.get("available")))
+    if availability and all(availability):
+        availability_text = "数据可用"
+    elif any(availability):
+        availability_text = "部分数据可用"
+    elif availability:
+        availability_text = "数据不可用"
+    else:
+        availability_text = "数据状态未提供"
+    important = [
+        redact_sensitive_text(question.get("question_text", "待人工核实"))
+        for question in questions[:3]
+        if isinstance(question, Mapping)
+    ]
+    important_text = "\n".join(
+        f"{index}. {text}" for index, text in enumerate(important, start=1)
+    ) or "当前无确定性核实事项"
+    return (
+        f"待核实数量：{len(questions)} 项\n"
+        f"主要触发类型：{_ranked_text(trigger_counts)}\n"
+        f"证据数量：{len(evidence_ids)} 笔唯一交易\n"
+        f"当前数据可用状态：{availability_text}\n\n"
+        f"最重要的 1 至 3 项：\n{important_text}"
+    )
+
+
+def _sensitive_overview(
+    result: Mapping[str, object],
+) -> tuple[str, tuple[tuple[str, str], ...]]:
+    observation = observation_by_type(
+        result,
+        "sensitive_transaction_context_candidates",
+    )
+    value = observation.get("value")
+    value = value if isinstance(value, Mapping) else {}
+    candidates = value.get("candidates", [])
+    rows = candidates if isinstance(candidates, list) else []
+    category_counts: dict[str, int] = {}
+    term_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
+    month_counts: dict[str, int] = {}
+    field_counts: dict[str, int] = {}
+    for candidate in rows:
+        if not isinstance(candidate, Mapping):
+            continue
+        for category in _sensitive_categories(candidate):
+            category_counts[category] = category_counts.get(category, 0) + 1
+        for term in set(str(item) for item in candidate.get("matched_terms", []) if item):
+            term_counts[term] = term_counts.get(term, 0) + 1
+        context = candidate.get("transaction_context", {})
+        context = context if isinstance(context, Mapping) else {}
+        source = Path(str(context.get("source_file") or "")).name or "来源未提供"
+        source_counts[source] = source_counts.get(source, 0) + 1
+        month = str(context.get("transaction_time") or "")[:7] or "月份未提供"
+        month_counts[month] = month_counts.get(month, 0) + 1
+        matched_fields = candidate.get("matched_fields", {})
+        for field_name in matched_fields if isinstance(matched_fields, Mapping) else {}:
+            field_counts[str(field_name)] = field_counts.get(str(field_name), 0) + 1
+    category_text = "｜".join(
+        f"{SENSITIVE_CATEGORY_LABELS[key]} {category_counts[key]}"
+        for key in SENSITIVE_CATEGORY_LABELS
+        if category_counts.get(key)
+    ) or "当前无候选"
+    status_text = (
+        "数据可用；候选命中只表示文字共现，需结合交易实际性质和背景核实"
+        if value.get("available")
+        else f"数据不可用：{value.get('reason') or '标准结果未提供'}"
+    )
+    choices = tuple(
+        (f"{SENSITIVE_CATEGORY_LABELS[key]}（{category_counts[key]}）", key)
+        for key in SENSITIVE_CATEGORY_LABELS
+        if category_counts.get(key)
+    )
+    if rows:
+        choices += (("全部候选", "all"),)
+    return (
+        f"各敏感类别数量：{category_text}\n"
+        f"主要命中词：{_ranked_text(term_counts)}\n"
+        f"来源分布：{_ranked_text(source_counts)}\n"
+        f"月份分布：{_ranked_text(month_counts)}\n"
+        f"需核实上下文：命中字段 {_ranked_text(field_counts)}；{status_text}",
+        choices,
+    )
+
+
+def _business_overview(
+    result: Mapping[str, object],
+    case_context: Mapping[str, object] | None,
+    manual_context: Mapping[str, object] | None,
+) -> str:
+    observation = observation_by_type(result, "ai_business_relevance_candidates")
+    value = observation.get("value")
+    value = value if isinstance(value, Mapping) else {}
+    deterministic = value.get("deterministic_candidates", [])
+    deterministic = deterministic if isinstance(deterministic, list) else []
+    ai_candidates = value.get("ai_candidates", [])
+    ai_candidates = ai_candidates if isinstance(ai_candidates, list) else []
+    excluded = value.get("deterministic_non_business_candidates", [])
+    excluded = excluded if isinstance(excluded, list) else []
+
+    strength_counts = {"strong": 0, "medium": 0, "weak": 0, "none": 0}
+    undetermined_count = 0
+    for candidate in ai_candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        classification = str(candidate.get("classification") or "")
+        strength = str(candidate.get("evidence_strength") or "")
+        if classification == "undetermined":
+            undetermined_count += 1
+        elif strength in strength_counts:
+            strength_counts[strength] += 1
+
+    context = case_context if isinstance(case_context, Mapping) else {}
+    search_context = context.get("search_context", {})
+    search_context = search_context if isinstance(search_context, Mapping) else {}
+    work_units = search_context.get("work_units", [])
+    if not isinstance(work_units, list) or not work_units:
+        work_units = context.get("work_units", [])
+    business_context = context.get("business_context", {})
+    business_context = (
+        business_context if isinstance(business_context, Mapping) else {}
+    )
+    declared_description = str(
+        business_context.get("declared_work_description") or ""
+    )
+    manual = (
+        manual_context.get("manual_confirmation", {})
+        if isinstance(manual_context, Mapping)
+        else {}
+    )
+    manual = manual if isinstance(manual, Mapping) else {}
+    confirmed_business = str(manual.get("confirmed_primary_business") or "")
+    confirmed_products = str(
+        manual.get("confirmed_products_or_services") or ""
+    )
+
+    counterparty_counts: dict[str, int] = {}
+    purpose_counts: dict[str, int] = {}
+    month_counts: dict[str, int] = {}
+    positive_candidates = [
+        *(
+            candidate
+            for candidate in deterministic
+            if isinstance(candidate, Mapping)
+        ),
+        *(
+            candidate
+            for candidate in ai_candidates
+            if isinstance(candidate, Mapping)
+            and str(candidate.get("evidence_strength") or "")
+            in {"strong", "medium", "weak"}
+        ),
+    ]
+    for candidate in positive_candidates:
+        transaction_id = str(candidate.get("transaction_id") or "")
+        if not transaction_id:
+            continue
+        try:
+            evidence = evidence_transaction(result, transaction_id)
+        except StandardResultError:
+            continue
+        transaction = evidence.get("transaction")
+        if not isinstance(transaction, Mapping):
+            continue
+        standard_fields = transaction.get("standard_fields", {})
+        standard_fields = (
+            standard_fields if isinstance(standard_fields, Mapping) else {}
+        )
+        counterparty = str(
+            standard_fields.get("counterparty_name")
+            or standard_fields.get("merchant_name")
+            or ""
+        )
+        if counterparty:
+            counterparty_counts[counterparty] = (
+                counterparty_counts.get(counterparty, 0) + 1
+            )
+        month = str(transaction.get("transaction_time") or "")[:7]
+        if month:
+            month_counts[month] = month_counts.get(month, 0) + 1
+        anchors = candidate.get("matched_anchors", [])
+        for anchor in anchors if isinstance(anchors, list) else []:
+            text = str(anchor)
+            if text:
+                purpose_counts[text] = purpose_counts.get(text, 0) + 1
+        for field_name in ("purpose", "product_description", "summary", "remark"):
+            text = str(standard_fields.get(field_name) or "").strip()
+            if text:
+                purpose_counts[text] = purpose_counts.get(text, 0) + 1
+
+    concerns: list[str] = []
+    confirmation = value.get("business_context_confirmation")
+    if isinstance(confirmation, Mapping) and confirmation.get("required"):
+        prompt = redact_sensitive_text(confirmation.get("prompt", ""))
+        if prompt:
+            concerns.append(prompt)
+    for candidate in ai_candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        classification = str(candidate.get("classification") or "")
+        strength = str(candidate.get("evidence_strength") or "")
+        if classification != "undetermined" and strength != "weak":
+            continue
+        reason = redact_sensitive_text(candidate.get("reason", ""))
+        if reason and reason not in concerns:
+            concerns.append(reason)
+        if len(concerns) == 3:
+            break
+    concerns_text = "\n".join(
+        f"{index}. {text}" for index, text in enumerate(concerns[:3], start=1)
+    ) or "当前无额外关注内容"
+
+    ai_status = (
+        "可用，已产生已采用观察"
+        if value.get("available")
+        else f"不可用：{_business_reason_label(value.get('reason'))}"
+    )
+    work_unit_text = (
+        "；".join(redact_sensitive_text(item) for item in work_units if item)
+        if isinstance(work_units, list)
+        else ""
+    )
+    return (
+        f"工作单位：{work_unit_text or '未提供'}\n"
+        f"申报工作描述：{redact_sensitive_text(declared_description) or '未提供'}\n"
+        f"人工确认经营内容：{redact_sensitive_text(confirmed_business) or '未确认'}\n"
+        f"主要产品或服务：{redact_sensitive_text(confirmed_products) or '未确认'}\n"
+        f"AI 状态：{ai_status}\n\n"
+        "确定性正向："
+        f"{len(deterministic)}\n"
+        f"strong：{strength_counts['strong']}｜"
+        f"medium：{strength_counts['medium']}｜"
+        f"weak：{strength_counts['weak']}｜"
+        f"undetermined：{undetermined_count}｜"
+        f"none：{strength_counts['none']}\n"
+        f"确定性排除：{len(excluded)}\n\n"
+        f"主要相关交易对手：{_ranked_text(counterparty_counts)}\n"
+        f"主要用途关键词：{_ranked_text(purpose_counts)}\n"
+        f"覆盖月份：{_ranked_text(month_counts)}\n\n"
+        f"最多 3 项关注内容：\n{concerns_text}"
+    )
+
+
+PURCHASE_CATEGORY_LABELS = {
+    "order": "下定",
+    "subscription": "订金",
+    "deposit": "定金",
+    "vehicle_payment": "购车款",
+    "down_payment": "首付款",
+    "supplement": "补款",
+    "other_vehicle": "其他购车文字",
+}
+_PURCHASE_TERM_CATEGORIES = {
+    "下定": "order",
+    "问界": "order",
+    "订金": "subscription",
+    "定金": "deposit",
+    "购车款": "vehicle_payment",
+    "首付款": "down_payment",
+    "补款": "supplement",
+}
+DECLARATION_STATUS_LABELS = {
+    "direct_match": "直接命中",
+    "candidate_match": "候选命中",
+    "no_evidence_in_reliable_fields": "可靠字段内未发现",
+    "unavailable": "不可用",
+    "display_only": "仅展示",
+}
+DECLARATION_TYPE_LABELS = {
+    "work_unit": "工作单位",
+    "declared_industry": "经营内容",
+    "purchase_deposit_expense": "下定相关流水",
+    "work_location": "工作地点",
+    "residence_location": "居住地点",
+    "vehicle_registration_location": "上牌地点",
+    "vehicle_model": "车型",
+    "dealer_name": "经销商",
+    "purchase_declaration": "购车申报",
+}
+FUND_BOUNDARY_TEXT = (
+    "1/3/7日仅表示时间共现；不作资金来源归因；不断言实际停留时长；"
+    "日末余额不是日均余额；结息不能反推存款本金或偿债能力；"
+    "月度变化不表示收入稳定性或经营趋势。"
+)
+PURCHASE_BOUNDARY_TEXT = (
+    "此前收入与购车支出只作时间并列，不表示资金来源。"
+)
+
+
+def _purchase_categories(candidate: Mapping[str, object]) -> set[str]:
+    matched_terms = {
+        str(term)
+        for term in candidate.get("matched_terms", [])
+        if str(term)
+    }
+    categories = {
+        _PURCHASE_TERM_CATEGORIES.get(str(term), "other_vehicle")
+        for term in matched_terms
+    }
+    if matched_terms.intersection(_PURCHASE_TERM_CATEGORIES):
+        categories.add("order")
+    return categories or {"other_vehicle"}
+
+
+def _purchase_rows(
+    result: Mapping[str, object],
+    view_filter: str = "all",
+) -> list[dict[str, object]]:
+    observation = observation_by_type(
+        result,
+        "purchase_prepayment_funding_candidates",
+    )
+    value = observation.get("value")
+    candidates = (
+        value.get("purchase_candidates", [])
+        if isinstance(value, Mapping)
+        else []
+    )
+    return [
+        dict(candidate)
+        for candidate in candidates
+        if isinstance(candidate, Mapping)
+        and (
+            view_filter == "all"
+            or view_filter in _purchase_categories(candidate)
+        )
+    ]
+
+
+def _purchase_overview(
+    result: Mapping[str, object],
+) -> tuple[str, tuple[tuple[str, str], ...], str]:
+    observation = observation_by_type(
+        result,
+        "purchase_prepayment_funding_candidates",
+    )
+    value = observation.get("value")
+    value = value if isinstance(value, Mapping) else {}
+    rows = _purchase_rows(result)
+    category_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
+    time_counts: dict[str, int] = {}
+    prior_income_count = 0
+    ranked_amounts: list[tuple[Decimal, str]] = []
+    concerns: list[tuple[int, str, str]] = []
+    for candidate in rows:
+        for category in _purchase_categories(candidate):
+            category_counts[category] = category_counts.get(category, 0) + 1
+        context = candidate.get("transaction_context", {})
+        context = context if isinstance(context, Mapping) else {}
+        source = Path(str(context.get("source_file") or "")).name or "来源未提供"
+        source_counts[source] = source_counts.get(source, 0) + 1
+        time_text = str(candidate.get("transaction_time") or "")[:10] or "日期未提供"
+        time_counts[time_text] = time_counts.get(time_text, 0) + 1
+        direction = str(candidate.get("direction") or "")
+        amount = (
+            candidate.get("income")
+            if direction == "income"
+            else candidate.get("expense")
+        )
+        try:
+            ranked_amounts.append(
+                (Decimal(str(amount or "0")), time_text)
+            )
+        except InvalidOperation:
+            pass
+        prior = candidate.get("prior_income_candidates", [])
+        prior_income_count += len(prior) if isinstance(prior, list) else 0
+        matched_terms = {
+            str(term)
+            for term in candidate.get("matched_terms", [])
+            if str(term)
+        }
+        terms = "、".join(sorted(matched_terms))
+        if terms:
+            fields = context.get("reliable_standard_fields", {})
+            context_text = " ".join(
+                str(value)
+                for value in (
+                    fields.values()
+                    if isinstance(fields, Mapping)
+                    else []
+                )
+            )
+            direction_label = "收入" if direction == "income" else "支出"
+            suffix = (
+                "；原文为退款，仅提示，不判断订单是否取消"
+                if direction == "income" and "退款" in context_text
+                else ""
+            )
+            concerns.append(
+                (
+                    (
+                        0
+                        if suffix
+                        else 1
+                        if "问界" in matched_terms
+                        else 2
+                    ),
+                    time_text,
+                    f"{time_text} {direction_label}{_money(amount)}元，命中{terms}{suffix}",
+                )
+            )
+    category_text = "｜".join(
+        f"{PURCHASE_CATEGORY_LABELS[key]} {category_counts[key]}"
+        for key in PURCHASE_CATEGORY_LABELS
+        if category_counts.get(key)
+    ) or "当前无候选"
+    main_amounts = "｜".join(
+        f"{_money(amount)}元（{time_text}）"
+        for amount, time_text in sorted(
+            ranked_amounts,
+            key=lambda item: (-item[0], item[1]),
+        )[:3]
+    ) or "无"
+    explicit_terms = set(_PURCHASE_TERM_CATEGORIES)
+    field_coverage = observation.get("field_coverage")
+    field_coverage = field_coverage if isinstance(field_coverage, Mapping) else {}
+    if rows:
+        status = (
+            "直接命中"
+            if any(
+                explicit_terms.intersection(
+                    str(term) for term in candidate.get("matched_terms", [])
+                )
+                for candidate in rows
+            )
+            else "候选命中"
+        )
+    elif int(field_coverage.get("covered_transaction_count", 0)) > 0:
+        status = "可靠字段内未发现"
+    else:
+        status = "不可用"
+    choices = tuple(
+        (f"{PURCHASE_CATEGORY_LABELS[key]}（{category_counts[key]}）", key)
+        for key in PURCHASE_CATEGORY_LABELS
+        if category_counts.get(key)
+    )
+    if rows:
+        choices += (("全部候选", "all"),)
+    required_count_text = "｜".join(
+        f"{PURCHASE_CATEGORY_LABELS[key]} {category_counts.get(key, 0)}"
+        for key in (
+            "order",
+            "subscription",
+            "deposit",
+            "vehicle_payment",
+            "down_payment",
+            "supplement",
+        )
+    )
+    if category_counts.get("other_vehicle"):
+        required_count_text += (
+            f"｜{PURCHASE_CATEGORY_LABELS['other_vehicle']} "
+            f"{category_counts['other_vehicle']}"
+        )
+    overview = (
+        f"关键词分类：{category_text}\n"
+        f"候选数量：{len(rows)} 笔\n"
+        f"当前状态：{status}\n"
+        f"来源分布：{_ranked_text(source_counts)}\n"
+        f"主要时间点：{_ranked_text(time_counts, limit=5)}\n"
+        f"此前收入时间并列数量：{prior_income_count} 笔\n\n"
+        "最多 3 项提示内容：\n"
+        + (
+            "\n".join(
+                f"{index}. {text}"
+                for index, (_, _, text) in enumerate(
+                    sorted(
+                        concerns,
+                        key=lambda item: (item[0], item[1]),
+                        reverse=False,
+                    )[:3],
+                    start=1,
+                )
+            )
+            or "当前无候选"
+        )
+        + f"\n\n{PURCHASE_BOUNDARY_TEXT}"
+    )
+    dashboard = (
+        f"{required_count_text}\n主要金额和日期：{main_amounts}\n"
+        f"当前状态：{status}\n此前收入时间并列：{prior_income_count} 笔\n"
+        f"{PURCHASE_BOUNDARY_TEXT}"
+    )
+    return overview, choices, dashboard
+
+
+def _counterparty_value(result: Mapping[str, object]) -> Mapping[str, object]:
+    observation = observation_by_type(result, "top_counterparties")
+    value = observation.get("value")
+    return value if isinstance(value, Mapping) else {}
+
+
+def _counterparty_filter_key(
+    direction: str,
+    identity_field: object,
+    identity_value: object,
+) -> str:
+    return f"{direction}|{identity_field}|{identity_value}"
+
+
+def _counterparty_rows(
+    result: Mapping[str, object],
+    view_filter: str,
+) -> list[dict[str, object]]:
+    parts = view_filter.split("|", 2)
+    if len(parts) != 3:
+        return []
+    direction, identity_field, identity_value = parts
+    value = _counterparty_value(result)
+    groups = value.get(direction, [])
+    for group in groups if isinstance(groups, list) else []:
+        if (
+            isinstance(group, Mapping)
+            and str(group.get("identity_field") or "") == identity_field
+            and str(group.get("identity_value") or "") == identity_value
+        ):
+            return [
+                {
+                    "transaction_id": str(transaction_id),
+                    "direction": direction,
+                    "identity_field": identity_field,
+                    "identity_value": identity_value,
+                }
+                for transaction_id in group.get("evidence_transaction_ids", [])
+                if transaction_id
+            ]
+    return []
+
+
+def _counterparty_overview(
+    result: Mapping[str, object],
+) -> tuple[str, tuple[tuple[str, str], ...], str]:
+    value = _counterparty_value(result)
+    lines: list[str] = []
+    choices: list[tuple[str, str]] = []
+    all_months: set[str] = set()
+    dashboard_parts: list[str] = []
+    max_share = Decimal("0")
+    for direction, label in (("income", "收入"), ("expense", "支出")):
+        groups = value.get(direction, [])
+        rows = groups if isinstance(groups, list) else []
+        rendered: list[str] = []
+        dashboard_rows: list[str] = []
+        for index, group in enumerate(rows[:5], start=1):
+            if not isinstance(group, Mapping):
+                continue
+            identity = (
+                mask_account(group.get("identity_value", ""))
+                if group.get("identity_field") == "counterparty_account"
+                else redact_sensitive_text(group.get("identity_value", ""))
+            )
+            months = group.get("months", [])
+            all_months.update(str(month) for month in months if month)
+            rendered.append(
+                f"{index}. {identity}｜{_money(group.get('amount'))}元｜"
+                f"可识别金额{_percentage(group.get('covered_amount_share'))}｜"
+                f"全部{label}金额{_percentage(group.get('direction_amount_share'))}｜"
+                f"{'、'.join(str(month) for month in months) or '月份未提供'}"
+            )
+            if index <= 3:
+                dashboard_rows.append(
+                    f"{index}.{identity} {_percentage(group.get('direction_amount_share'), 0)}"
+                )
+            choices.append(
+                (
+                    f"{label} · {identity}",
+                    _counterparty_filter_key(
+                        direction,
+                        group.get("identity_field", ""),
+                        group.get("identity_value", ""),
+                    ),
+                )
+            )
+            try:
+                max_share = max(
+                    max_share,
+                    Decimal(str(group.get("direction_amount_share") or "0")),
+                )
+            except InvalidOperation:
+                pass
+        summary = value.get(f"{direction}_summary", {})
+        summary = summary if isinstance(summary, Mapping) else {}
+        lines.append(
+            f"{label} Top 5：\n"
+            + ("\n".join(rendered) or "暂无可靠可识别对手")
+            + f"\n不可识别金额："
+            f"{_money(Decimal(str(summary.get('eligible_amount') or '0')) - Decimal(str(summary.get('covered_amount') or '0')))}元"
+            f"｜可识别覆盖率 {_percentage(summary.get('amount_coverage_rate'))}"
+        )
+        dashboard_parts.append(
+            f"{label}Top 3：" + ("｜".join(dashboard_rows) or "无")
+        )
+    occurrences = observation_by_type(
+        result,
+        "cross_source_counterparty_occurrences",
+    )
+    occurrence_value = occurrences.get("value")
+    occurrence_value = (
+        occurrence_value if isinstance(occurrence_value, Mapping) else {}
+    )
+    occurrence_rows = occurrence_value.get("counterparties", [])
+    month_text = (
+        f"{min(all_months)} 至 {max(all_months)}"
+        if all_months
+        else "不可用"
+    )
+    income_summary = value.get("income_summary", {})
+    expense_summary = value.get("expense_summary", {})
+    income_summary = income_summary if isinstance(income_summary, Mapping) else {}
+    expense_summary = expense_summary if isinstance(expense_summary, Mapping) else {}
+    overview = (
+        "\n\n".join(lines)
+        + f"\n\n主要对手覆盖月份：{month_text}\n"
+        f"跨来源同名候选："
+        f"{len(occurrence_rows) if isinstance(occurrence_rows, list) else 0} 项\n"
+        "排名和集中度只表示可靠字段金额汇总，不表示对手关系。"
+    )
+    dashboard = (
+        "\n".join(dashboard_parts)
+        + f"\n可识别金额覆盖率：收入"
+        f"{_percentage(income_summary.get('amount_coverage_rate'))}｜支出"
+        f"{_percentage(expense_summary.get('amount_coverage_rate'))}\n"
+        f"集中度摘要：最高单一对手占方向金额 {_percentage(max_share)}\n"
+        f"主要对手覆盖月份：{month_text}"
+    )
+    return overview, tuple(choices), dashboard
+
+
+def _declaration_items(result: Mapping[str, object]) -> list[dict[str, object]]:
+    observation = observation_by_type(result, "declaration_flow_cross_checks")
+    value = observation.get("value")
+    if not isinstance(value, Mapping):
+        return []
+    rows = [
+        dict(item)
+        for item in value.get("items", [])
+        if isinstance(item, Mapping)
+    ]
+    rows.extend(
+        {
+            **dict(item),
+            "status": "display_only",
+        }
+        for item in value.get("display_only_items", [])
+        if isinstance(item, Mapping)
+    )
+    return rows
+
+
+def _declaration_rows(
+    result: Mapping[str, object],
+    view_filter: str,
+) -> list[dict[str, object]]:
+    for item in _declaration_items(result):
+        if str(item.get("check_type") or "") != view_filter:
+            continue
+        return [
+            {
+                "transaction_id": str(transaction_id),
+                "declaration_item": item,
+            }
+            for transaction_id in item.get("evidence_transaction_ids", [])
+            if transaction_id
+        ]
+    return []
+
+
+def _declaration_overview(
+    result: Mapping[str, object],
+) -> tuple[str, tuple[tuple[str, str], ...]]:
+    observation = observation_by_type(result, "declaration_flow_cross_checks")
+    value = observation.get("value")
+    value = value if isinstance(value, Mapping) else {}
+    searched_sources = value.get("searched_sources", [])
+    period_values = [
+        (
+            str(source.get("observed_period_start") or "")[:10],
+            str(source.get("observed_period_end") or "")[:10],
+        )
+        for source in searched_sources
+        if isinstance(source, Mapping)
+    ]
+    period_values = [
+        item for item in period_values if item[0] or item[1]
+    ]
+    period_starts = [item[0] for item in period_values if item[0]]
+    period_ends = [item[1] for item in period_values if item[1]]
+    period_text = (
+        f"{min(period_starts) if period_starts else '未提供'} 至 "
+        f"{max(period_ends) if period_ends else '未提供'}"
+        if period_values
+        else "覆盖期未提供"
+    )
+    lines: list[str] = []
+    choices: list[tuple[str, str]] = []
+    for item in _declaration_items(result):
+        check_type = str(item.get("check_type") or "")
+        label = DECLARATION_TYPE_LABELS.get(check_type, check_type or "申报项")
+        declared = "；".join(
+            redact_sensitive_text(value)
+            for value in item.get("declared_values", [])
+            if value
+        ) or "未提供"
+        roles = "、".join(str(value) for value in item.get("source_roles", [])) or "未提供"
+        refs = "、".join(
+            Path(str(value)).name
+            for value in item.get("source_refs", [])
+            if value
+        ) or "未提供"
+        status = DECLARATION_STATUS_LABELS.get(
+            str(item.get("status") or ""),
+            "不可用",
+        )
+        evidence_ids = item.get("evidence_transaction_ids", [])
+        reason = redact_sensitive_text(item.get("reason", "")) or "无"
+        reason_label = (
+            "展示说明"
+            if str(item.get("status") or "") == "display_only"
+            else "不可用原因"
+        )
+        lines.append(
+            f"{label}｜{status}\n申报原文：{declared}\n"
+            f"来源角色：{roles}｜来源引用：{refs}\n"
+            f"当前覆盖期：{period_text}｜搜索覆盖："
+            f"{len(searched_sources) if isinstance(searched_sources, list) else 0} 个来源\n"
+            f"证据数量：{len(evidence_ids) if isinstance(evidence_ids, list) else 0}｜"
+            f"{reason_label}：{reason}"
+        )
+        choices.append((f"{label} · {status}", check_type))
+    return (
+        "\n\n".join(lines)
+        or "当前标准结果未包含可展示的申报信息。",
+        tuple(choices),
+    )
+
+
+def _fund_rows(
+    result: Mapping[str, object],
+    kind: str,
+) -> list[dict[str, object]]:
+    if kind == "large":
+        observation = observation_by_type(result, "large_transaction_candidates")
+        value = observation.get("value")
+        rows = value.get("candidates", []) if isinstance(value, Mapping) else []
+        return [
+            dict(row)
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+    if kind == "path":
+        observation = observation_by_type(result, "large_inflow_balance_paths")
+        value = observation.get("value")
+        rows = value.get("candidates", []) if isinstance(value, Mapping) else []
+        return [
+            dict(row)
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+    balance = observation_by_type(result, "end_of_day_balance_and_interest")
+    value = balance.get("value")
+    sources = value.get("sources", []) if isinstance(value, Mapping) else []
+    if kind == "balance":
+        rows: list[dict[str, object]] = []
+        for source in sources if isinstance(sources, list) else []:
+            if not isinstance(source, Mapping):
+                continue
+            for transaction_id in source.get(
+                "balance_snapshot_transaction_ids",
+                [],
+            ):
+                if transaction_id:
+                    rows.append(
+                        {
+                            "transaction_id": str(transaction_id),
+                            "source_summary": source,
+                        }
+                    )
+        return rows
+    if kind == "interest":
+        return [
+            dict(row)
+            for source in sources if isinstance(sources, list)
+            and isinstance(source, Mapping)
+            for row in source.get("interest_records", [])
+            if isinstance(row, Mapping)
+        ]
+    indicator = _indicator_by_type(result, "cashflow_scale_and_recent_change")
+    value = indicator.get("value")
+    return [dict(value)] if isinstance(value, Mapping) else []
+
+
+def _fund_overview(result: Mapping[str, object]) -> str:
+    large_rows = _fund_rows(result, "large")
+    paths = _fund_rows(result, "path")
+    balance_rows = _fund_rows(result, "balance")
+    interest_rows = _fund_rows(result, "interest")
+    monthly_rows = _fund_rows(result, "monthly")
+    latest_balance = "不可用"
+    latest_date = "不可用"
+    latest_candidates: list[tuple[str, object]] = []
+    balance_observation = observation_by_type(
+        result,
+        "end_of_day_balance_and_interest",
+    )
+    balance_value = balance_observation.get("value")
+    sources = (
+        balance_value.get("sources", [])
+        if isinstance(balance_value, Mapping)
+        else []
+    )
+    balance_source_count = 0
+    latest_interest = ""
+    for source in sources if isinstance(sources, list) else []:
+        if not isinstance(source, Mapping):
+            continue
+        if source.get("balance_available"):
+            balance_source_count += 1
+        ids = source.get("balance_snapshot_transaction_ids", [])
+        stats = source.get("balance_statistics", {})
+        if ids and isinstance(stats, Mapping):
+            try:
+                evidence = evidence_transaction(result, str(ids[-1]))
+                transaction = evidence.get("transaction", {})
+                if isinstance(transaction, Mapping):
+                    latest_candidates.append(
+                        (
+                            str(transaction.get("transaction_time") or ""),
+                            stats.get("closing"),
+                        )
+                    )
+            except StandardResultError:
+                pass
+        for row in source.get("interest_records", []):
+            if isinstance(row, Mapping):
+                latest_interest = max(
+                    latest_interest,
+                    str(row.get("transaction_time") or ""),
+                )
+    if latest_candidates:
+        latest_date_value, latest_amount = max(latest_candidates)
+        latest_balance = f"{_money(latest_amount)}元"
+        latest_date = latest_date_value[:10]
+    window_counts: dict[int, int] = {}
+    for days in (1, 3, 7):
+        indicator = next(
+            (
+                item
+                for item in result.get("result", {}).get("indicators", [])
+                if isinstance(item, Mapping)
+                and item.get("indicator_type") == "fund_time_proximity"
+                and isinstance(item.get("parameters"), Mapping)
+                and int(item["parameters"].get("window_days", 0)) == days
+            ),
+            {},
+        )
+        indicator_value = indicator.get("value", {}) if isinstance(indicator, Mapping) else {}
+        window_counts[days] = (
+            int(indicator_value.get("time_proximity_pair_count", 0))
+            if isinstance(indicator_value, Mapping)
+            else 0
+        )
+    low_retention = sum(
+        any(
+            isinstance(window, Mapping)
+            and window.get("low_retained_balance_increment")
+            for window in path.get("windows", [])
+        )
+        for path in paths
+    )
+    recent = (
+        monthly_rows[0].get("recent_comparison", {})
+        if monthly_rows
+        else {}
+    )
+    recent_text = (
+        f"收入{_change_label(recent.get('income_change'))}、"
+        f"支出{_change_label(recent.get('expense_change'))}"
+        if isinstance(recent, Mapping) and recent.get("available")
+        else "不足六个自然月，无法比较"
+    )
+    facts = [
+        f"大额交易 {len(large_rows)} 笔",
+        f"1/3/7日资金路径 {window_counts[1]}/{window_counts[3]}/{window_counts[7]} 组",
+        f"低留存候选 {low_retention} 项",
+    ]
+    return (
+        f"最近可靠余额：{latest_balance}｜余额日期：{latest_date}\n"
+        f"余额字段覆盖：{balance_source_count} 个来源，"
+        f"{len(balance_rows)} 个日末快照\n"
+        f"结息数量：{len(interest_rows)} 笔"
+        + (f"｜最近结息：{latest_interest[:10]}" if latest_interest else "")
+        + f"\n大额交易数量：{len(large_rows)} 笔\n"
+        f"1/3/7日资金路径数量：{window_counts[1]}/"
+        f"{window_counts[3]}/{window_counts[7]}\n"
+        f"低留存候选：{low_retention} 项\n"
+        f"最近三个月收支变化：{recent_text}\n\n"
+        "最多 3 项需关注事实：\n"
+        + "\n".join(
+            f"{index}. {fact}" for index, fact in enumerate(facts[:3], start=1)
+        )
+        + f"\n\n{FUND_BOUNDARY_TEXT}"
+    )
+
+
 def _change_label(value: object) -> str:
     try:
         amount = Decimal(str(value))
@@ -281,33 +1288,75 @@ def _change_label(value: object) -> str:
 class HardShadowCard(QFrame):
     """Square editorial card with a painted hard shadow."""
 
-    def __init__(self, accent: str = BriefTheme.SURFACE, parent: QWidget | None = None):
+    def __init__(
+        self,
+        accent: str = BriefTheme.SURFACE,
+        parent: QWidget | None = None,
+        *,
+        hover_enabled: bool = False,
+    ):
         super().__init__(parent)
         self._accent = QColor(accent)
-        self._hovered = False
+        self._hover_enabled = hover_enabled
+        self._hover_progress = 0.0
+        self._content_margins: tuple[int, int, int, int] | None = None
+        self._hover_animation = QVariantAnimation(self)
+        self._hover_animation.setDuration(150)
+        self._hover_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._hover_animation.valueChanged.connect(self._set_hover_progress)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
     def enterEvent(self, event) -> None:
-        self._hovered = True
-        self.update()
+        if self._hover_enabled:
+            self._animate_hover(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
-        self._hovered = False
-        self.update()
+        if self._hover_enabled:
+            self._animate_hover(0.0)
         super().leaveEvent(event)
+
+    def _animate_hover(self, target: float) -> None:
+        if self.layout() is not None and self._content_margins is None:
+            self._content_margins = self.layout().getContentsMargins()
+        self._hover_animation.stop()
+        self._hover_animation.setStartValue(self._hover_progress)
+        self._hover_animation.setEndValue(target)
+        self._hover_animation.start()
+
+    def _set_hover_progress(self, value: object) -> None:
+        self._hover_progress = float(value)
+        if self.layout() is not None and self._content_margins is not None:
+            left, top, right, bottom = self._content_margins
+            shift = round(3 * self._hover_progress)
+            self.layout().setContentsMargins(
+                left - shift,
+                top - shift,
+                right + shift,
+                bottom + shift,
+            )
+        self.update()
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        lift = 0 if self._hovered else 2
-        shadow = BriefTheme.SHADOW + (2 if self._hovered else 0)
+        lift = (
+            round(3 * (1.0 - self._hover_progress))
+            if self._hover_enabled
+            else 2
+        )
+        shadow = (
+            BriefTheme.SHADOW + round(3 * self._hover_progress)
+            if self._hover_enabled
+            else BriefTheme.SHADOW
+        )
+        reserved_shadow = BriefTheme.SHADOW + (3 if self._hover_enabled else 0)
         body = QRect(
             lift,
             lift,
-            max(0, self.width() - shadow - lift),
-            max(0, self.height() - shadow - lift),
+            max(0, self.width() - reserved_shadow - lift),
+            max(0, self.height() - reserved_shadow - lift),
         )
         shadow_rect = body.translated(shadow, shadow)
         painter.fillRect(shadow_rect, QColor(BriefTheme.INK))
@@ -315,6 +1364,93 @@ class HardShadowCard(QFrame):
         painter.setPen(QPen(QColor(BriefTheme.INK), BriefTheme.BORDER))
         painter.drawRect(body.adjusted(1, 1, -1, -1))
         super().paintEvent(event)
+
+
+class AnimatedStackedWidget(QStackedWidget):
+    """Non-blocking editorial fade transition for top and module navigation."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._fade_out: QPropertyAnimation | None = None
+        self._fade_in: QPropertyAnimation | None = None
+        self._slide_in: QPropertyAnimation | None = None
+        self._transition_widget: QWidget | None = None
+        self._resting_position: QPoint | None = None
+
+    def setCurrentWidget(self, widget: QWidget) -> None:
+        current = self.currentWidget()
+        if (
+            current is widget
+            or current is None
+            or not self.isVisible()
+            or self.width() <= 0
+        ):
+            super().setCurrentWidget(widget)
+            return
+        self._finish_transition()
+        self._transition_widget = current
+        effect = QGraphicsOpacityEffect(current)
+        current.setGraphicsEffect(effect)
+        self._fade_out = QPropertyAnimation(effect, b"opacity", self)
+        self._fade_out.setDuration(55)
+        self._fade_out.setStartValue(1.0)
+        self._fade_out.setEndValue(0.72)
+        self._fade_out.setEasingCurve(QEasingCurve.Type.OutQuad)
+        self._fade_out.finished.connect(
+            lambda target=widget, previous=current: self._show_target(
+                target,
+                previous,
+            )
+        )
+        self._fade_out.start()
+
+    def _show_target(self, target: QWidget, previous: QWidget) -> None:
+        previous.setGraphicsEffect(None)
+        super().setCurrentWidget(target)
+        self._transition_widget = target
+        effect = QGraphicsOpacityEffect(target)
+        target.setGraphicsEffect(effect)
+        resting_position = target.pos()
+        self._resting_position = resting_position
+        target.move(resting_position + QPoint(0, 6))
+        self._fade_in = QPropertyAnimation(effect, b"opacity", self)
+        self._fade_in.setDuration(165)
+        self._fade_in.setStartValue(0.0)
+        self._fade_in.setEndValue(1.0)
+        self._fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._slide_in = QPropertyAnimation(target, b"pos", self)
+        self._slide_in.setDuration(165)
+        self._slide_in.setStartValue(resting_position + QPoint(0, 6))
+        self._slide_in.setEndValue(resting_position)
+        self._slide_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_in.finished.connect(
+            lambda page=target, position=resting_position: self._finish_entry(
+                page,
+                position,
+            )
+        )
+        self._fade_in.start()
+        self._slide_in.start()
+
+    def _finish_entry(self, page: QWidget, position: QPoint) -> None:
+        page.move(position)
+        page.setGraphicsEffect(None)
+        self._transition_widget = None
+        self._resting_position = None
+
+    def _finish_transition(self) -> None:
+        for animation in (self._fade_out, self._fade_in, self._slide_in):
+            if (
+                animation is not None
+                and animation.state() == QAbstractAnimation.State.Running
+            ):
+                animation.stop()
+        if self._transition_widget is not None:
+            if self._resting_position is not None:
+                self._transition_widget.move(self._resting_position)
+            self._transition_widget.setGraphicsEffect(None)
+        self._transition_widget = None
+        self._resting_position = None
 
 
 class BriefPageHeader(HardShadowCard):
@@ -488,7 +1624,7 @@ class AnalysisModuleCard(HardShadowCard):
         title: str,
         parent: QWidget | None = None,
     ):
-        super().__init__(BriefTheme.SURFACE, parent)
+        super().__init__(BriefTheme.SURFACE, parent, hover_enabled=True)
         self.module_key = module_key
         self.setMinimumHeight(148)
         layout = QVBoxLayout(self)
@@ -538,7 +1674,7 @@ class KeyFindingCard(HardShadowCard):
         title: str,
         parent: QWidget | None = None,
     ):
-        super().__init__(BriefTheme.SURFACE, parent)
+        super().__init__(BriefTheme.SURFACE, parent, hover_enabled=True)
         self.section_key = section_key
         self.setMinimumHeight(292)
         self.setSizePolicy(
@@ -623,7 +1759,7 @@ class AttentionItemCard(HardShadowCard):
         availability: str,
         parent: QWidget | None = None,
     ):
-        super().__init__(BriefTheme.SURFACE, parent)
+        super().__init__(BriefTheme.SURFACE, parent, hover_enabled=True)
         self.module_key = module_key
         self.setMinimumHeight(154)
         layout = QVBoxLayout(self)
@@ -710,7 +1846,7 @@ class EvidenceSummaryPanel(HardShadowCard):
 
 class ObservationCard(HardShadowCard):
     def __init__(self, title: str, text: str, parent: QWidget | None = None):
-        super().__init__(BriefTheme.SURFACE, parent)
+        super().__init__(BriefTheme.SURFACE, parent, hover_enabled=True)
         self.setMinimumHeight(98)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 22, 18)
@@ -751,6 +1887,75 @@ class ResultListModel(QAbstractTableModel):
         "交易对手",
         "判断依据",
     )
+    PURCHASE_HEADERS = (
+        "状态",
+        "日期",
+        "方向",
+        "金额",
+        "命中词",
+        "原始上下文",
+        "此前收入并列",
+        "来源",
+        "transaction_id",
+    )
+    COUNTERPARTY_HEADERS = (
+        "来源",
+        "日期",
+        "方向",
+        "金额",
+        "对手名称 / 账号尾号",
+        "摘要 / 用途",
+        "transaction_id",
+    )
+    LARGE_HEADERS = (
+        "日期",
+        "方向",
+        "金额",
+        "对手",
+        "来源",
+        "transaction_id",
+    )
+    PATH_HEADERS = (
+        "入账日期",
+        "入账金额",
+        "1日支出",
+        "3日支出",
+        "7日支出",
+        "低留存",
+        "transaction_id",
+    )
+    BALANCE_HEADERS = (
+        "日期",
+        "日末余额",
+        "来源",
+        "transaction_id",
+    )
+    INTEREST_HEADERS = (
+        "日期",
+        "方向",
+        "金额",
+        "命中文字",
+        "来源",
+        "transaction_id",
+    )
+    MONTHLY_HEADERS = (
+        "对比窗口",
+        "前期收入",
+        "近期收入",
+        "收入变化",
+        "前期支出",
+        "近期支出",
+        "支出变化",
+    )
+    DECLARATION_HEADERS = (
+        "对照项",
+        "状态",
+        "日期",
+        "方向",
+        "金额",
+        "证据上下文",
+        "transaction_id",
+    )
 
     def __init__(self, kind: str, page_size: int = 50, parent: QWidget | None = None):
         super().__init__(parent)
@@ -768,6 +1973,22 @@ class ResultListModel(QAbstractTableModel):
             return self.MANUAL_HEADERS
         if self.kind == "business":
             return self.BUSINESS_HEADERS
+        if self.kind == "purchase":
+            return self.PURCHASE_HEADERS
+        if self.kind == "counterparty":
+            return self.COUNTERPARTY_HEADERS
+        if self.kind == "large":
+            return self.LARGE_HEADERS
+        if self.kind == "path":
+            return self.PATH_HEADERS
+        if self.kind == "balance":
+            return self.BALANCE_HEADERS
+        if self.kind == "interest":
+            return self.INTEREST_HEADERS
+        if self.kind == "monthly":
+            return self.MONTHLY_HEADERS
+        if self.kind == "declaration":
+            return self.DECLARATION_HEADERS
         return self.SENSITIVE_HEADERS
 
     def _rows(self) -> list[object]:
@@ -777,16 +1998,39 @@ class ResultListModel(QAbstractTableModel):
             return manual_verification_questions(self._result)
         if self.kind == "business":
             return _business_rows(self._result, self.view_filter)
-        return sensitive_transaction_candidates(self._result)
+        if self.kind == "purchase":
+            return _purchase_rows(self._result, self.view_filter)
+        if self.kind == "counterparty":
+            return _counterparty_rows(self._result, self.view_filter)
+        if self.kind in {"large", "path", "balance", "interest", "monthly"}:
+            return _fund_rows(self._result, self.kind)
+        if self.kind == "declaration":
+            return _declaration_rows(self._result, self.view_filter)
+        return _sensitive_rows(self._result, self.view_filter)
 
     def set_view_filter(self, view_filter: str) -> None:
-        if self.kind != "business":
+        if self.kind not in {
+            "business",
+            "sensitive",
+            "purchase",
+            "counterparty",
+            "declaration",
+        }:
             return
-        resolved = (
-            view_filter
-            if view_filter in BUSINESS_FILTER_LABELS
-            else "positive"
-        )
+        if self.kind == "business":
+            resolved = (
+                view_filter
+                if view_filter in BUSINESS_FILTER_LABELS
+                else "positive"
+            )
+        elif self.kind == "sensitive":
+            resolved = (
+                view_filter
+                if view_filter in {*SENSITIVE_CATEGORY_LABELS, "all"}
+                else "all"
+            )
+        else:
+            resolved = view_filter
         if resolved == self.view_filter:
             return
         self.beginResetModel()
@@ -839,6 +2083,25 @@ class ResultListModel(QAbstractTableModel):
                 if isinstance(candidate, Mapping)
                 else ""
             )
+        if self.kind in {
+            "purchase",
+            "counterparty",
+            "large",
+            "path",
+            "balance",
+            "interest",
+            "declaration",
+        }:
+            return str(
+                item.get("purchase_transaction_id")
+                or item.get("transaction_id")
+                or (
+                    item.get("inflow_transaction", {}).get("transaction_id")
+                    if isinstance(item.get("inflow_transaction"), Mapping)
+                    else ""
+                )
+                or ""
+            )
         return str(item.get("transaction_id") or "")
 
     def data(self, index: QModelIndex, role: int = 0):
@@ -890,7 +2153,7 @@ class ResultListModel(QAbstractTableModel):
                 redact_sensitive_text(counterparty),
                 Path(str(context.get("source_file") or "")).name,
             )
-        else:
+        elif self.kind == "business":
             candidate = item.get("candidate")
             candidate = candidate if isinstance(candidate, Mapping) else {}
             transaction: Mapping[str, object] = {}
@@ -907,13 +2170,19 @@ class ResultListModel(QAbstractTableModel):
                     except StandardResultError:
                         transaction = {}
             direction, amount = _direction_and_amount(transaction)
+            standard_fields = transaction.get("standard_fields", {})
+            standard_fields = (
+                standard_fields
+                if isinstance(standard_fields, Mapping)
+                else {}
+            )
             counterparty = (
-                transaction.get("counterparty_name")
-                or transaction.get("merchant_name")
-                or transaction.get("counterparty_account")
+                standard_fields.get("counterparty_name")
+                or standard_fields.get("merchant_name")
+                or standard_fields.get("counterparty_account")
                 or ""
             )
-            if counterparty == transaction.get("counterparty_account"):
+            if counterparty == standard_fields.get("counterparty_account"):
                 counterparty = mask_account(counterparty)
             values = (
                 item.get("source", ""),
@@ -930,6 +2199,204 @@ class ResultListModel(QAbstractTableModel):
                 amount,
                 redact_sensitive_text(counterparty),
                 redact_sensitive_text(candidate.get("reason", "")),
+            )
+        elif self.kind == "purchase":
+            context = item.get("transaction_context", {})
+            context = context if isinstance(context, Mapping) else {}
+            fields = context.get("reliable_standard_fields", {})
+            fields = fields if isinstance(fields, Mapping) else {}
+            transaction_id = str(item.get("purchase_transaction_id") or "")
+            raw_context = ""
+            if self._result is not None and transaction_id:
+                try:
+                    evidence = evidence_transaction(self._result, transaction_id)
+                    transaction = evidence.get("transaction", {})
+                    original = (
+                        transaction.get("original", {})
+                        if isinstance(transaction, Mapping)
+                        else {}
+                    )
+                    if isinstance(original, Mapping):
+                        raw_context = redact_sensitive_text(
+                            original.get("raw_text")
+                            or "｜".join(
+                                str(value)
+                                for value in original.get("raw_fields", [])
+                                if value
+                            )
+                        )
+                except StandardResultError:
+                    raw_context = ""
+            if not raw_context:
+                raw_context = "｜".join(
+                    f"{name}={redact_sensitive_text(value)}"
+                    for name, value in fields.items()
+                    if value
+                ) or "可靠上下文未提供"
+            matched_terms = {
+                str(term) for term in item.get("matched_terms", []) if term
+            }
+            match_status = (
+                "直接命中"
+                if matched_terms.intersection(_PURCHASE_TERM_CATEGORIES)
+                else "候选命中"
+            )
+            prior = item.get("prior_income_candidates", [])
+            direction = str(item.get("direction") or "")
+            amount = (
+                item.get("income")
+                if direction == "income"
+                else item.get("expense")
+            )
+            values = (
+                match_status,
+                str(item.get("transaction_time") or "")[:19],
+                {"income": "收入", "expense": "支出"}.get(
+                    direction,
+                    direction,
+                ),
+                _money(amount),
+                "、".join(str(term) for term in item.get("matched_terms", [])),
+                raw_context,
+                len(prior) if isinstance(prior, list) else 0,
+                Path(str(context.get("source_file") or "")).name,
+                transaction_id,
+            )
+        elif self.kind in {
+            "counterparty",
+            "large",
+            "balance",
+            "declaration",
+        }:
+            transaction_id = str(item.get("transaction_id") or "")
+            transaction: Mapping[str, object] = {}
+            if self._result is not None and transaction_id:
+                try:
+                    evidence = evidence_transaction(self._result, transaction_id)
+                    original = evidence.get("transaction")
+                    transaction = original if isinstance(original, Mapping) else {}
+                except StandardResultError:
+                    transaction = {}
+            standard = transaction.get("standard_fields", {})
+            standard = standard if isinstance(standard, Mapping) else {}
+            direction, amount = _direction_and_amount(transaction)
+            counterparty = (
+                standard.get("counterparty_name")
+                or standard.get("merchant_name")
+                or mask_account(standard.get("counterparty_account", ""))
+                or "未识别"
+            )
+            purpose = (
+                standard.get("summary")
+                or standard.get("purpose")
+                or standard.get("remark")
+                or standard.get("product_description")
+                or "未提供"
+            )
+            source = Path(str(transaction.get("source_file") or "")).name
+            if self.kind == "counterparty":
+                values = (
+                    source,
+                    str(transaction.get("transaction_time") or "")[:19],
+                    direction,
+                    amount,
+                    redact_sensitive_text(counterparty),
+                    redact_sensitive_text(purpose),
+                    transaction_id,
+                )
+            elif self.kind == "large":
+                values = (
+                    str(transaction.get("transaction_time") or "")[:19],
+                    direction,
+                    amount,
+                    redact_sensitive_text(counterparty),
+                    source,
+                    transaction_id,
+                )
+            elif self.kind == "balance":
+                values = (
+                    str(transaction.get("transaction_time") or "")[:19],
+                    _money(transaction.get("balance")),
+                    source,
+                    transaction_id,
+                )
+            else:
+                declaration_item = item.get("declaration_item", {})
+                declaration_item = (
+                    declaration_item
+                    if isinstance(declaration_item, Mapping)
+                    else {}
+                )
+                check_type = str(declaration_item.get("check_type") or "")
+                values = (
+                    DECLARATION_TYPE_LABELS.get(check_type, check_type),
+                    DECLARATION_STATUS_LABELS.get(
+                        str(declaration_item.get("status") or ""),
+                        "不可用",
+                    ),
+                    str(transaction.get("transaction_time") or "")[:19],
+                    direction,
+                    amount,
+                    redact_sensitive_text(purpose),
+                    transaction_id,
+                )
+        elif self.kind == "path":
+            inflow = item.get("inflow_transaction", {})
+            inflow = inflow if isinstance(inflow, Mapping) else {}
+            windows = {
+                int(window.get("window_days", 0)): window
+                for window in item.get("windows", [])
+                if isinstance(window, Mapping)
+            }
+            low_retention = any(
+                window.get("low_retained_balance_increment")
+                for window in windows.values()
+            )
+            values = (
+                str(inflow.get("transaction_time") or "")[:19],
+                _money(inflow.get("income")),
+                _money(windows.get(1, {}).get("cumulative_expense")),
+                _money(windows.get(3, {}).get("cumulative_expense")),
+                _money(windows.get(7, {}).get("cumulative_expense")),
+                "是" if low_retention else "否",
+                str(inflow.get("transaction_id") or ""),
+            )
+        elif self.kind == "interest":
+            direction = str(item.get("direction") or "")
+            amount = item.get("income") if direction == "income" else item.get("expense")
+            fields = item.get("reliable_standard_fields", {})
+            fields = fields if isinstance(fields, Mapping) else {}
+            values = (
+                str(item.get("transaction_time") or "")[:19],
+                {"income": "收入", "expense": "支出"}.get(direction, direction),
+                _money(amount),
+                "｜".join(
+                    redact_sensitive_text(value)
+                    for value in fields.values()
+                    if value
+                ),
+                Path(str(item.get("source_file") or "")).name,
+                str(item.get("transaction_id") or ""),
+            )
+        else:
+            recent = item.get("recent_comparison", {})
+            recent = recent if isinstance(recent, Mapping) else {}
+            window = (
+                f"{recent.get('previous_window_start_month', '—')}至"
+                f"{recent.get('previous_window_end_month', '—')} 对 "
+                f"{recent.get('recent_window_start_month', '—')}至"
+                f"{recent.get('recent_window_end_month', '—')}"
+                if recent.get("available")
+                else "当前覆盖期不足六个自然月"
+            )
+            values = (
+                window,
+                _money(recent.get("previous_window_income")),
+                _money(recent.get("recent_window_income")),
+                _money(recent.get("income_change")),
+                _money(recent.get("previous_window_expense")),
+                _money(recent.get("recent_window_expense")),
+                _money(recent.get("expense_change")),
             )
         value = values[index.column()]
         return str(value) if role == Qt.ItemDataRole.DisplayRole else str(value)
@@ -965,6 +2432,29 @@ class ResultListModel(QAbstractTableModel):
 class PagedTable(QWidget):
     transactionSelected = pyqtSignal(str)
     selectionUnavailable = pyqtSignal(str)
+    COLUMN_WIDTHS = {
+        "状态": 100,
+        "人工核实事项": 300,
+        "触发原因": 320,
+        "证据数": 90,
+        "日期": 155,
+        "方向": 85,
+        "金额": 120,
+        "命中词": 150,
+        "原始上下文": 340,
+        "此前收入并列": 120,
+        "来源": 170,
+        "来源文件": 180,
+        "交易对手": 210,
+        "对手": 210,
+        "对手名称 / 账号尾号": 230,
+        "摘要 / 用途": 300,
+        "判断来源": 120,
+        "关联分类": 120,
+        "证据强度": 100,
+        "判断依据": 320,
+        "transaction_id": 290,
+    }
 
     def __init__(self, kind: str, parent: QWidget | None = None):
         super().__init__(parent)
@@ -978,11 +2468,19 @@ class PagedTable(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setWordWrap(False)
+        self.table.setMinimumHeight(360)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(34)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+            QHeaderView.ResizeMode.Interactive
         )
+        self.table.horizontalHeader().setMinimumSectionSize(72)
+        for column, header in enumerate(self.model.headers):
+            self.table.setColumnWidth(
+                column,
+                self.COLUMN_WIDTHS.get(header, 140),
+            )
         self.table.clicked.connect(self._clicked)
         layout.addWidget(self.table, 1)
         footer = QHBoxLayout()
@@ -1029,12 +2527,460 @@ class PagedTable(QWidget):
         )
 
 
+class EvidenceIndexModel(QAbstractTableModel):
+    """Paged schema 1.16 evidence view retaining only result and row indices."""
+
+    HEADERS = (
+        "日期",
+        "方向",
+        "金额",
+        "来源",
+        "对手 / 用途",
+        "引用状态",
+        "引用消费者",
+        "transaction_id",
+    )
+
+    def __init__(self, page_size: int = 50, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.page_size = page_size
+        self.page = 0
+        self._result: Mapping[str, object] | None = None
+        self._row_indices: list[int] = []
+        self._references_by_id: dict[str, list[Mapping[str, object]]] = {}
+        self._duplicate_ids: set[str] = set()
+        self._unresolved_ids: set[str] = set()
+        self._ambiguous_ids: set[str] = set()
+        self.filters = {
+            "source": "",
+            "date_from": "",
+            "date_to": "",
+            "direction": "",
+            "reference_status": "",
+            "consumer": "",
+            "transaction_id": "",
+        }
+
+    def set_result(self, result: Mapping[str, object] | None) -> None:
+        self.beginResetModel()
+        self._result = result
+        self._references_by_id.clear()
+        self._duplicate_ids.clear()
+        self._unresolved_ids.clear()
+        self._ambiguous_ids.clear()
+        if result is not None:
+            body = result.get("result", {})
+            evidence = body.get("evidence", {}) if isinstance(body, Mapping) else {}
+            references = (
+                evidence.get("references", [])
+                if isinstance(evidence, Mapping)
+                else []
+            )
+            for reference in references if isinstance(references, list) else []:
+                if not isinstance(reference, Mapping):
+                    continue
+                resolved_ids = reference.get("evidence_transaction_ids", [])
+                unresolved_ids = reference.get("unresolved_transaction_ids", [])
+                transaction_ids = [
+                    *(resolved_ids if isinstance(resolved_ids, list) else []),
+                    *(unresolved_ids if isinstance(unresolved_ids, list) else []),
+                ]
+                for transaction_id in transaction_ids:
+                    if transaction_id:
+                        self._references_by_id.setdefault(
+                            str(transaction_id),
+                            [],
+                        ).append(reference)
+            integrity = (
+                evidence.get("integrity", {})
+                if isinstance(evidence, Mapping)
+                else {}
+            )
+            if isinstance(integrity, Mapping):
+                self._duplicate_ids = {
+                    str(value)
+                    for value in integrity.get("duplicate_transaction_ids", [])
+                }
+                self._unresolved_ids = {
+                    str(value)
+                    for value in integrity.get("unresolved_transaction_ids", [])
+                }
+                self._ambiguous_ids = {
+                    str(value)
+                    for value in integrity.get(
+                        "ambiguous_reference_transaction_ids",
+                        [],
+                    )
+                }
+        self.page = 0
+        self._row_indices = self._filtered_indices()
+        self.endResetModel()
+
+    def set_filters(self, **filters: str) -> None:
+        self.beginResetModel()
+        self.filters.update({key: str(value or "").strip() for key, value in filters.items()})
+        self.page = 0
+        self._row_indices = self._filtered_indices()
+        self.endResetModel()
+
+    def _transactions(self) -> list[object]:
+        if self._result is None:
+            return []
+        body = self._result.get("result", {})
+        rows = body.get("original_transactions", []) if isinstance(body, Mapping) else []
+        return rows if isinstance(rows, list) else []
+
+    def _reference_status(self, transaction_id: str) -> str:
+        if transaction_id in self._duplicate_ids or transaction_id in self._ambiguous_ids:
+            return "歧义 / 重复"
+        if transaction_id in self._unresolved_ids:
+            return "悬空"
+        if self._references_by_id.get(transaction_id):
+            return "已引用"
+        return "未引用"
+
+    def _consumer_text(self, transaction_id: str) -> str:
+        references = self._references_by_id.get(transaction_id, [])
+        values = [
+            f"{reference.get('consumer_type', '')}:{reference.get('consumer_id', '')}"
+            for reference in references
+        ]
+        return "｜".join(values)
+
+    def _filtered_indices(self) -> list[int]:
+        indices: list[int] = []
+        for index, transaction in enumerate(self._transactions()):
+            if not isinstance(transaction, Mapping):
+                continue
+            transaction_id = str(transaction.get("transaction_id") or "")
+            source = str(
+                transaction.get("source_file_id")
+                or transaction.get("source_file")
+                or ""
+            )
+            date_text = str(transaction.get("transaction_time") or "")[:10]
+            income = Decimal(str(transaction.get("income") or "0"))
+            expense = Decimal(str(transaction.get("expense") or "0"))
+            direction = "income" if income > 0 else "expense" if expense > 0 else "neutral"
+            status = self._reference_status(transaction_id)
+            consumer_text = self._consumer_text(transaction_id)
+            wanted_status = self.filters["reference_status"]
+            if self.filters["source"] and source != self.filters["source"]:
+                continue
+            if self.filters["date_from"] and date_text < self.filters["date_from"]:
+                continue
+            if self.filters["date_to"] and date_text > self.filters["date_to"]:
+                continue
+            if self.filters["direction"] and direction != self.filters["direction"]:
+                continue
+            if self.filters["transaction_id"] and self.filters["transaction_id"] not in transaction_id:
+                continue
+            if self.filters["consumer"] and self.filters["consumer"] not in consumer_text:
+                continue
+            if wanted_status == "referenced" and status != "已引用":
+                continue
+            if wanted_status == "unreferenced" and status != "未引用":
+                continue
+            if wanted_status == "ambiguous" and status != "歧义 / 重复":
+                continue
+            if wanted_status == "unresolved" and status != "悬空":
+                continue
+            indices.append(index)
+        return indices
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        if parent.isValid():
+            return 0
+        start = self.page * self.page_size
+        return max(0, min(self.page_size, len(self._row_indices) - start))
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self.HEADERS)
+
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = 0):
+        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
+            return self.HEADERS[section]
+        return None
+
+    def _transaction_at(self, row: int) -> Mapping[str, object]:
+        absolute = self.page * self.page_size + row
+        if not 0 <= absolute < len(self._row_indices):
+            return {}
+        transaction = self._transactions()[self._row_indices[absolute]]
+        return transaction if isinstance(transaction, Mapping) else {}
+
+    def transaction_id_at(self, row: int) -> str:
+        return str(self._transaction_at(row).get("transaction_id") or "")
+
+    def data(self, index: QModelIndex, role: int = 0):
+        if not index.isValid() or role not in {
+            Qt.ItemDataRole.DisplayRole,
+            Qt.ItemDataRole.ToolTipRole,
+            Qt.ItemDataRole.TextAlignmentRole,
+        }:
+            return None
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            return int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        transaction = self._transaction_at(index.row())
+        transaction_id = str(transaction.get("transaction_id") or "")
+        standard = transaction.get("standard_fields", {})
+        standard = standard if isinstance(standard, Mapping) else {}
+        direction, amount = _direction_and_amount(transaction)
+        context = (
+            standard.get("counterparty_name")
+            or standard.get("merchant_name")
+            or standard.get("purpose")
+            or standard.get("summary")
+            or mask_account(standard.get("counterparty_account", ""))
+            or "未提供"
+        )
+        values = (
+            str(transaction.get("transaction_time") or "")[:19],
+            direction,
+            amount,
+            Path(str(transaction.get("source_file") or "")).name,
+            redact_sensitive_text(context),
+            self._reference_status(transaction_id),
+            self._consumer_text(transaction_id) or "无",
+            transaction_id,
+        )
+        return str(values[index.column()])
+
+    def total_count(self) -> int:
+        return len(self._row_indices)
+
+    def page_count(self) -> int:
+        return max(1, (len(self._row_indices) + self.page_size - 1) // self.page_size)
+
+    def set_page(self, page: int) -> None:
+        page = max(0, min(page, self.page_count() - 1))
+        if page == self.page:
+            return
+        self.beginResetModel()
+        self.page = page
+        self.endResetModel()
+
+    def transaction_ids(self) -> list[str]:
+        values = []
+        for index in self._row_indices:
+            transaction = self._transactions()[index]
+            if isinstance(transaction, Mapping) and transaction.get("transaction_id"):
+                values.append(str(transaction["transaction_id"]))
+        return values
+
+
+class EvidenceCenterPage(QWidget):
+    transactionSelected = pyqtSignal(str, object)
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.model = EvidenceIndexModel(parent=self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        self.integrity_summary = QLabel("等待标准结果。")
+        self.integrity_summary.setObjectName("briefPageNote")
+        self.integrity_summary.setWordWrap(True)
+        layout.addWidget(self.integrity_summary)
+        self.integrity_details = QLabel()
+        self.integrity_details.setObjectName("briefIntegrityIssue")
+        self.integrity_details.setWordWrap(True)
+        self.integrity_details.hide()
+        layout.addWidget(self.integrity_details)
+        filters = QGridLayout()
+        self.source_filter = QComboBox()
+        self.direction_filter = QComboBox()
+        self.direction_filter.addItem("全部方向", "")
+        self.direction_filter.addItem("收入", "income")
+        self.direction_filter.addItem("支出", "expense")
+        self.direction_filter.addItem("中性", "neutral")
+        self.reference_filter = QComboBox()
+        for label, value in (
+            ("全部引用状态", ""),
+            ("已引用", "referenced"),
+            ("未引用", "unreferenced"),
+            ("引用找不到原交易", "unresolved"),
+            ("一个ID对应多笔 / 重复", "ambiguous"),
+        ):
+            self.reference_filter.addItem(label, value)
+        self.consumer_filter = QComboBox()
+        self.date_from = QLineEdit()
+        self.date_from.setPlaceholderText("开始日期 YYYY-MM-DD")
+        self.date_to = QLineEdit()
+        self.date_to.setPlaceholderText("结束日期 YYYY-MM-DD")
+        self.transaction_search = QLineEdit()
+        self.transaction_search.setPlaceholderText("transaction_id 搜索和定位")
+        self.apply_button = QPushButton("应用筛选")
+        self.apply_button.clicked.connect(self._apply_filters)
+        filters.addWidget(self.source_filter, 0, 0)
+        filters.addWidget(self.direction_filter, 0, 1)
+        filters.addWidget(self.reference_filter, 0, 2)
+        filters.addWidget(self.consumer_filter, 0, 3)
+        filters.addWidget(self.date_from, 1, 0)
+        filters.addWidget(self.date_to, 1, 1)
+        filters.addWidget(self.transaction_search, 1, 2)
+        filters.addWidget(self.apply_button, 1, 3)
+        layout.addLayout(filters)
+        self.table = QTableView()
+        self.table.setModel(self.model)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.setWordWrap(False)
+        self.table.setMinimumHeight(360)
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(34)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        for column, width in enumerate(
+            (155, 85, 120, 175, 260, 140, 260, 300)
+        ):
+            self.table.setColumnWidth(column, width)
+        self.table.clicked.connect(self._clicked)
+        layout.addWidget(self.table, 1)
+        footer = QHBoxLayout()
+        self.previous_button = QPushButton("← 上一页")
+        self.next_button = QPushButton("下一页 →")
+        self.page_label = QLabel("第 1 / 1 页 · 0 条")
+        self.previous_button.clicked.connect(lambda: self._move_page(-1))
+        self.next_button.clicked.connect(lambda: self._move_page(1))
+        footer.addWidget(self.previous_button)
+        footer.addWidget(self.page_label)
+        footer.addStretch(1)
+        footer.addWidget(self.next_button)
+        layout.addLayout(footer)
+
+    def set_result(self, result: Mapping[str, object] | None) -> None:
+        self.model.set_result(result)
+        self.source_filter.clear()
+        self.source_filter.addItem("全部来源", "")
+        self.consumer_filter.clear()
+        self.consumer_filter.addItem("全部引用消费者", "")
+        if result is not None:
+            rows = result.get("result", {}).get("original_transactions", [])
+            sources: dict[str, str] = {}
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, Mapping):
+                    continue
+                key = str(row.get("source_file_id") or row.get("source_file") or "")
+                if key:
+                    sources[key] = Path(str(row.get("source_file") or key)).name
+            for key, label in sorted(sources.items(), key=lambda item: item[1]):
+                self.source_filter.addItem(label, key)
+            evidence = result.get("result", {}).get("evidence", {})
+            references = evidence.get("references", []) if isinstance(evidence, Mapping) else []
+            consumers = sorted(
+                {
+                    f"{reference.get('consumer_type', '')}:{reference.get('consumer_id', '')}"
+                    for reference in references
+                    if isinstance(reference, Mapping)
+                }
+            )
+            for consumer in consumers:
+                self.consumer_filter.addItem(consumer, consumer)
+            coverage = evidence.get("coverage", {}) if isinstance(evidence, Mapping) else {}
+            integrity = evidence.get("integrity", {}) if isinstance(evidence, Mapping) else {}
+            unresolved_count = int(
+                coverage.get("unresolved_evidence_link_count", 0)
+            )
+            ambiguous_count = int(
+                coverage.get("ambiguous_evidence_link_count", 0)
+            )
+            duplicate_count = (
+                len(integrity.get("duplicate_transaction_ids", []))
+                if isinstance(integrity, Mapping)
+                else 0
+            )
+            integrity_text = (
+                "证据索引完整"
+                if not (unresolved_count or ambiguous_count or duplicate_count)
+                else "证据索引需检查：" + "；".join(
+                    text
+                    for count, text in (
+                        (
+                            unresolved_count,
+                            f"{unresolved_count} 条结果引用找不到对应原始交易",
+                        ),
+                        (
+                            ambiguous_count,
+                            f"{ambiguous_count} 条引用对应多笔原始交易",
+                        ),
+                        (
+                            duplicate_count,
+                            f"{duplicate_count} 个 transaction_id 重复",
+                        ),
+                    )
+                    if count
+                )
+            )
+            self.integrity_summary.setText(
+                f"原始交易 {coverage.get('original_transaction_count', 0)}｜"
+                f"唯一索引 {coverage.get('indexed_transaction_count', 0)}｜"
+                f"有效引用 {coverage.get('resolved_evidence_link_count', 0)}｜"
+                f"{integrity_text}。"
+                "视图默认脱敏；选择交易后可在EvidencePanel按需展开完整原始字段。"
+            )
+            issue_lines = []
+            unresolved_ids = (
+                integrity.get("unresolved_transaction_ids", [])
+                if isinstance(integrity, Mapping)
+                else []
+            )
+            for transaction_id in unresolved_ids[:5]:
+                consumers = self.model._consumer_text(str(transaction_id))
+                issue_lines.append(
+                    f"找不到原始交易：{transaction_id}｜"
+                    f"引用位置：{consumers or '未登记'}｜无法打开原始交易"
+                )
+            if len(unresolved_ids) > 5:
+                issue_lines.append(
+                    f"其余 {len(unresolved_ids) - 5} 条请通过引用消费者筛选继续核查。"
+                )
+            self.integrity_details.setText("\n".join(issue_lines))
+            self.integrity_details.setVisible(bool(issue_lines))
+        else:
+            self.integrity_details.clear()
+            self.integrity_details.hide()
+        self._refresh_footer()
+
+    def _apply_filters(self) -> None:
+        self.model.set_filters(
+            source=self.source_filter.currentData() or "",
+            direction=self.direction_filter.currentData() or "",
+            reference_status=self.reference_filter.currentData() or "",
+            consumer=self.consumer_filter.currentData() or "",
+            date_from=self.date_from.text(),
+            date_to=self.date_to.text(),
+            transaction_id=self.transaction_search.text(),
+        )
+        self._refresh_footer()
+
+    def _move_page(self, delta: int) -> None:
+        self.model.set_page(self.model.page + delta)
+        self._refresh_footer()
+
+    def _refresh_footer(self) -> None:
+        self.page_label.setText(
+            f"第 {self.model.page + 1} / {self.model.page_count()} 页 · "
+            f"{self.model.total_count()} 条"
+        )
+        self.previous_button.setEnabled(self.model.page > 0)
+        self.next_button.setEnabled(self.model.page + 1 < self.model.page_count())
+
+    def _clicked(self, index: QModelIndex) -> None:
+        transaction_id = self.model.transaction_id_at(index.row())
+        if transaction_id:
+            self.transactionSelected.emit(transaction_id, self)
+
+
 class EvidencePanel(HardShadowCard):
     closeRequested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(BriefTheme.SURFACE, parent)
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(380)
         self._result: Mapping[str, object] | None = None
         self._transaction_ids: list[str] = []
         self._current_index = -1
@@ -1155,11 +3101,11 @@ class EvidencePanel(HardShadowCard):
             text_fields.append(f"对手账号：{mask_account(account)}")
         raw_values = []
         if original.get("raw_text"):
-            raw_values.append(redact_sensitive_text(original["raw_text"]))
+            raw_values.append(f"raw_text：{original['raw_text']}")
         if isinstance(original.get("raw_fields"), list):
             raw_values.extend(
-                redact_sensitive_text(value)
-                for value in original["raw_fields"]
+                f"raw_fields[{index}]：{value}"
+                for index, value in enumerate(original["raw_fields"])
                 if str(value or "").strip()
             )
         reference_text = "、".join(sorted(reference_statuses)) or "未登记消费者引用"
@@ -1175,14 +3121,14 @@ class EvidencePanel(HardShadowCard):
         full_lines = [
             *compact_lines,
             "",
-            "完整证据信息：",
-            f"交易ID：{short_transaction_id(transaction_id)}",
+            "完整证据信息（已由用户主动展开，以下原始字段未脱敏）：",
+            f"交易ID：{transaction_id}",
             f"证据定位：{transaction.get('evidence_locator') or '不可用'}",
             f"引用状态：{reference_text}",
             f"整体完整性：{'完整' if integrity.get('complete') else '存在缺失、重复或悬空/歧义'}",
         ]
         if raw_values:
-            full_lines.extend(["", "原始字段（已脱敏）：", *raw_values])
+            full_lines.extend(["", "原始字段：", *raw_values])
         self._compact_text = "\n".join(compact_lines)
         self._full_text = "\n".join(full_lines)
         self.expand_button.setEnabled(True)
@@ -1287,7 +3233,7 @@ class WelcomePage(QWidget):
         accent: str,
         signal,
     ) -> QPushButton:
-        card = HardShadowCard(accent)
+        card = HardShadowCard(accent, hover_enabled=True)
         card.setMinimumHeight(235)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 24, 22)
@@ -1794,7 +3740,7 @@ class ModuleSummaryPage(QScrollArea):
         "overview": (),
         "verification_declaration": ("manual", "sensitive", "declaration"),
         "purchase_business": ("purchase", "business"),
-        "funds_balance": ("funds", "balance"),
+        "funds_balance": ("funds",),
         "counterparty": ("counterparty",),
         "evidence_center": ("evidence",),
     }
@@ -1811,13 +3757,16 @@ class ModuleSummaryPage(QScrollArea):
     }
     CATEGORY_CHOICES = {
         "manual": (("查看待核实事项", "all"),),
-        "sensitive": (("查看敏感候选", "all"),),
+        "sensitive": (),
         "business": (
-            ("正向候选", "positive"),
+            ("相关候选", "positive"),
             ("待人工判断", "manual"),
             ("已排除 / 无关联", "excluded"),
             ("全部结果", "all"),
         ),
+        "funds": (("打开资金与余额详情", "all"),),
+        "balance": (("打开资金与余额详情", "all"),),
+        "evidence": (("打开证据中心", "all"),),
     }
 
     def __init__(self, parent: QWidget | None = None):
@@ -1825,6 +3774,7 @@ class ModuleSummaryPage(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self._summaries: dict[str, tuple[str, str]] = {}
+        self._category_choices: dict[str, tuple[tuple[str, str], ...]] = {}
         self.choice_buttons: dict[tuple[str, str], QPushButton] = {}
         self.business_prepare_button: QPushButton | None = None
         self.container = QWidget()
@@ -1849,8 +3799,13 @@ class ModuleSummaryPage(QScrollArea):
     def set_module_summaries(
         self,
         summaries: Mapping[str, tuple[str, str]],
+        category_choices: Mapping[
+            str,
+            tuple[tuple[str, str], ...],
+        ] | None = None,
     ) -> None:
         self._summaries = dict(summaries)
+        self._category_choices = dict(category_choices or {})
 
     def set_section(
         self,
@@ -1916,23 +3871,38 @@ class ModuleSummaryPage(QScrollArea):
                 0,
                 Qt.AlignmentFlag.AlignLeft,
             )
-        choices = self.CATEGORY_CHOICES.get(module_key, ())
+        choices = self._category_choices.get(
+            module_key,
+            self.CATEGORY_CHOICES.get(module_key, ()),
+        )
         if not choices:
-            disabled = QPushButton("后续接入")
+            disabled = QPushButton(
+                "当前无候选"
+                if module_key in {
+                    "manual",
+                    "sensitive",
+                    "business",
+                    "purchase",
+                    "counterparty",
+                    "declaration",
+                }
+                else "后续接入"
+            )
             disabled.setEnabled(False)
             layout.addWidget(disabled, 0, Qt.AlignmentFlag.AlignLeft)
             return card
-        choices_row = QHBoxLayout()
-        for label, category in choices:
+        choices_grid = QGridLayout()
+        choices_grid.setContentsMargins(0, 0, 0, 0)
+        choices_grid.setSpacing(8)
+        for index, (label, category) in enumerate(choices):
             button = CandidateCategoryButton(label, category)
             button.clicked.connect(
                 lambda checked=False, key=module_key, value=category:
                 self.categoryRequested.emit(key, value)
             )
             self.choice_buttons[(module_key, category)] = button
-            choices_row.addWidget(button)
-        choices_row.addStretch(1)
-        layout.addLayout(choices_row)
+            choices_grid.addWidget(button, index // 3, index % 3)
+        layout.addLayout(choices_grid)
         return card
 
     def _clear_cards(self) -> None:
@@ -1984,6 +3954,11 @@ class TransactionListPanel(QWidget):
         self.summary = QLabel("等待标准结果。")
         self.summary.setObjectName("briefPageNote")
         self.summary.setWordWrap(True)
+        self.summary.setMaximumHeight(84)
+        self.summary.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         layout.addWidget(self.title)
         layout.addWidget(self.summary)
         self.business_notice = QLabel("等待标准结果。")
@@ -1997,19 +3972,51 @@ class TransactionListPanel(QWidget):
         )
         self.business_prepare_button.hide()
         layout.addWidget(self.business_prepare_button)
-        self.tables = QStackedWidget()
+        self.tables = AnimatedStackedWidget()
         self.manual_table = PagedTable("manual")
         self.sensitive_table = PagedTable("sensitive")
         self.business_table = PagedTable("business")
+        self.purchase_table = PagedTable("purchase")
+        self.counterparty_table = PagedTable("counterparty")
+        self.declaration_table = PagedTable("declaration")
+        self.funds_tabs = QTabWidget()
+        self.large_table = PagedTable("large")
+        self.path_table = PagedTable("path")
+        self.balance_table = PagedTable("balance")
+        self.interest_table = PagedTable("interest")
+        self.monthly_table = PagedTable("monthly")
+        self.funds_tabs.addTab(self.large_table, "大额交易")
+        self.funds_tabs.addTab(self.path_table, "资金路径")
+        self.funds_tabs.addTab(self.balance_table, "余额")
+        self.funds_tabs.addTab(self.interest_table, "结息")
+        self.funds_tabs.addTab(self.monthly_table, "月度变化")
+        self.evidence_center = EvidenceCenterPage()
         self.generic_table = QTableView()
         self.generic_table.setModel(ResultListModel("manual", parent=self.generic_table))
         self.generic_table.setEnabled(False)
         self.tables.addWidget(self.manual_table)
         self.tables.addWidget(self.sensitive_table)
         self.tables.addWidget(self.business_table)
+        self.tables.addWidget(self.purchase_table)
+        self.tables.addWidget(self.counterparty_table)
+        self.tables.addWidget(self.funds_tabs)
+        self.tables.addWidget(self.declaration_table)
+        self.tables.addWidget(self.evidence_center)
         self.tables.addWidget(self.generic_table)
         layout.addWidget(self.tables, 1)
-        for table in (self.manual_table, self.sensitive_table, self.business_table):
+        for table in (
+            self.manual_table,
+            self.sensitive_table,
+            self.business_table,
+            self.purchase_table,
+            self.counterparty_table,
+            self.large_table,
+            self.path_table,
+            self.balance_table,
+            self.interest_table,
+            self.monthly_table,
+            self.declaration_table,
+        ):
             table.transactionSelected.connect(
                 lambda transaction_id, source=table: self.transactionSelected.emit(
                     transaction_id,
@@ -2017,12 +4024,27 @@ class TransactionListPanel(QWidget):
                 )
             )
             table.selectionUnavailable.connect(self.selectionUnavailable)
+        self.evidence_center.transactionSelected.connect(
+            self.transactionSelected
+        )
 
     def set_result(self, result: Mapping[str, object] | None) -> None:
         self._result = result
         self.manual_table.set_result(result)
         self.sensitive_table.set_result(result)
         self.business_table.set_result(result)
+        self.purchase_table.set_result(result)
+        self.counterparty_table.set_result(result)
+        self.declaration_table.set_result(result)
+        for table in (
+            self.large_table,
+            self.path_table,
+            self.balance_table,
+            self.interest_table,
+            self.monthly_table,
+        ):
+            table.set_result(result)
+        self.evidence_center.set_result(result)
         self.business_notice.setText(_business_status_text(result))
 
     def set_module(
@@ -2046,7 +4068,11 @@ class TransactionListPanel(QWidget):
         self.title.setText(
             f"{title} · {BUSINESS_FILTER_LABELS[resolved_filter]}"
             if module_key == "business"
-            else title
+            else (
+                f"{title} · {SENSITIVE_CATEGORY_LABELS.get(view_filter, '全部候选')}"
+                if module_key == "sensitive"
+                else title
+            )
         )
         self.summary.setText(summary)
         self.business_notice.setVisible(module_key == "business")
@@ -2054,10 +4080,27 @@ class TransactionListPanel(QWidget):
         if module_key == "manual":
             self.tables.setCurrentWidget(self.manual_table)
         elif module_key == "sensitive":
+            self.sensitive_table.set_view_filter(view_filter)
             self.tables.setCurrentWidget(self.sensitive_table)
         elif module_key == "business":
             self.business_table.set_view_filter(resolved_filter)
             self.tables.setCurrentWidget(self.business_table)
+        elif module_key == "purchase":
+            self.purchase_table.set_view_filter(view_filter)
+            self.title.setText(
+                f"{title} · {PURCHASE_CATEGORY_LABELS.get(view_filter, '全部候选')}"
+            )
+            self.tables.setCurrentWidget(self.purchase_table)
+        elif module_key == "counterparty":
+            self.counterparty_table.set_view_filter(view_filter)
+            self.tables.setCurrentWidget(self.counterparty_table)
+        elif module_key in {"funds", "balance"}:
+            self.tables.setCurrentWidget(self.funds_tabs)
+        elif module_key == "declaration":
+            self.declaration_table.set_view_filter(view_filter)
+            self.tables.setCurrentWidget(self.declaration_table)
+        elif module_key == "evidence":
+            self.tables.setCurrentWidget(self.evidence_center)
         else:
             self.tables.setCurrentWidget(self.generic_table)
 
@@ -2153,6 +4196,10 @@ class CaseDashboardPage(QScrollArea):
         layout.addStretch(1)
         self._columns = 0
         self.module_summaries: dict[str, tuple[str, str]] = {}
+        self.module_category_choices: dict[
+            str,
+            tuple[tuple[str, str], ...],
+        ] = {}
         self._reflow(2)
 
     def resizeEvent(self, event) -> None:
@@ -2367,12 +4414,6 @@ class CaseDashboardPage(QScrollArea):
     ) -> None:
         manual_count = int(summary.get("manual_question_count", 0))
         sensitive_count = int(summary.get("sensitive_candidate_count", 0))
-        questions = manual_verification_questions(result)
-        focus = [
-            redact_sensitive_text(item.get("question_text", "待人工核实"))
-            for item in questions[:2]
-            if isinstance(item, Mapping)
-        ]
         sensitive = self._observation_value(
             result,
             "sensitive_transaction_context_candidates",
@@ -2508,8 +4549,11 @@ class CaseDashboardPage(QScrollArea):
         else:
             context_text = "待人工补充" if confirmation_required else "状态已确认"
             business_content = ""
+        purchase_overview, purchase_choices, purchase_dashboard = (
+            _purchase_overview(result)
+        )
         purchase_business_body = (
-            f"下定候选：{purchase_count} 笔\n{purchase_detail}\n\n"
+            f"{purchase_dashboard}\n\n"
             f"工作单位对照：{work_unit_status}\n"
             f"经营内容对照：{business_check_status}\n\n"
             f"经营上下文：{context_text}\n"
@@ -2541,26 +4585,13 @@ class CaseDashboardPage(QScrollArea):
         )
 
         counterparties = self._observation_value(result, "top_counterparties")
+        (
+            counterparty_overview,
+            counterparty_choices,
+            counterparty_dashboard,
+        ) = _counterparty_overview(result)
         income_top = counterparties.get("income", [])
         expense_top = counterparties.get("expense", [])
-        def counterparty_lines(rows: object) -> str:
-            rendered = []
-            for index, item in enumerate(
-                rows[:3] if isinstance(rows, list) else [],
-                start=1,
-            ):
-                if not isinstance(item, Mapping):
-                    continue
-                identity = (
-                    mask_account(item.get("identity_value", ""))
-                    if item.get("identity_field") == "counterparty_account"
-                    else redact_sensitive_text(item.get("identity_value", ""))
-                )
-                rendered.append(
-                    f"{index}. {identity} {_percentage(item.get('direction_amount_share'), 0)}"
-                )
-            return "\n".join(rendered) or "暂无可靠可识别对手"
-
         income_summary = counterparties.get("income_summary", {})
         expense_summary = counterparties.get("expense_summary", {})
         income_coverage = (
@@ -2598,17 +4629,7 @@ class CaseDashboardPage(QScrollArea):
             "cross_source_counterparty_occurrences",
         )
         occurrence_rows = occurrences.get("counterparties", [])
-        relationship_body = (
-            "收入主要对手：\n"
-            f"{counterparty_lines(income_top)}\n\n"
-            "支出主要对手：\n"
-            f"{counterparty_lines(expense_top)}\n\n"
-            f"可识别覆盖：收入 {_percentage(income_coverage)}｜"
-            f"支出 {_percentage(expense_coverage)}\n"
-            f"主要对手覆盖月份：{months[0] + ' 至 ' + months[-1] if months else '不可用'}\n"
-            f"跨来源同名候选："
-            f"{len(occurrence_rows) if isinstance(occurrence_rows, list) else 0} 项"
-        )
+        relationship_body = counterparty_dashboard
         self.module_cards["counterparty"].set_content(
             relationship_body,
             (
@@ -2718,18 +4739,7 @@ class CaseDashboardPage(QScrollArea):
             if isinstance(comparison, Mapping) and comparison.get("available")
             else "不足连续六个日历月，无法比较最近三个月"
         )
-        funds_body = (
-            f"最近可靠日末余额：{latest_balance}\n"
-            f"余额日期：{latest_balance_date}｜余额字段："
-            f"{'可用' if balance_sources else '不可用'}\n"
-            f"结息记录：{len(interest_records)} 笔"
-            + (f"｜最近 {recent_interest[:10]}" if recent_interest else "")
-            + f"\n\n大额收入：{large_income_count} 笔｜大额支出：{large_expense_count} 笔\n"
-            f"1/3/7日资金观察：{proximity_counts.get(1, 0)}/"
-            f"{proximity_counts.get(3, 0)}/{proximity_counts.get(7, 0)} 组\n"
-            f"低留存候选：{low_retention} 项\n\n"
-            f"最近三个月：{recent_change}"
-        )
+        funds_body = _fund_overview(result)
         self.module_cards["funds_balance"].set_content(
             funds_body,
             (
@@ -2739,15 +4749,22 @@ class CaseDashboardPage(QScrollArea):
             "orange" if low_retention or max(proximity_counts.values(), default=0) else "mint",
         )
 
+        sensitive_overview, sensitive_choices = _sensitive_overview(result)
+        declaration_overview, declaration_choices = _declaration_overview(result)
+        self.module_category_choices = {
+            "sensitive": sensitive_choices,
+            "purchase": purchase_choices,
+            "counterparty": counterparty_choices,
+            "declaration": declaration_choices,
+        }
         self.module_summaries = {
             "manual": (
-                f"待人工核实 {manual_count} 项；"
-                + ("重点：" + "；".join(focus) if focus else "当前无确定性核实事项"),
-                "仅供人工核实",
+                _manual_overview(result),
+                "点击后进入完整问题列表；概要不展开全部问题",
             ),
             "sensitive": (
-                f"敏感候选 {sensitive_count} 项；{category_text}",
-                "候选命中不代表风险",
+                sensitive_overview,
+                "点击敏感类别后进入对应交易明细；候选命中不代表风险",
             ),
             "declaration": (
                 "直接命中 {direct_match}｜候选 {candidate_match}｜"
@@ -2757,37 +4774,32 @@ class CaseDashboardPage(QScrollArea):
                 "未发现或不可用不等于申报不真实",
             ),
             "purchase": (
-                f"下定候选 {purchase_count} 笔；{purchase_detail}",
-                "只展示可靠字段候选，不作购车归因",
+                purchase_overview,
+                PURCHASE_BOUNDARY_TEXT,
             ),
             "business": (
-                f"确定性候选 {deterministic_count}｜AI正向 {ai_count}｜"
-                f"待人工判断 {len(undetermined_ai)}",
-                (
-                    "经营上下文待确认，未执行完整行业语义判断"
-                    if confirmation_required
-                    else _business_reason_label(business_reason)
-                    if not business_available
-                    else "AI观察可用，仍需结合交易证据人工核实"
+                _business_overview(
+                    result,
+                    case_context,
+                    manual_context,
                 ),
+                "默认打开相关候选；所有分类只展示既有标准结果",
             ),
             "funds": (
-                f"大额收入 {large_income_count}｜大额支出 {large_expense_count}；"
-                f"1/3/7日并列 {proximity_counts.get(1, 0)}/"
-                f"{proximity_counts.get(3, 0)}/{proximity_counts.get(7, 0)}",
-                "时间并列不表示资金来源",
+                funds_body,
+                FUND_BOUNDARY_TEXT,
             ),
             "balance": (
-                f"最近可靠日末余额 {latest_balance}（{latest_balance_date}）；"
-                f"结息 {len(interest_records)} 笔；{recent_change}",
-                "日末余额不是日均余额；结息不能反推本金或偿债能力",
+                funds_body,
+                FUND_BOUNDARY_TEXT,
             ),
             "counterparty": (
-                f"收入覆盖 {_percentage(income_coverage)}｜"
-                f"支出覆盖 {_percentage(expense_coverage)}；"
-                f"跨来源同名候选 "
-                f"{len(occurrence_rows) if isinstance(occurrence_rows, list) else 0}",
+                counterparty_overview,
                 "排名只表示可靠字段金额汇总，不表示对手关系",
+            ),
+            "declaration": (
+                declaration_overview,
+                "可靠字段内未发现不表示客户没有该行为，也不表示申报虚假",
             ),
         }
         result_body = result.get("result", {})
@@ -2828,6 +4840,7 @@ class VerificationWorkspace(QWidget):
         self.setObjectName("briefWorkspace")
         self.setFont(QFont("Microsoft YaHei UI", 10))
         root = QVBoxLayout(self)
+        self.root_layout = root
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
@@ -2867,7 +4880,7 @@ class VerificationWorkspace(QWidget):
         nav_layout.addWidget(self.legacy_button)
         root.addWidget(navigation)
 
-        self.main_pages = QStackedWidget()
+        self.main_pages = AnimatedStackedWidget()
         self.welcome_page = WelcomePage()
         self.processing_page = ProcessingPage()
         self.preparation_page = CasePreparationPage()
@@ -2881,7 +4894,7 @@ class VerificationWorkspace(QWidget):
         case_layout.setSpacing(10)
         case_layout.addWidget(self.dashboard_page.header)
         case_layout.addWidget(self.dashboard_page.header_meta)
-        self.case_content_pages = QStackedWidget()
+        self.case_content_pages = AnimatedStackedWidget()
         for page in (
             self.dashboard_page,
             self.module_summary_page,
@@ -2969,6 +4982,10 @@ class VerificationWorkspace(QWidget):
         self.manual_table = self.transaction_list_panel.manual_table
         self.sensitive_table = self.transaction_list_panel.sensitive_table
         self.business_table = self.transaction_list_panel.business_table
+        self.purchase_table = self.transaction_list_panel.purchase_table
+        self.counterparty_table = self.transaction_list_panel.counterparty_table
+        self.declaration_table = self.transaction_list_panel.declaration_table
+        self.evidence_center = self.transaction_list_panel.evidence_center
         self.source_status = self.processing_page.source_status
         self.setStyleSheet(brief_stylesheet())
 
@@ -3068,23 +5085,52 @@ class VerificationWorkspace(QWidget):
         if (
             self._result is None
             or module_key
-            not in {"manual", "sensitive", "business"}
+            not in {
+                "manual",
+                "sensitive",
+                "business",
+                "purchase",
+                "counterparty",
+                "funds",
+                "balance",
+                "declaration",
+                "evidence",
+            }
         ):
             return
         self._active_module = module_key
         section = self._section_for_module(module_key)
         self._active_section = section
-        summary_text, status_text = self.dashboard_page.module_summaries.get(
+        _summary_text, status_text = self.dashboard_page.module_summaries.get(
             module_key,
             ("等待标准结果。", "不可用"),
         )
-        summary = f"{summary_text}\n{status_text}"
+        summary = status_text
+        if module_key == "purchase" and PURCHASE_BOUNDARY_TEXT not in summary:
+            summary = f"{summary}\n{PURCHASE_BOUNDARY_TEXT}"
+        elif (
+            module_key in {"funds", "balance"}
+            and FUND_BOUNDARY_TEXT not in summary
+        ):
+            summary = f"{summary}\n{FUND_BOUNDARY_TEXT}"
         section_title = ModuleSummaryPage.SECTION_TITLES[section]
         module_title = TransactionListPanel.MODULE_TITLES[module_key]
         filter_suffix = (
-            f" > {BUSINESS_FILTER_LABELS.get(view_filter, '正向候选')}"
+            f" > {BUSINESS_FILTER_LABELS.get(view_filter, '相关候选')}"
             if module_key == "business"
-            else ""
+            else (
+                f" > {SENSITIVE_CATEGORY_LABELS.get(view_filter, '全部候选')}"
+                if module_key == "sensitive"
+                else (
+                    f" > {PURCHASE_CATEGORY_LABELS.get(view_filter, '全部候选')}"
+                    if module_key == "purchase"
+                    else (
+                        f" > {DECLARATION_TYPE_LABELS.get(view_filter, '申报项')}"
+                        if module_key == "declaration"
+                        else ""
+                    )
+                )
+            )
         )
         self.transaction_list_panel.set_module(
             module_key,
@@ -3169,7 +5215,10 @@ class VerificationWorkspace(QWidget):
             self.dashboard_page.evidence_summary.detail_label.text(),
             self.dashboard_page.evidence_summary.status_label.text(),
         )
-        self.module_summary_page.set_module_summaries(module_summaries)
+        self.module_summary_page.set_module_summaries(
+            module_summaries,
+            self.dashboard_page.module_category_choices,
+        )
         self.progress.setValue(100)
         self.processing_page.stop(
             f"schema {summary['schema_version']} 已就绪。"
@@ -3204,7 +5253,11 @@ class VerificationWorkspace(QWidget):
         transaction_id: str,
         source_table: object,
     ) -> None:
-        if self._result is None or not isinstance(source_table, PagedTable):
+        if (
+            self._result is None
+            or not hasattr(source_table, "model")
+            or not hasattr(source_table.model, "transaction_ids")
+        ):
             return
         self.evidence_panel.set_context(
             self._result,
@@ -3219,12 +5272,21 @@ class VerificationWorkspace(QWidget):
 
     def _open_evidence_panel(self) -> None:
         self.evidence_panel.show()
-        width = max(360, min(480, self.width() // 3))
-        self.splitter.setSizes([max(600, self.width() - width), width])
+        width = max(400, min(560, round(self.width() * 0.38)))
+        self.splitter.setSizes([max(560, self.width() - width), width])
 
     def close_evidence(self) -> None:
         self.evidence_panel.hide()
         self.splitter.setSizes([max(1, self.width()), 0])
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        compact = self.width() < 1120
+        margin = 10 if compact else 16
+        self.root_layout.setContentsMargins(margin, margin, margin, margin)
+        if self.evidence_panel.isVisible():
+            width = max(400, min(560, round(self.width() * 0.38)))
+            self.splitter.setSizes([max(520, self.width() - width), width])
 
 
 def brief_stylesheet() -> str:
@@ -3293,6 +5355,14 @@ def brief_stylesheet() -> str:
         font-size: 13px;
         font-weight: 900;
     }}
+    QLabel#briefIntegrityIssue {{
+        padding: 8px 10px;
+        color: {BriefTheme.INK};
+        background: #FFE0C7;
+        border-left: 5px solid {BriefTheme.ORANGE};
+        font-size: 12px;
+        font-weight: 700;
+    }}
     QLineEdit[invalid="true"] {{
         border: 2px solid {BriefTheme.RED};
         background: #FFF1ED;
@@ -3360,7 +5430,7 @@ def brief_stylesheet() -> str:
     QLabel#briefModuleStatus[tone="mint"] {{ background: {BriefTheme.MINT}; }}
     QLabel#briefModuleStatus[tone="orange"] {{ background: {BriefTheme.ORANGE}; }}
     QPushButton {{
-        min-height: 36px;
+        min-height: 38px;
         padding: 0 14px;
         color: {BriefTheme.INK};
         background: {BriefTheme.SURFACE};
@@ -3461,4 +5531,5 @@ def brief_stylesheet() -> str:
     QLabel#briefStatusBadge[tone="mint"] {{ background: {BriefTheme.MINT}; }}
     QLabel#briefStatusBadge[tone="orange"] {{ background: {BriefTheme.ORANGE}; }}
     QLabel#briefStatusBadge[tone="red"] {{ background: {BriefTheme.RED}; }}
+    QLabel#briefStatusBadge[tone="muted"] {{ background: #D8D1C3; }}
     """

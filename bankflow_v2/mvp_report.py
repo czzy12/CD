@@ -29,7 +29,7 @@ _CROSS_CHECK_LABELS = {
 _CHECK_TYPE_LABELS = {
     "work_unit": "工作单位",
     "declared_industry": "申报行业或经营内容",
-    "purchase_deposit_expense": "下定定金支出",
+    "purchase_deposit_expense": "下定相关流水",
     "work_location": "工作地点",
     "residence_location": "住家地址",
     "vehicle_registration_location": "车辆上牌地点",
@@ -273,24 +273,20 @@ def _display_only_item(
 
 def _declared_deposit_candidates(
     candidates: list[dict[str, object]],
-    purchase_values: list[str],
 ) -> list[dict[str, object]]:
-    normalized_values = [
-        re.sub(r"\s+", "", value).casefold()
-        for value in purchase_values
-    ]
-    explicit_deposit_terms = {"下定", "定金", "订金"}
+    direct_terms = {
+        "下定",
+        "订金",
+        "定金",
+        "购车款",
+        "首付款",
+        "补款",
+        "问界",
+    }
     return [
         candidate
         for candidate in candidates
-        if any(
-            term in explicit_deposit_terms
-            or any(
-                re.sub(r"\s+", "", term).casefold() in declared_value
-                for declared_value in normalized_values
-            )
-            for term in candidate.get("matched_terms", [])
-        )
+        if direct_terms.intersection(candidate.get("matched_terms", []))
     ]
 
 
@@ -378,7 +374,6 @@ def build_declaration_flow_cross_check(
         )
         purchase_candidates = _declared_deposit_candidates(
             funding.get("value", {}).get("purchase_candidates", []),
-            purchase_values,
         )
         matched_fields: dict[str, list[str]] = {}
         for candidate in purchase_candidates:
@@ -398,7 +393,7 @@ def build_declaration_flow_cross_check(
                     field_name: sorted(set(terms))
                     for field_name, terms in matched_fields.items()
                 },
-                direct=False,
+                direct=True,
                 coverage_available=coverage_available,
             )
         )
@@ -414,7 +409,6 @@ def build_declaration_flow_cross_check(
                 "work_location",
                 "residence_location",
                 "vehicle_registration_location",
-                "vehicle_model",
                 "dealer_name",
                 "purchase_declaration",
             )
@@ -469,14 +463,17 @@ def build_declaration_flow_cross_check(
                 "work_location",
                 "residence_location",
                 "vehicle_registration_location",
-                "vehicle_model",
                 "dealer_name",
                 "purchase_declaration",
             ],
-            "purchase_direction": "expense",
+            "purchase_direction": "income_or_expense",
             "future_life_trajectory_fields": [
                 "work_location",
                 "residence_location",
+            ],
+            "future_vehicle_trajectory_fields": [
+                "vehicle_model",
+                "vehicle_registration_location",
             ],
             "interpretation": "只对照显式申报与可靠流水文字；未发现依据或不可用不等于客户陈述虚假。",
         },
@@ -1231,7 +1228,7 @@ def render_mvp_markdown(
         keyword.get("value", {}).get("reason", ""),
     )
     purchase_reason = {
-        "purchase_expense_candidate_unavailable": "未发现下定或购车支出候选",
+        "purchase_expense_candidate_unavailable": "未发现下定或购车相关流水",
     }.get(
         funding.get("value", {}).get("reason", ""),
         funding.get("value", {}).get("reason", ""),
@@ -1247,12 +1244,12 @@ def render_mvp_markdown(
                 else f"- 关键词命中：0 笔；{keyword_reason}。"
             ),
             (
-                f"- 下定/购车支出候选：{len(purchase_candidates)} 笔。"
+                f"- 下定/购车相关流水：{len(purchase_candidates)} 笔。"
                 if purchase_candidates
-                else f"- 下定/购车支出候选：0 笔；{purchase_reason}。"
+                else f"- 下定/购车相关流水：0 笔；{purchase_reason}。"
             ),
             "",
-            "| 下定候选时间 | 来源 | 方向 | 支出 | 命中字段及原文 | 命中词 | 此前收入候选 | 证据 |",
+            "| 下定相关时间 | 来源 | 方向 | 金额 | 命中字段及原文 | 命中词 | 此前收入候选 | 证据 |",
             "| --- | --- | --- | ---: | --- | --- | --- | --- |",
         ]
     )
@@ -1277,7 +1274,16 @@ def render_mvp_markdown(
             + (" 近似" if income.get("near_amount") and not income.get("exact_amount") else "")
             + (" 大额" if income.get("large_income") else "")
             for income in candidate.get("prior_income_candidates", [])
-        ) or "未发现满足当前规则的此前收入"
+        ) or (
+            "当前为收入记录，不作此前收入并列"
+            if candidate.get("direction") == "income"
+            else "未发现满足当前规则的此前收入"
+        )
+        amount = (
+            candidate.get("income")
+            if candidate.get("direction") == "income"
+            else candidate.get("expense")
+        )
         lines.append(
             "| "
             + " | ".join(
@@ -1289,7 +1295,7 @@ def render_mvp_markdown(
                         ).name
                     ),
                     _md(transaction_context.get("direction")),
-                    _md(candidate.get("expense")),
+                    _md(amount),
                     _md(field_text),
                     _md("、".join(candidate.get("matched_terms", []))),
                     _md(prior),

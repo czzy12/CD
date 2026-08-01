@@ -87,6 +87,15 @@ KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
         "套转",
     ),
 }
+PURCHASE_DIRECT_TERMS = {
+    "下定",
+    "订金",
+    "定金",
+    "购车款",
+    "首付款",
+    "补款",
+    "问界",
+}
 
 _GENERIC_TEXT = {
     "转账",
@@ -587,7 +596,7 @@ def _purchase_funding_observation(
         for hit in keyword_observation["value"]["hits"]
         if "purchase_and_vehicle_order" in hit["keyword_groups"]
         and by_id.get(hit["transaction_id"])
-        and by_id[hit["transaction_id"]].expense > Decimal("0.00")
+        and PURCHASE_DIRECT_TERMS.intersection(hit["matched_terms"])
     ]
     candidates: list[dict[str, object]] = []
     evidence_ids: list[str] = []
@@ -595,47 +604,58 @@ def _purchase_funding_observation(
     for hit in purchase_hits:
         purchase = by_id[hit["transaction_id"]]
         prior_income_rows: list[dict[str, object]] = []
-        for income in ordered:
-            if income.income <= Decimal("0.00") or income.transaction_time > purchase.transaction_time:
-                continue
-            age = purchase.transaction_time - income.transaction_time
-            if age > timedelta(days=7):
-                continue
-            ratio = income.income / purchase.expense
-            exact_amount = income.income == purchase.expense
-            near_amount = Decimal("0.90") <= ratio <= Decimal("1.10")
-            large_income = income.income >= Decimal("30000.00")
-            if not (near_amount or large_income):
-                continue
-            windows = [
-                days for days in (1, 3, 7) if age <= timedelta(days=days)
-            ]
-            prior_income_rows.append(
-                {
-                    "transaction_id": income.transaction_id,
-                    "source_file_id": income.source_file_id,
-                    "source_file": income.source_file,
-                    "evidence_locator": income.evidence_locator,
-                    "transaction_time": income.transaction_time.isoformat(),
-                    "income": _decimal(income.income),
-                    "same_source_as_purchase": (
-                        income.source_file_id == purchase.source_file_id
-                    ),
-                    "exact_amount": exact_amount,
-                    "near_amount": near_amount,
-                    "large_income": large_income,
-                    "amount_ratio_to_purchase": f"{ratio:.4f}",
-                    "within_windows_days": windows,
-                }
-            )
-            if income.transaction_id:
-                evidence_ids.append(income.transaction_id)
+        if purchase.expense > Decimal("0.00"):
+            for income in ordered:
+                if (
+                    income.income <= Decimal("0.00")
+                    or income.transaction_time > purchase.transaction_time
+                ):
+                    continue
+                age = purchase.transaction_time - income.transaction_time
+                if age > timedelta(days=7):
+                    continue
+                ratio = income.income / purchase.expense
+                exact_amount = income.income == purchase.expense
+                near_amount = Decimal("0.90") <= ratio <= Decimal("1.10")
+                large_income = income.income >= Decimal("30000.00")
+                if not (near_amount or large_income):
+                    continue
+                windows = [
+                    days for days in (1, 3, 7) if age <= timedelta(days=days)
+                ]
+                prior_income_rows.append(
+                    {
+                        "transaction_id": income.transaction_id,
+                        "source_file_id": income.source_file_id,
+                        "source_file": income.source_file,
+                        "evidence_locator": income.evidence_locator,
+                        "transaction_time": income.transaction_time.isoformat(),
+                        "income": _decimal(income.income),
+                        "same_source_as_purchase": (
+                            income.source_file_id == purchase.source_file_id
+                        ),
+                        "exact_amount": exact_amount,
+                        "near_amount": near_amount,
+                        "large_income": large_income,
+                        "amount_ratio_to_purchase": f"{ratio:.4f}",
+                        "within_windows_days": windows,
+                    }
+                )
+                if income.transaction_id:
+                    evidence_ids.append(income.transaction_id)
+        direction = (
+            "expense"
+            if purchase.expense > Decimal("0.00")
+            else "income"
+        )
         candidates.append(
             {
                 "purchase_transaction_id": purchase.transaction_id,
                 "source_file_id": purchase.source_file_id,
                 "evidence_locator": purchase.evidence_locator,
                 "transaction_time": purchase.transaction_time.isoformat(),
+                "direction": direction,
+                "income": _decimal(purchase.income),
                 "expense": _decimal(purchase.expense),
                 "matched_terms": hit["matched_terms"],
                 "matched_fields": hit["matched_fields"],
@@ -658,9 +678,15 @@ def _purchase_funding_observation(
             "windows_days": [1, 3, 7],
             "near_amount_ratio_inclusive": ["0.90", "1.10"],
             "large_income_threshold": "30000.00",
+            "included_directions": ["income", "expense"],
+            "direct_terms": sorted(PURCHASE_DIRECT_TERMS),
             "cross_source_temporal_comparison": True,
             "fund_source_attribution": False,
-            "interpretation": "仅并列下定候选前的收入时间和金额，不表示该收入是定金来源。",
+            "interpretation": (
+                "可靠字段命中下定、订金、定金、购车款、首付款、补款或问界时，收入和支出均列示；"
+                "收入可能是退款，仅提示原文，不据此判断订单是否取消。"
+                "此前收入只与购车支出作时间金额并列，不表示资金来源。"
+            ),
         },
         "evidence_transaction_ids": list(dict.fromkeys(evidence_ids)),
         "field_coverage": {

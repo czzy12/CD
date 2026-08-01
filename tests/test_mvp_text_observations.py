@@ -231,6 +231,32 @@ class MvpTextObservationTests(unittest.TestCase):
                     f"tx:purchase:{index}",
                 )
 
+    def test_purchase_vocabulary_includes_income_refund_with_wenjie(self):
+        refund = tx(
+            "tx:refund",
+            datetime(2026, 1, 3),
+            income="10000",
+            counterparty_name="重庆问界汽车销售有限公司",
+            summary="退款",
+        )
+
+        funding = build_deterministic_text_observations(
+            [refund],
+            None,
+        )[2]
+        candidate = funding["value"]["purchase_candidates"][0]
+
+        self.assertEqual(candidate["purchase_transaction_id"], "tx:refund")
+        self.assertEqual(candidate["direction"], "income")
+        self.assertEqual(candidate["income"], "10000.00")
+        self.assertEqual(candidate["expense"], "0.00")
+        self.assertEqual(candidate["prior_income_candidates"], [])
+        self.assertIn("问界", candidate["matched_terms"])
+        self.assertEqual(
+            funding["parameters"]["included_directions"],
+            ["income", "expense"],
+        )
+
     def test_does_not_match_single_character_sensitive_or_vehicle_terms(self):
         unrelated = tx(
             "tx:unrelated",

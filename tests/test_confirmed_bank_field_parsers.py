@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 from unittest.mock import patch
 
 from bankflow_v2.ccb import extract_ccb
@@ -10,6 +11,7 @@ from bankflow_v2.huaxia import extract_huaxia
 from bankflow_v2.icbc import _standard_channel, extract_icbc
 from bankflow_v2.pingan import extract_pingan
 from bankflow_v2.spdb import extract_spdb, extract_spdb_corp
+from bankflow_v2.mvp_observations import build_deterministic_text_observations
 
 
 class _Page:
@@ -111,6 +113,109 @@ class ConfirmedBankFieldParserTests(unittest.TestCase):
         self.assertEqual(tx.counterparty_name, "甲公司")
         self.assertEqual(tx.counterparty_account, "")
         self.assertEqual(tx.source_fields["counterparty_account_bank_raw"], "6222/示例银行")
+
+    def test_cib_maps_watermarked_eight_column_layout_without_dropping_first_row(self):
+        table = [
+            [
+                "交易时间",
+                "记账日",
+                "支出",
+                "收入",
+                "账户余额",
+                "摘要/用途",
+                "对方户名",
+                "对方账号",
+            ],
+            [
+                "2026-07-28\n11:02:04",
+                "2026-07-28",
+                "2\n0\n2",
+                "7\n0\n-\n6\n10000.00",
+                "17163.14",
+                "退款",
+                "重庆问界汽车销售有限公司",
+                "支付宝|2088",
+            ],
+            [
+                "2026-07-27\n16:35:38",
+                "2026-07-27",
+                "10000.00",
+                "",
+                "7163.14",
+                "快捷支付 订单",
+                "重庆问界汽车销售有限公司",
+                "支付宝|2088",
+            ],
+        ]
+        watermark_text = (
+            "说明：交易明细涉及您的个人隐私，请妥善处理，"
+            "交易明细内容仅供个人参考。"
+        )
+        with patch(
+            "bankflow_v2.cib.pdfplumber.open",
+            return_value=_Pdf([_Page([table], watermark_text)]),
+        ):
+            transactions = extract_cib("sample.pdf")
+
+        self.assertEqual(len(transactions), 2)
+        self.assertEqual(transactions[0].income, Decimal("10000.00"))
+        self.assertEqual(transactions[1].expense, Decimal("10000.00"))
+        self.assertEqual(transactions[1].transaction_time.hour, 16)
+        self.assertEqual(
+            transactions[1].counterparty_name,
+            "重庆问界汽车销售有限公司",
+        )
+        self.assertEqual(transactions[1].summary, "快捷支付 订单")
+        self.assertEqual(
+            transactions[1].field_sources["counterparty_name"],
+            "raw_headers[6]:对方户名",
+        )
+        self.assertEqual(transactions[1].field_confidence["counterparty_name"], 1.0)
+        for index, transaction in enumerate(transactions):
+            transaction.transaction_id = f"tx:cib-eight:{index}"
+            transaction.source_file_id = "source:cib-eight"
+        funding = build_deterministic_text_observations(
+            transactions,
+            None,
+        )[2]
+        self.assertEqual(
+            {
+                candidate["direction"]
+                for candidate in funding["value"]["purchase_candidates"]
+            },
+            {"income", "expense"},
+        )
+
+    def test_cib_repairs_watermark_digit_prefixed_amount_from_adjacent_balances(self):
+        table = [
+            [
+                "2026-07-27\n17:12:08",
+                "2026-07-27",
+                "F\n9\n8574.00",
+                "",
+                "4013.14",
+                "汇款汇出",
+                "吴国荣",
+                "农业银行|6230",
+            ],
+            [
+                "2026-07-27\n16:35:38",
+                "2026-07-27",
+                "10000.00",
+                "",
+                "4587.14",
+                "快捷支付 订单",
+                "重庆问界汽车销售有限公司",
+                "支付宝|2088",
+            ],
+        ]
+        with patch(
+            "bankflow_v2.cib.pdfplumber.open",
+            return_value=_Pdf([_Page([table], "")]),
+        ):
+            transactions = extract_cib("sample.pdf")
+
+        self.assertEqual(transactions[0].expense, Decimal("574.00"))
 
     def test_cmbc_corp_splits_only_unique_slash_boundary(self):
         text = "\n".join([

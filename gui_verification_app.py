@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from PyQt6.QtCore import QStandardPaths
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
@@ -23,6 +24,7 @@ from bankflow_v2.standard_result_view import (
     StandardResultError,
     build_case_context_from_directory,
     load_standard_result,
+    result_summary,
     transactions_from_standard_result,
 )
 from bankflow_v2.result_export import (
@@ -33,7 +35,8 @@ from bankflow_v2.verification_worker import (
     SUPPORTED_INPUTS,
     VerificationWorker,
 )
-from gui_verification import VerificationWorkspace
+from gui_verification import BriefTheme, VerificationWorkspace
+from recent_cases import RECENT_CASES_FILENAME, RecentCaseStore
 
 
 MANUAL_CASE_CONTEXT_FILENAME = "manual_case_context.json"
@@ -123,31 +126,32 @@ def apply_workbench_palette(app: QApplication) -> None:
     palette = QPalette()
     roles = QPalette.ColorRole
     groups = QPalette.ColorGroup
-    palette.setColor(roles.Window, QColor("#F3EDDF"))
-    palette.setColor(roles.WindowText, QColor("#171713"))
-    palette.setColor(roles.Base, QColor("#FFF9EC"))
-    palette.setColor(roles.AlternateBase, QColor("#F7EBCF"))
-    palette.setColor(roles.Text, QColor("#171713"))
-    palette.setColor(roles.Button, QColor("#FFF9EC"))
-    palette.setColor(roles.ButtonText, QColor("#171713"))
-    palette.setColor(roles.Highlight, QColor("#F4C84A"))
-    palette.setColor(roles.HighlightedText, QColor("#171713"))
-    palette.setColor(groups.Disabled, roles.WindowText, QColor("#8F8A80"))
-    palette.setColor(groups.Disabled, roles.Text, QColor("#8F8A80"))
-    palette.setColor(groups.Disabled, roles.ButtonText, QColor("#8F8A80"))
+    palette.setColor(roles.Window, QColor(BriefTheme.BG))
+    palette.setColor(roles.WindowText, QColor(BriefTheme.INK))
+    palette.setColor(roles.Base, QColor(BriefTheme.SURFACE))
+    palette.setColor(roles.AlternateBase, QColor(BriefTheme.SURFACE_STRONG))
+    palette.setColor(roles.Text, QColor(BriefTheme.INK))
+    palette.setColor(roles.Button, QColor(BriefTheme.SURFACE))
+    palette.setColor(roles.ButtonText, QColor(BriefTheme.INK))
+    palette.setColor(roles.Highlight, QColor(BriefTheme.YELLOW))
+    palette.setColor(roles.HighlightedText, QColor(BriefTheme.INK))
+    palette.setColor(groups.Disabled, roles.WindowText, QColor(BriefTheme.MUTED_DIM))
+    palette.setColor(groups.Disabled, roles.Text, QColor(BriefTheme.MUTED_DIM))
+    palette.setColor(groups.Disabled, roles.ButtonText, QColor(BriefTheme.MUTED_DIM))
     app.setPalette(palette)
 
 
 class VerificationMainWindow(QMainWindow):
     """Independent shell that shares only the existing parsing backend."""
 
-    def __init__(self) -> None:
+    def __init__(self, recent_case_store: RecentCaseStore | None = None) -> None:
         super().__init__()
         self.setWindowTitle("流水核查工作台")
         self.resize(1500, 900)
-        self.setMinimumSize(1180, 720)
+        self.setMinimumSize(900, 700)
         self.worker: VerificationWorker | None = None
         self.case_dir: Path | None = None
+        self._current_result_path: Path | None = None
         self._pending_paths: list[Path] = []
         self._base_case_context: dict[str, object] = {}
         self._manual_context: dict[str, object] = {}
@@ -174,6 +178,15 @@ class VerificationMainWindow(QMainWindow):
         self.workspace.businessPreparationRequested.connect(
             self.open_business_preparation
         )
+        self.workspace.historyCaseRequested.connect(self.open_recent_case)
+        self.workspace.historyRemoveRequested.connect(self.remove_recent_case)
+        app_data = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.AppDataLocation
+        )
+        self.recent_case_store = recent_case_store or RecentCaseStore(
+            Path(app_data) / RECENT_CASES_FILENAME
+        )
+        self._refresh_recent_cases()
         self.setCentralWidget(self.workspace)
         self.setStatusBar(QStatusBar())
 
@@ -190,6 +203,7 @@ class VerificationMainWindow(QMainWindow):
             if path.suffix.lower() in SUPPORTED_INPUTS
         )
         self.case_dir = case_dir
+        self._current_result_path = None
         self._pending_paths = paths
         if not paths:
             self.workspace.show_result_error(
@@ -380,6 +394,8 @@ class VerificationMainWindow(QMainWindow):
             case_context=self._base_case_context,
             manual_context=self._manual_context,
         )
+        self._current_result_path = self.case_dir / STANDARD_RESULT_FILENAME
+        self._record_recent_case(rebuilt, self.case_dir.name)
         self.workspace.open_module("business")
         self._preparation_reanalysis = False
         self.statusBar().showMessage("经营关联及相关核实事项已重新分析")
@@ -388,7 +404,9 @@ class VerificationMainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "打开已有案件")
         if not folder:
             return
-        case_dir = Path(folder)
+        self._open_existing_case_path(Path(folder))
+
+    def _open_existing_case_path(self, case_dir: Path) -> bool:
         candidates = sorted(
             case_dir.rglob("*.json"),
             key=lambda path: (
@@ -421,10 +439,12 @@ class VerificationMainWindow(QMainWindow):
                 case_context=self._base_case_context,
                 manual_context=self._manual_context,
             )
+            self._current_result_path = candidate
+            self._record_recent_case(result, case_dir.name)
             self.statusBar().showMessage(
                 f"已读取已有标准结果：{candidate.name}"
             )
-            return
+            return True
         message = "该案件目录中没有可读取的 schema 1.16 标准结果。"
         if errors:
             message += " 已发现JSON，但版本或结构不兼容。"
@@ -435,6 +455,7 @@ class VerificationMainWindow(QMainWindow):
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.start_case_directory(case_dir)
+        return False
 
     def collect_pdf_passwords(
         self,
@@ -489,21 +510,82 @@ class VerificationMainWindow(QMainWindow):
         )
         if not filename:
             return
+        self._load_standard_result_path(Path(filename))
+
+    def _load_standard_result_path(self, path: Path) -> bool:
         try:
-            result = load_standard_result(Path(filename))
-        except StandardResultError as exc:
+            result = load_standard_result(path)
+        except (OSError, StandardResultError) as exc:
             self.workspace.show_result_error(str(exc))
             QMessageBox.warning(self, "标准结果不兼容", str(exc))
-            return
+            return False
         self.case_dir = None
+        self._base_case_context = {}
+        self._manual_context = {}
+        self._current_result_path = path
         self._transactions = transactions_from_standard_result(result)
-        self.workspace.set_result(result, Path(filename).stem)
+        self.workspace.set_result(result, path.stem)
+        self._record_recent_case(result, path.stem, result_path=path)
+        return True
 
     def cancel_current_task(self) -> None:
         if self.worker is None or not self.worker.isRunning():
             return
         self.worker.requestInterruption()
         self.workspace.set_cancel_pending()
+
+    def _record_recent_case(
+        self,
+        result: dict[str, object],
+        case_name: str,
+        *,
+        result_path: Path | None = None,
+    ) -> None:
+        summary = result_summary(result, case_name)
+        summary["analysis_status"] = "已完成"
+        try:
+            self.recent_case_store.upsert(
+                summary,
+                case_dir=self.case_dir,
+                result_path=result_path or self._current_result_path,
+            )
+        except OSError:
+            self.statusBar().showMessage("最近案件索引暂不可写；当前案件不受影响")
+        self._refresh_recent_cases()
+
+    def _refresh_recent_cases(self) -> None:
+        records = self.recent_case_store.load()
+        self.workspace.set_recent_cases(
+            records,
+            corrupt_index=self.recent_case_store.last_load_was_corrupt,
+        )
+
+    def open_recent_case(self, record: object) -> None:
+        if not isinstance(record, dict):
+            return
+        case_dir = Path(str(record.get("case_dir") or ""))
+        if str(record.get("case_dir") or "") and case_dir.is_dir():
+            self._open_existing_case_path(case_dir)
+            return
+        result_path = Path(str(record.get("result_path") or ""))
+        if str(record.get("result_path") or "") and result_path.is_file():
+            self._load_standard_result_path(result_path)
+            return
+        self._refresh_recent_cases()
+        self.statusBar().showMessage("案件位置不可用")
+
+    def remove_recent_case(self, record_id: str) -> None:
+        record = next(
+            (
+                item for item in self.recent_case_store.load()
+                if str(item.get("record_id") or "") == record_id
+            ),
+            None,
+        )
+        if record is None or record.get("available"):
+            return
+        self.recent_case_store.remove(record_id)
+        self._refresh_recent_cases()
 
     def on_finished(self, results, issues, standard_result) -> None:
         case_name = self.case_dir.name if self.case_dir else "当前案例"
@@ -525,10 +607,9 @@ class VerificationMainWindow(QMainWindow):
             manual_context=self._manual_context,
         )
         if self.case_dir is not None:
-            write_bankflow_json(
-                standard_result,
-                self.case_dir / STANDARD_RESULT_FILENAME,
-            )
+            self._current_result_path = self.case_dir / STANDARD_RESULT_FILENAME
+            write_bankflow_json(standard_result, self._current_result_path)
+            self._record_recent_case(standard_result, case_name)
         self.statusBar().showMessage("处理完成")
 
     def on_task_failed(self, message: str) -> None:
@@ -538,6 +619,8 @@ class VerificationMainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
+    app.setOrganizationName("InvestigatorPDF")
+    app.setApplicationName("BankFlowVerification")
     apply_workbench_palette(app)
     window = VerificationMainWindow()
     if "--smoke-test" in sys.argv:

@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication, QLabel, QProgressBar
 
@@ -27,26 +27,31 @@ from bankflow_v2.result_export import (
 from bankflow_v2.verification_worker import VerificationWorker
 from gui_verification import (
     AnimatedStackedWidget,
-    AttentionItemCard,
+    BriefTheme,
     CandidateCategoryButton,
     CasePreparationPage,
     CaseDashboardPage,
+    CompactModuleSummaryCard,
     EvidenceCenterPage,
     EvidenceIndexModel,
     EvidencePanel,
+    FilterButton,
+    DisclosurePanel,
     HardShadowCard,
-    KeyFindingCard,
     KeyMetricsPanel,
     ModuleDetailPage,
     ModuleSummaryHeader,
     ModuleSummaryPage,
+    MiniCardButton,
     PagedTable,
     ProcessingPage,
     ResultListModel,
+    ReviewGroupCard,
     SummaryMetric,
     TransactionListPanel,
     VerificationWorkspace,
     WelcomePage,
+    brief_stylesheet,
 )
 from gui_verification_app import (
     MANUAL_CASE_CONTEXT_FILENAME,
@@ -313,7 +318,9 @@ class GuiVerificationTests(unittest.TestCase):
         workspace.set_result(result, "测试案例")
 
         self.assertIs(workspace._result, result)
-        self.assertEqual(workspace.header.title.text(), "测试案例")
+        self.assertIn("测试案例 | 2026-01-02—2026-01-02", workspace.header.title.text())
+        self.assertIn("1个来源 | 1笔", workspace.header.title.text())
+        self.assertEqual(workspace.header.facts.text(), "已完成 · 证据完整 · schema 1.16")
         self.assertEqual(workspace.sensitive_table.model.total_count(), 1)
         self.assertEqual(workspace.progress.value(), 100)
         self.assertEqual(workspace.load_result_button.text(), "导入标准结果")
@@ -357,7 +364,7 @@ class GuiVerificationTests(unittest.TestCase):
         page.stop("已完成")
         self.assertTrue(page.cancel_button.isHidden())
 
-    def test_dashboard_uses_four_combined_cards_and_compact_amounts(self):
+    def test_dashboard_uses_five_review_groups_and_compact_case_bar(self):
         result = build_bankflow_result(
             [
                 Transaction(
@@ -381,13 +388,14 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(
             list(dashboard.module_cards),
             [
-                "verification_declaration",
-                "purchase_business",
+                "purchase_review",
                 "funds_balance",
-                "counterparty",
+                "business_consumption",
+                "trajectory_vehicle",
+                "sensitive_review",
             ],
         )
-        self.assertEqual(len(dashboard.module_cards), 4)
+        self.assertEqual(len(dashboard.module_cards), 5)
         self.assertNotIn("evidence", dashboard.module_cards)
         self.assertEqual(
             dashboard.metrics["income_sum"].value_label.text(),
@@ -397,7 +405,11 @@ class GuiVerificationTests(unittest.TestCase):
             dashboard.metrics["income_sum"].value_label.toolTip(),
             "24,590,800.00 元",
         )
-        self.assertEqual(dashboard.header.title.text(), "韩鹏飞")
+        self.assertIn("韩鹏飞 | 2026-01-02—2026-01-02", dashboard.header.title.text())
+        self.assertIn("1个来源 | 1笔", dashboard.header.title.text())
+        self.assertEqual(dashboard.header.facts.text(), "已完成 · 证据完整 · schema 1.16")
+        self.assertTrue(dashboard.header.subtitle.isHidden())
+        self.assertTrue(dashboard.header_meta.isHidden())
         self.assertEqual(dashboard.key_metrics_panel._columns, 3)
         dashboard.resize(800, 900)
         dashboard.show()
@@ -406,6 +418,16 @@ class GuiVerificationTests(unittest.TestCase):
         dashboard.resize(1200, 900)
         self.app.processEvents()
         self.assertEqual(dashboard._columns, 2)
+        self.assertIs(
+            dashboard.module_cards["sensitive_review"].parentWidget(),
+            dashboard.module_column_widgets[1],
+        )
+        self.assertEqual(
+            dashboard.module_columns[1].indexOf(
+                dashboard.module_cards["sensitive_review"]
+            ),
+            2,
+        )
         dashboard.close()
         responsive_panel = KeyMetricsPanel()
         responsive_panel.resize(1400, 176)
@@ -415,6 +437,29 @@ class GuiVerificationTests(unittest.TestCase):
         responsive_panel.resize(560, 176)
         self.app.processEvents()
         self.assertEqual(responsive_panel._columns, 2)
+        responsive_panel.resize(1400, 176)
+        self.app.processEvents()
+        responsive_panel.resize(560, 176)
+        self.app.processEvents()
+        self.assertEqual(responsive_panel._columns, 2)
+        self.assertTrue(
+            all(cell.width() > 0 for cell in responsive_panel.metrics.values())
+        )
+        self.assertEqual(
+            {str(cell.property("tone")) for cell in responsive_panel.metrics.values()},
+            {"plain", "orange", "mint", "yellow", "strong"},
+        )
+        metric_rects = [
+            cell.geometry() for cell in responsive_panel.metrics.values()
+        ]
+        self.assertFalse(
+            any(
+                left.intersects(right)
+                for index, left in enumerate(metric_rects)
+                for right in metric_rects[index + 1 :]
+                if left.y() == right.y()
+            )
+        )
         responsive_panel.close()
         card_text = [
             label.text()
@@ -422,12 +467,17 @@ class GuiVerificationTests(unittest.TestCase):
             for label in card.findChildren(QLabel)
         ]
         self.assertFalse(any("ANALYSIS" in text for text in card_text))
-        self.assertEqual(dashboard.life_status.text(), "生活轨迹：当前未分析")
-        self.assertEqual(dashboard.vehicle_status.text(), "用车信息：当前未分析")
+        self.assertEqual(dashboard.life_status.text(), "生活轨迹：未实施")
+        self.assertEqual(dashboard.vehicle_status.text(), "用车记录：未实施")
+        trajectory = dashboard.module_cards["trajectory_vehicle"]
+        for text in ("居住地轨迹：未实施", "高德地点解析：未接入"):
+            self.assertIn(text, trajectory.body_label.text())
+        self.assertEqual(trajectory.status_label.property("tone"), "muted")
+        self.assertEqual(trajectory.action_buttons, {})
         self.assertIn("笔交易已建立唯一索引", dashboard.evidence_summary.detail_label.text())
         self.assertIn("条有效证据引用", dashboard.evidence_summary.detail_label.text())
         self.assertIn(
-            "余额日期：2026-01-02",
+            "日期：2026-01-02",
             dashboard.module_cards["funds_balance"].body_label.text(),
         )
 
@@ -453,14 +503,13 @@ class GuiVerificationTests(unittest.TestCase):
 
         dashboard.set_result(result, "测试案例")
 
-        card = dashboard.module_cards["purchase_business"]
-        self.assertIn("工作单位对照：直接命中", card.body_label.text())
-        self.assertIn("经营内容对照：未提供申报项", card.body_label.text())
-        self.assertIn("经营上下文：待人工补充", card.body_label.text())
-        self.assertIn("确定性文字/企业名称候选", card.body_label.text())
-        self.assertIn("未执行完整行业语义判断", card.status_label.text())
-        self.assertFalse(card.secondary_button.isHidden())
-        self.assertEqual(card.open_button.text(), "查看概要 →")
+        card = dashboard.module_cards["business_consumption"]
+        self.assertIn("工作单位：甲公司", card.body_label.text())
+        self.assertIn("主要经营内容：待确认", card.body_label.text())
+        self.assertIn("经营候选：确定性", card.body_label.text())
+        self.assertIn("消费水平判断尚未实施", card.body_label.text())
+        self.assertIn("未调用完整行业语义判断", card.status_label.text())
+        self.assertIn("business_preparation", card.action_buttons)
 
     def test_dashboard_restores_confirmed_business_context_without_second_model(self):
         extracted = build_case_context(
@@ -499,12 +548,11 @@ class GuiVerificationTests(unittest.TestCase):
             manual_context=manual,
         )
 
-        card = dashboard.module_cards["purchase_business"]
-        self.assertIn("经营上下文：已人工确认", card.body_label.text())
-        self.assertIn("经营内容：食品销售", card.body_label.text())
-        self.assertTrue(card.secondary_button.isHidden())
+        card = dashboard.module_cards["business_consumption"]
+        self.assertIn("主要经营内容：食品销售", card.body_label.text())
+        self.assertIn("产品或服务：预包装食品", card.body_label.text())
 
-    def test_dashboard_header_attention_and_common_summary_components(self):
+    def test_dashboard_compacts_header_and_merges_attention_into_review_group(self):
         result = build_bankflow_result(
             [sensitive_transaction(1)],
             ai_config={},
@@ -530,31 +578,20 @@ class GuiVerificationTests(unittest.TestCase):
 
         dashboard.set_result(result, "测试案例")
 
-        self.assertIn("资料覆盖期间：", dashboard.header.subtitle.text())
-        self.assertIn("资料来源：1 个", dashboard.header.facts.text())
-        self.assertIn("交易笔数：1 笔", dashboard.header.facts.text())
+        self.assertIn("测试案例 | 2026-01-02—2026-01-02", dashboard.header.title.text())
+        self.assertIn("1个来源 | 1笔", dashboard.header.title.text())
+        self.assertEqual(dashboard.header.facts.text(), "已完成 · 证据完整 · schema 1.16")
+        self.assertTrue(dashboard.header_meta.isHidden())
         self.assertEqual(dashboard.completed_badge.text(), "已完成")
         self.assertEqual(dashboard.findChildren(QProgressBar), [])
-        self.assertEqual(len(dashboard.attention_cards), 1)
-        self.assertTrue(
-            all(
-                isinstance(card, AttentionItemCard)
-                for card in dashboard.attention_cards
-            )
-        )
-        first = dashboard.attention_cards[0]
-        self.assertIn("1 项待核实", first.module_badge.text())
-        self.assertIn("客观触发事实：", first.fact_label.text())
-        self.assertIn("建议核实内容：", first.verification_label.text())
-        self.assertIn("对应证据：", first.evidence_label.text())
-        self.assertEqual(first.availability_badge.text(), "数据可用")
-        first.open_button.click()
-        self.assertEqual(attention_opened, [True])
-        self.assertNotIn(
-            "重点：",
-            dashboard.module_cards[
-                "verification_declaration"
-            ].body_label.text(),
+        self.assertTrue(dashboard.attention_container.isHidden())
+        review_card = dashboard.module_cards["sensitive_review"]
+        self.assertIn("待人工核实：", review_card.body_label.text())
+        self.assertIn("优先处理：", review_card.body_label.text())
+        self.assertIn("唯一证据：", review_card.body_label.text())
+        self.assertEqual(
+            set(review_card.action_buttons),
+            {"manual", "sensitive", "declaration", "evidence"},
         )
         self.assertNotIn(
             "最值得注意",
@@ -568,7 +605,7 @@ class GuiVerificationTests(unittest.TestCase):
         )
         self.assertTrue(
             all(
-                isinstance(card, KeyFindingCard)
+                isinstance(card, ReviewGroupCard)
                 for card in dashboard.module_cards.values()
             )
         )
@@ -576,8 +613,8 @@ class GuiVerificationTests(unittest.TestCase):
         workspace = VerificationWorkspace()
         workspace.set_result(result, "测试案例")
         workspace.dashboard_page.module_cards[
-            "verification_declaration"
-        ].open_button.click()
+            "sensitive_review"
+        ].action_buttons["manual"].click()
         self.assertIsInstance(
             workspace.module_summary_page.summary_header,
             ModuleSummaryHeader,
@@ -589,7 +626,10 @@ class GuiVerificationTests(unittest.TestCase):
             )
         )
         workspace.navigate("dashboard")
-        workspace.dashboard_page.attention_cards[0].open_button.click()
+        workspace.dashboard_page.module_cards[
+            "sensitive_review"
+        ].action_buttons["manual"].click()
+        workspace.module_summary_page.choice_buttons[("manual", "all")].click()
         self.assertIs(
             workspace.case_content_pages.currentWidget(),
             workspace.transaction_list_panel,
@@ -908,16 +948,22 @@ class GuiVerificationTests(unittest.TestCase):
         workspace.set_result(result, "测试案例")
 
         workspace.dashboard_page.module_cards[
-            "verification_declaration"
-        ].open_button.click()
+            "sensitive_review"
+        ].action_buttons["sensitive"].click()
         self.assertIs(
             workspace.case_content_pages.currentWidget(),
             workspace.module_summary_page,
         )
         self.assertEqual(
             workspace.module_summary_page.title.text(),
-            "核实与申报概要",
+            "敏感与待核实",
         )
+        disclosures = workspace.module_summary_page.findChildren(DisclosurePanel)
+        self.assertTrue(disclosures)
+        self.assertTrue(all(panel.detail.isHidden() for panel in disclosures))
+        disclosures[0].toggle.click()
+        self.assertFalse(disclosures[0].detail.isHidden())
+        self.assertIn("依据", disclosures[0].detail.text())
         self.assertFalse(workspace.evidence_panel.isVisible())
         workspace.module_summary_page.choice_buttons[
             ("sensitive", "all")
@@ -932,7 +978,9 @@ class GuiVerificationTests(unittest.TestCase):
         )
 
         workspace.navigate("dashboard")
-        workspace.dashboard_page.evidence_summary.open_button.click()
+        workspace.dashboard_page.module_cards[
+            "sensitive_review"
+        ].action_buttons["evidence"].click()
         self.assertIs(
             workspace.case_content_pages.currentWidget(),
             workspace.module_summary_page,
@@ -968,15 +1016,15 @@ class GuiVerificationTests(unittest.TestCase):
         )
         self.assertFalse(hasattr(workspace, "case_tab_buttons"))
         workspace.dashboard_page.module_cards[
-            "purchase_business"
-        ].open_button.click()
+            "business_consumption"
+        ].action_buttons["business"].click()
         self.assertIs(
             workspace.case_content_pages.currentWidget(),
             workspace.module_summary_page,
         )
         self.assertEqual(
             workspace.module_summary_page.title.text(),
-            "购车与经营概要",
+            "经营与消费",
         )
         preparation_requests = []
         workspace.businessPreparationRequested.connect(
@@ -986,11 +1034,11 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertEqual(preparation_requests, [True])
         self.assertEqual(
             workspace.dashboard_page.life_status.text(),
-            "生活轨迹：当前未分析",
+            "生活轨迹：未实施",
         )
         self.assertEqual(
             workspace.dashboard_page.vehicle_status.text(),
-            "用车信息：当前未分析",
+            "用车记录：未实施",
         )
         self.assertFalse(workspace.evidence_panel.isVisible())
 
@@ -1087,9 +1135,10 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIn("医疗 1", sensitive_summary)
         self.assertIn("套现 / 套转 1", sensitive_summary)
         self.assertIn("主要命中词：", sensitive_summary)
-        self.assertIn("来源分布：sample.pdf 2", sensitive_summary)
+        self.assertIn("涉及来源：1个来源", sensitive_summary)
         self.assertIn("月份分布：2026-01 2", sensitive_summary)
-        self.assertIn("需核实上下文：", sensitive_summary)
+        self.assertIn("核实提示：", sensitive_summary)
+        self.assertNotIn("counterparty_name", sensitive_summary)
         workspace.module_summary_page.choice_buttons[
             ("sensitive", "medical")
         ].click()
@@ -1164,20 +1213,28 @@ class GuiVerificationTests(unittest.TestCase):
 
         workspace.open_module("business")
         business_summary = workspace.module_summary_page._summaries["business"][0]
+        business_audit = workspace.module_summary_page._summaries["business"][1]
         self.assertIn("工作单位：环保工程有限公司", business_summary)
-        self.assertIn("申报工作描述：环保工程施工", business_summary)
-        self.assertIn("人工确认经营内容：环保工程", business_summary)
-        self.assertIn("主要产品或服务：环保设备与施工", business_summary)
-        self.assertIn("AI 状态：可用", business_summary)
-        self.assertIn("确定性正向：1", business_summary)
-        self.assertIn("medium：1", business_summary)
-        self.assertIn("undetermined：1", business_summary)
-        self.assertIn("none：0", business_summary)
-        self.assertIn("确定性排除：1", business_summary)
-        self.assertIn("主要相关交易对手：甲公司 2", business_summary)
-        self.assertIn("主要用途关键词：信用卡套现还款 2", business_summary)
-        self.assertIn("覆盖月份：2026-01 2", business_summary)
-        self.assertIn("最多 3 项关注内容：", business_summary)
+        self.assertIn("主要经营内容：环保工程", business_summary)
+        self.assertIn("确定性经营候选 1", business_summary)
+        self.assertIn("AI已接受 1", business_summary)
+        self.assertIn("待人工判断 1", business_summary)
+        for text in (
+            "申报工作描述：环保工程施工",
+            "人工确认经营内容：环保工程",
+            "主要产品或服务：环保设备与施工",
+            "AI 状态：可用",
+            "确定性正向：1",
+            "中等依据：1",
+            "待人工判断：1",
+            "无关联依据：0",
+            "确定性排除：1",
+            "主要相关交易对手：甲公司 2",
+            "主要用途关键词：信用卡套现还款 2",
+            "覆盖月份：2026-01 2",
+            "最多 3 项关注内容：",
+        ):
+            self.assertIn(text, business_audit)
         workspace.module_summary_page.choice_buttons[
             ("business", "positive")
         ].click()
@@ -1200,7 +1257,7 @@ class GuiVerificationTests(unittest.TestCase):
         workspace.set_result(result, "购车案例")
 
         dashboard_text = workspace.dashboard_page.module_cards[
-            "purchase_business"
+            "purchase_review"
         ].body_label.text()
         for text in ("下定 1", "订金 0", "定金 1", "购车款 0", "首付款 0", "补款 1"):
             self.assertIn(text, dashboard_text)
@@ -1214,9 +1271,10 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIn("来源分布：sample.pdf 1", summary)
         self.assertIn("主要时间点：2026-01-02 1", summary)
         self.assertIn("最多 3 项提示内容：", summary)
+        self.assertNotIn("不表示资金来源", summary)
         self.assertIn(
             "此前收入与购车支出只作时间并列，不表示资金来源。",
-            summary,
+            workspace.module_summary_page._summaries["purchase"][1],
         )
         workspace.module_summary_page.choice_buttons[
             ("purchase", "deposit")
@@ -1230,7 +1288,7 @@ class GuiVerificationTests(unittest.TestCase):
             workspace.transaction_list_panel.summary.text(),
         )
         self.assertEqual(workspace.purchase_table.model.total_count(), 1)
-        self.assertIn("transaction_id", workspace.purchase_table.model.headers)
+        self.assertNotIn("transaction_id", workspace.purchase_table.model.headers)
         self.assertEqual(
             workspace.purchase_table.model.transaction_id_at(0),
             "tx:gui:1",
@@ -1263,7 +1321,7 @@ class GuiVerificationTests(unittest.TestCase):
         workspace.set_result(result, "问界退款案例")
 
         dashboard_text = workspace.dashboard_page.module_cards[
-            "purchase_business"
+            "purchase_review"
         ].body_label.text()
         self.assertIn("下定 2", dashboard_text)
         self.assertIn("当前状态：直接命中", dashboard_text)
@@ -1348,22 +1406,20 @@ class GuiVerificationTests(unittest.TestCase):
 
         workspace.open_module("funds")
         summary = workspace.module_summary_page._summaries["funds"][0]
-        for text in (
-            "最近可靠余额",
-            "余额字段覆盖",
-            "结息数量",
-            "大额交易数量",
-            "1/3/7日资金路径数量",
-            "低留存候选",
-            "最近三个月收支变化",
-            "最多 3 项需关注事实",
-        ):
+        for text in ("最近可靠余额", "余额字段覆盖", "大额交易", "低留存候选", "结息", "最近三个月收支变化"):
             self.assertIn(text, summary)
-        self.assertIn("不作资金来源归因", summary)
-        self.assertIn("不断言实际停留时长", summary)
-        self.assertIn("日末余额不是日均余额", summary)
-        self.assertIn("结息不能反推存款本金或偿债能力", summary)
-        self.assertIn("月度变化不表示收入稳定性或经营趋势", summary)
+        audit = workspace.module_summary_page._summaries["funds"][1]
+        for text in (
+            "结息数量",
+            "1/3/7日资金路径数量",
+            "最多 3 项需关注事实",
+            "不作资金来源归因",
+            "不断言实际停留时长",
+            "日末余额不是日均余额",
+            "结息不能反推存款本金或偿债能力",
+            "月度变化不表示收入稳定性或经营趋势",
+        ):
+            self.assertIn(text, audit)
         workspace.module_summary_page.choice_buttons[
             ("funds", "all")
         ].click()
@@ -1413,23 +1469,22 @@ class GuiVerificationTests(unittest.TestCase):
 
         workspace.open_module("declaration")
         summary = workspace.module_summary_page._summaries["declaration"][0]
+        for text in ("工作单位", "下定相关流水", "直接命中", "仅展示"):
+            self.assertIn(text, summary)
+        audit = workspace.module_summary_page._summaries["declaration"][1]
         for text in (
-            "工作单位",
-            "下定相关流水",
             "申报原文",
             "来源角色",
             "来源引用",
             "当前覆盖期",
             "搜索覆盖",
             "证据数量",
-            "直接命中",
-            "仅展示",
             "展示说明",
         ):
-            self.assertIn(text, summary)
+            self.assertIn(text, audit)
         self.assertIn(
             "可靠字段内未发现不表示客户没有该行为，也不表示申报虚假",
-            workspace.module_summary_page._summaries["declaration"][1],
+            audit,
         )
         workspace.module_summary_page.choice_buttons[
             ("declaration", "work_unit")
@@ -1509,10 +1564,55 @@ class GuiVerificationTests(unittest.TestCase):
 
         self.assertIsInstance(action_card, HardShadowCard)
         self.assertTrue(action_card._hover_enabled)
-        self.assertEqual(action_card._hover_animation.duration(), 150)
+        self.assertEqual(action_card._hover_animation.duration(), 200)
+        self.assertEqual(action_card._shadow_color, action_card._hover_shadow_color)
         self.assertTrue(
             all(card._hover_enabled for card in dashboard.module_cards.values())
         )
+        expected_hover_colors = {
+            "purchase_review": BriefTheme.SHADOW_PURCHASE,
+            "funds_balance": BriefTheme.SHADOW_FUNDS,
+            "business_consumption": BriefTheme.SHADOW_BUSINESS,
+            "trajectory_vehicle": BriefTheme.SHADOW_FUTURE,
+            "sensitive_review": BriefTheme.SHADOW_SENSITIVE,
+        }
+        for key, hover_card in dashboard.module_cards.items():
+            hover_card.resize(420, 220)
+            shadow_before = hover_card._shadow_rect()
+            foreground_before = hover_card._foreground_rect()
+            self.assertEqual(
+                hover_card._current_shadow_color().name(),
+                BriefTheme.SHADOW_NEUTRAL.lower(),
+            )
+            hover_card._set_hover_progress(1.0)
+            self.assertEqual(hover_card._shadow_rect(), shadow_before)
+            self.assertEqual(
+                hover_card._current_shadow_color().name(),
+                expected_hover_colors[key].lower(),
+            )
+            self.assertEqual(
+                hover_card._foreground_rect().topLeft(),
+                foreground_before.topLeft() - QPoint(3, 3),
+            )
+            hover_card._set_hover_progress(0.0)
+            self.assertEqual(
+                hover_card._current_shadow_color().name(),
+                BriefTheme.SHADOW_NEUTRAL.lower(),
+            )
+        mini_button = MiniCardButton("查看")
+        self.assertFalse(hasattr(mini_button, "_hover_animation"))
+        self.assertFalse(hasattr(mini_button, "_shadow_color"))
+        self.assertNotIsInstance(dashboard.key_metrics_panel, HardShadowCard)
+        self.assertFalse(hasattr(dashboard.key_metrics_panel, "_hover_animation"))
+        self.assertTrue(
+            all(
+                not isinstance(metric, HardShadowCard)
+                and not hasattr(metric, "_hover_animation")
+                for metric in dashboard.metrics.values()
+            )
+        )
+        active_navigation = FilterButton("当前案件")
+        self.assertEqual(active_navigation._selection_animation.duration(), 160)
         self.assertIsInstance(workspace.main_pages, AnimatedStackedWidget)
         self.assertIsInstance(
             workspace.case_content_pages,
@@ -1522,6 +1622,45 @@ class GuiVerificationTests(unittest.TestCase):
             workspace.transaction_list_panel.tables,
             AnimatedStackedWidget,
         )
+
+    def test_top_navigation_uses_workspace_background_without_outer_panel(self):
+        stylesheet = brief_stylesheet()
+
+        self.assertIn(
+            "QFrame#briefTopNavigation {\n        background: transparent;\n        border: 0;",
+            stylesheet,
+        )
+        self.assertIn(
+            "QFrame#briefCaseInfoBar {\n        background: transparent;\n        border: 0;",
+            stylesheet,
+        )
+        self.assertIn(f"QWidget#briefWorkspace {{\n        background: {BriefTheme.BG};", stylesheet)
+
+    def test_top_navigation_shares_region_and_module_summary_uses_grid(self):
+        result = build_bankflow_result([sensitive_transaction(1)], ai_config={})
+        workspace = VerificationWorkspace()
+        workspace.resize(1500, 900)
+        workspace.set_result(result, "测试案例")
+
+        self.assertIs(workspace.header.parentWidget(), workspace.navigation)
+        self.assertFalse(
+            any(
+                label.text() == "BANKFLOW BRIEF"
+                for label in workspace.findChildren(QLabel)
+            )
+        )
+        self.assertTrue(
+            all(
+                card.property("darkCard") is True
+                for card in workspace.dashboard_page.module_cards.values()
+            )
+        )
+        workspace.open_module("purchase")
+        cards = workspace.module_summary_page.cards_container.findChildren(
+            CompactModuleSummaryCard
+        )
+        self.assertEqual(len(cards), 1)
+        self.assertGreaterEqual(len(cards[0]._metric_cells), 2)
 
     def test_detail_tables_keep_readable_height_and_explicit_column_widths(self):
         table = PagedTable("purchase")
@@ -1595,7 +1734,7 @@ class GuiVerificationTests(unittest.TestCase):
                 "1.16",
             )
             self.assertEqual(
-                window.workspace.header.title.text(),
+                window.workspace.header.title.text().split(" | ", 1)[0],
                 Path(directory).name,
             )
 
@@ -1609,11 +1748,11 @@ class GuiVerificationTests(unittest.TestCase):
         palette = self.app.palette()
         self.assertEqual(
             palette.color(QPalette.ColorRole.Window).name().upper(),
-            "#F3EDDF",
+            "#F1E5D0",
         )
         self.assertEqual(
             palette.color(QPalette.ColorRole.Base).name().upper(),
-            "#FFF9EC",
+            "#FFFDF7",
         )
 
 

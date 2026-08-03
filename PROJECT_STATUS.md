@@ -28,6 +28,8 @@ origin/work/2026-07-18-bankflow-verification
 以 `git log -1 --oneline` 实际结果为准
 ```
 
+WebView2验证切片功能提交为`28a70e4`；2026-08-03已按用户授权将此前未推送节点及本轮提交同步到远端同名分支。下一入口为工作台正式迁移。
+
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
 
 - 2026-07-27：流水核查 MVP 第1轮已在本地实现：新增来源分层的最小 `case_context`；工行个人与微信首页明确期间写入既有 `StatementMetadata`；任如冰工行“渠道”在唯一归一后写入 `transaction_method`，原值继续保留。真实任如冰工行109笔渠道全部可用，两份微信期间正确；定向单元测试25 PASS，工行专项回归2 PASS / 0 FAIL / 2 SKIP。未运行全量单元测试和统一回归，未提交、未推送；人工确认工作簿因规定工具导入超时待同步，详见 `chg-20260727-07`。

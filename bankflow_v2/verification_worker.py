@@ -147,6 +147,14 @@ class VerificationWorker(QThread):
                 case_context=self.case_context,
                 ai_config=self.ai_config,
                 ai_evaluator=self.ai_evaluator,
+                source_diagnostics=[
+                    {
+                        "source_file": source.path.name,
+                        "status": "review" if source.status == "需复核" else "included",
+                        "review_reason": source.message if source.status == "需复核" else "",
+                    }
+                    for source in source_results
+                ],
             )
         except Exception as exc:
             self.failed.emit(f"标准结果生成失败：{exc}")

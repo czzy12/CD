@@ -5,6 +5,8 @@ outputs/
 ai-response-cache/
 build/
 dist/
+build-webview2-spike/
+dist-webview2-spike/
 BankFlowGUI/
 *.xlsx
 *.zip

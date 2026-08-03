@@ -1712,6 +1712,10 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIn("result", captured)
         self.assertEqual(mocked.call_args.kwargs["ai_config"], {})
         self.assertIsNone(mocked.call_args.kwargs["ai_evaluator"])
+        self.assertEqual(
+            mocked.call_args.kwargs["source_diagnostics"],
+            [{"source_file": "missing.xlsx", "status": "included", "review_reason": ""}],
+        )
 
     def test_open_existing_case_prefers_schema_result_without_worker(self):
         result = build_bankflow_result([sensitive_transaction(1)], ai_config={})

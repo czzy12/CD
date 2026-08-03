@@ -87,7 +87,7 @@ class ResultExportTests(unittest.TestCase):
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
-        self.assertEqual(result["source_files"], [{"source_file_id": "sha256:source", "source_file": "statement.pdf", "transaction_count": 1}])
+        self.assertEqual(result["source_files"], [{"source_file_id": "sha256:source", "source_file": "statement.pdf", "transaction_count": 1, "status": "included", "review_reason": ""}])
         self.assertEqual(exported["transaction_id"], "tx:source:transaction")
         self.assertEqual(exported["page_no"], 2)
         self.assertEqual(exported["row_no"], 5)
@@ -104,6 +104,7 @@ class ResultExportTests(unittest.TestCase):
                     "field_coverage",
                 }.issubset(indicator)
             )
+
         for observation in result["result"]["observations"]:
             self.assertTrue(
                 {
@@ -148,6 +149,40 @@ class ResultExportTests(unittest.TestCase):
         self.assertEqual(
             evidence["integrity"]["unresolved_transaction_ids"],
             [],
+        )
+
+    def test_source_files_preserve_review_source_without_transactions(self):
+        result = build_bankflow_result(
+            [transaction()],
+            ai_config={},
+            source_diagnostics=[
+                {"source_file": "statement.pdf", "status": "included"},
+                {
+                    "source_file": "unparsed.pdf",
+                    "status": "review",
+                    "review_reason": "未解析到流水",
+                },
+            ],
+        )
+
+        self.assertEqual(
+            result["source_files"],
+            [
+                {
+                    "source_file_id": "sha256:source",
+                    "source_file": "statement.pdf",
+                    "transaction_count": 1,
+                    "status": "included",
+                    "review_reason": "",
+                },
+                {
+                    "source_file_id": "",
+                    "source_file": "unparsed.pdf",
+                    "transaction_count": 0,
+                    "status": "review",
+                    "review_reason": "未解析到流水",
+                },
+            ],
         )
 
     def test_evidence_index_rejects_duplicate_transaction_ids_as_ambiguous(self):

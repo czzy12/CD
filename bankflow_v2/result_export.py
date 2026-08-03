@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -97,15 +97,44 @@ def _summary_record(summary: Summary) -> dict[str, object]:
     }
 
 
-def _source_files(transactions: list[Transaction]) -> list[dict[str, object]]:
+def _source_files(
+    transactions: list[Transaction],
+    source_diagnostics: list[Mapping[str, object]] | None = None,
+) -> list[dict[str, object]]:
     sources: dict[tuple[str, str], int] = {}
     for transaction in transactions:
         key = (transaction.source_file_id, transaction.source_file)
         sources[key] = sources.get(key, 0) + 1
-    return [
-        {"source_file_id": source_id, "source_file": source_file, "transaction_count": count}
+    records = [
+        {
+            "source_file_id": source_id,
+            "source_file": source_file,
+            "transaction_count": count,
+            "status": "included",
+            "review_reason": "",
+        }
         for (source_id, source_file), count in sorted(sources.items())
     ]
+    by_name = {str(record["source_file"]): record for record in records}
+    for diagnostic in source_diagnostics or []:
+        source_file = Path(str(diagnostic.get("source_file") or "")).name
+        if not source_file:
+            continue
+        record = by_name.get(source_file)
+        if record is None:
+            record = {
+                "source_file_id": "",
+                "source_file": source_file,
+                "transaction_count": 0,
+                "status": "included",
+                "review_reason": "",
+            }
+            records.append(record)
+            by_name[source_file] = record
+        if diagnostic.get("status") == "review":
+            record["status"] = "review"
+            record["review_reason"] = str(diagnostic.get("review_reason") or "需复核")
+    return records
 
 
 def _transaction_ids(transactions: list[Transaction]) -> list[str]:
@@ -1737,6 +1766,7 @@ def build_bankflow_result(
     case_context: dict[str, object] | None = None,
     ai_config: dict[str, object] | None = None,
     ai_evaluator: Callable[[dict[str, object]], object] | None = None,
+    source_diagnostics: list[Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Build a verification result without applying adjustment or analysis logic."""
     if ai_config is None and ai_evaluator is None:
@@ -1799,7 +1829,7 @@ def build_bankflow_result(
         "module": "bankflow",
         "analysis_source": "original_transactions",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "source_files": _source_files(original_transactions),
+        "source_files": _source_files(original_transactions, source_diagnostics),
         "statement_metadata": {
             "account_name": statement_metadata.account_name,
             "account_number": statement_metadata.account_number,

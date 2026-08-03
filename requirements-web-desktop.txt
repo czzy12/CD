@@ -1,0 +1,5 @@
+# Extra dependencies for the isolated Web desktop integration slice only.
+# Install in a clean repository-external virtual environment, not globally.
+PyQt6==6.8.1
+PyQt6-WebEngine==6.8.0
+PyInstaller>=6.20,<7

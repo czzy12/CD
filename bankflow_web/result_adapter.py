@@ -24,6 +24,8 @@ from .contracts import (
     PagedTransactionsDTO,
     PurchaseSummaryDTO,
     SourceReviewDTO,
+    SourceReviewItemDTO,
+    SourceReviewSummaryDTO,
     TransactionListItemDTO,
 )
 
@@ -119,9 +121,17 @@ def _prior_income_item(prior: Mapping[str, object], purchase: Mapping[str, objec
 
 
 class PurchaseResultAdapter:
-    def __init__(self, result: Mapping[str, object], case_name: str) -> None:
+    def __init__(
+        self,
+        result: Mapping[str, object],
+        case_name: str,
+        case_session_id: str = "",
+        case_revision: int = 0,
+    ) -> None:
         self._result = result
         self._case_name = case_name
+        self._case_session_id = case_session_id
+        self._case_revision = case_revision
         observation = observation_by_type(result, "purchase_prepayment_funding_candidates")
         value = _mapping(observation.get("value"))
         candidates = [value for value in _list(value.get("purchase_candidates")) if isinstance(value, Mapping)]
@@ -158,9 +168,28 @@ class PurchaseResultAdapter:
             analysis_status="已完成",
             evidence_status="证据完整" if summary["evidence_complete"] else "证据需复核",
             schema_version=str(summary["schema_version"]),
+            case_session_id=self._case_session_id,
+            case_revision=self._case_revision,
             review_source_count=len(review_sources),
             review_sources=review_sources,
         )
+
+    def source_review_summary(self) -> SourceReviewSummaryDTO:
+        items: list[SourceReviewItemDTO] = []
+        for index, source in enumerate(_list(self._result.get("source_files"))):
+            if not isinstance(source, Mapping) or source.get("status") != "review":
+                continue
+            source_id = str(source.get("source_file_id") or f"source-{index + 1}")
+            items.append(SourceReviewItemDTO(
+                source_id=source_id,
+                display_name=Path(str(source.get("source_file") or "")).name or f"来源 {index + 1}",
+                source_type=str(source.get("source_type") or source.get("bank") or "标准结果来源"),
+                status="review",
+                review_reason=str(source.get("review_reason") or "需复核"),
+                parser_name=(str(source.get("parser_name")) if source.get("parser_name") else None),
+                generated_transactions=int(source.get("transaction_count") or 0) > 0,
+            ))
+        return SourceReviewSummaryDTO(self._case_session_id, len(items), items)
 
     def purchase_summary(self) -> PurchaseSummaryDTO:
         direct = [item for item in self._items if item.review_status == "direct"]
@@ -249,4 +278,5 @@ class PurchaseResultAdapter:
             integrity_status="完整" if integrity.get("complete") and set(statuses) <= {"resolved"} else "需复核",
             masked_original_fields=[redact_sensitive_text(value) for value in raw_values],
             full_original_fields=raw_values,
+            case_session_id=self._case_session_id,
         )

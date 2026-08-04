@@ -1,10 +1,11 @@
 {
-  "name": "bankflow-web-spike-frontend",
+  "name": "bankflow-review-workbench-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc -b --pretty false",
     "build": "tsc -b && vite build"
   },

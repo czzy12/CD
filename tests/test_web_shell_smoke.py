@@ -11,7 +11,8 @@ class WebShellSmokeTests(unittest.TestCase):
         index = root / "web_frontend" / "dist" / "index.html"
         self.assertTrue(index.exists())
         assets = "".join(path.read_text(encoding="utf-8", errors="ignore") for path in (root / "web_frontend" / "dist" / "assets").glob("*.js"))
-        self.assertIn("未连接桌面后端", assets)
+        self.assertIn("未连接桌面 API", assets)
+        self.assertIn("打开标准结果", assets)
         self.assertNotIn("BF-001", assets)
         self.assertNotIn("布局演示案例", assets)
 

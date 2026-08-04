@@ -55,8 +55,13 @@ class WebView2ApiTests(unittest.TestCase):
         public = {name for name in dir(self.api) if not name.startswith("_")}
         self.assertEqual(public, {
             "close_case", "get_app_state", "get_case_header", "get_evidence",
+            "get_module_summary", "get_review_modules", "list_module_items",
+            "list_source_reviews",
             "get_purchase_summary", "list_purchase_transactions",
             "load_standard_result", "select_standard_result",
+            "choose_case_directory", "inspect_case_directory",
+            "start_case_analysis", "get_analysis_status", "cancel_analysis",
+            "dismiss_analysis_task", "save_current_standard_result",
         })
 
     def test_state_summary_page_and_evidence_reuse_existing_session(self):

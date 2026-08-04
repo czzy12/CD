@@ -1,10 +1,16 @@
-# 流水核查 Web 集成切片前端
+# 流水核查工作台前端
 
-本目录是 V5 Linear Web 视觉基线的仓库内独立副本，默认只通过 QWebChannel 读取 Python 端 schema 1.16 案件会话。
+本目录是正式 WebView2 候选工作台和保留的技术切片共用的唯一 React + TypeScript + Vite 前端。
+
+- 正式源码入口：`gui_webview2_app.py`
+- 正式启动器：`启动WebView2流水核查工作台.bat`
+- 技术切片入口：`gui_webview2_spike_app.py`
+- 生产资源：`web_frontend/dist`
+
+运行时不启动 Vite，不依赖 Node.js/npm，不访问网络。开发阶段使用：
 
 ```powershell
-npm.cmd install
-npm.cmd run build
+npm run typecheck
+npm test
+npm run build
 ```
-
-桌面正式模式直接加载 `dist/index.html`，不启动 Vite、不访问 `127.0.0.1`、不依赖 Node.js。浏览器直接打开时只显示“未连接桌面后端”，不会自动显示模拟案件。

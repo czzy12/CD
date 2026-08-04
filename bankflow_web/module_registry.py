@@ -1,0 +1,415 @@
+"""Read-only module catalogue and schema 1.16 presentation adapters."""
+
+from __future__ import annotations
+
+import math
+import time
+from pathlib import Path
+from typing import Mapping
+
+from bankflow_v2.standard_result_view import (
+    manual_verification_questions,
+    observation_by_type,
+    redact_sensitive_text,
+    sensitive_transaction_candidates,
+)
+
+from .contracts import (
+    ApplicationError,
+    FilterDefinitionDTO,
+    FilterOptionDTO,
+    ModuleDescriptorDTO,
+    ModuleRegistryDTO,
+    ModuleSummaryDTO,
+    PagedModuleItemsDTO,
+    ReviewItemDTO,
+)
+from .result_adapter import PURCHASE_BOUNDARY_NOTE, PurchaseResultAdapter
+
+
+ALLOWED_PAGE_SIZES = {25, 50, 100}
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _basename(value: object) -> str | None:
+    name = Path(str(value or "")).name
+    return name or None
+
+
+def _transaction_fields(record: Mapping[str, object]) -> Mapping[str, object]:
+    context = _mapping(record.get("transaction_context"))
+    return _mapping(
+        record.get("reliable_standard_fields")
+        or context.get("reliable_standard_fields")
+    )
+
+
+def _direction_amount(record: Mapping[str, object]) -> tuple[str | None, str | None]:
+    context = _mapping(record.get("transaction_context"))
+    direction = str(record.get("direction") or context.get("direction") or "")
+    income = str(record.get("income") or context.get("income") or "0")
+    expense = str(record.get("expense") or context.get("expense") or "0")
+    if direction == "income" or income not in {"", "0", "0.0", "0.00", "None"}:
+        return "收入", income
+    if direction == "expense" or expense not in {"", "0", "0.0", "0.00", "None"}:
+        return "支出", expense
+    return None, None
+
+
+def _common_item(
+    record: Mapping[str, object],
+    *,
+    item_id: str,
+    transaction_id: str | None,
+    category: str | None,
+    matched_text: str | None,
+    interpretation: str | None,
+    review_status: str | None,
+) -> ReviewItemDTO:
+    context = _mapping(record.get("transaction_context"))
+    fields = _transaction_fields(record)
+    direction, amount = _direction_amount(record)
+    counterparty = str(
+        fields.get("counterparty_name")
+        or fields.get("merchant_name")
+        or record.get("counterparty_name")
+        or ""
+    ) or None
+    summary = str(fields.get("summary") or fields.get("purpose") or fields.get("remark") or "") or None
+    source_name = _basename(
+        record.get("source_file") or context.get("source_file")
+    )
+    date = str(record.get("transaction_time") or context.get("transaction_time") or "")[:19] or None
+    return ReviewItemDTO(
+        item_id=item_id,
+        transaction_id=transaction_id,
+        date=date,
+        direction=direction,
+        amount=amount,
+        primary_text=redact_sensitive_text(counterparty or summary or matched_text or "未提供交易摘要"),
+        secondary_text=redact_sensitive_text(summary) if summary else None,
+        counterparty=redact_sensitive_text(counterparty) if counterparty else None,
+        matched_text=redact_sensitive_text(matched_text) if matched_text else None,
+        interpretation=redact_sensitive_text(interpretation) if interpretation else None,
+        category=category,
+        review_status=review_status,
+        source_name=source_name,
+        evidence_available=bool(transaction_id),
+    )
+
+
+def _options(items: list[ReviewItemDTO], field: str) -> list[FilterOptionDTO]:
+    values = sorted({str(getattr(item, field) or "") for item in items if getattr(item, field)})
+    return [FilterOptionDTO(value, value) for value in values]
+
+
+def _filters(items: list[ReviewItemDTO]) -> list[FilterDefinitionDTO]:
+    definitions = [
+        FilterDefinitionDTO("status", "状态", "select", _options(items, "review_status")),
+        FilterDefinitionDTO("category", "分类", "select", _options(items, "category")),
+        FilterDefinitionDTO("source", "来源", "select", _options(items, "source_name")),
+        FilterDefinitionDTO("keyword", "关键词", "text"),
+    ]
+    if any(item.date for item in items):
+        definitions.extend([
+            FilterDefinitionDTO("date_from", "开始日期", "date"),
+            FilterDefinitionDTO("date_to", "结束日期", "date"),
+        ])
+    return definitions
+
+
+class ModuleAdapter:
+    module_id = ""
+    title = ""
+    icon = "circle"
+    display_kind = "transaction_list"
+    description = ""
+    boundary_note = ""
+    forced_availability: str | None = None
+    evidence_supported = True
+
+    def __init__(self, result: Mapping[str, object], case_name: str) -> None:
+        self.result = result
+        self.case_name = case_name
+        self.items = self.build_items()
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        return []
+
+    @property
+    def availability(self) -> str:
+        if self.forced_availability:
+            return self.forced_availability
+        return "available" if self.items else "empty"
+
+    @property
+    def review_count(self) -> int:
+        return sum(item.review_status == "review" for item in self.items)
+
+    def category_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in self.items:
+            if item.category:
+                counts[item.category] = counts.get(item.category, 0) + 1
+        return counts
+
+    def source_count(self) -> int:
+        return len({item.source_name for item in self.items if item.source_name})
+
+    def descriptor(self) -> ModuleDescriptorDTO:
+        return ModuleDescriptorDTO(
+            self.module_id, self.title, self.icon, self.availability,
+            self.display_kind, len(self.items), self.review_count,
+            "需复核" if self.review_count else ("可查看" if self.availability == "available" else ""),
+            self.description, _filters(self.items), self.evidence_supported,
+        )
+
+    def summary(self, case_session_id: str) -> ModuleSummaryDTO:
+        return ModuleSummaryDTO(
+            self.module_id, self.title, len(self.items), self.review_count,
+            self.descriptor().status, self.description, self.boundary_note,
+            self.category_counts(), self.source_count(), case_session_id,
+        )
+
+    def list_items(
+        self,
+        case_session_id: str,
+        page: int,
+        page_size: int,
+        filters: Mapping[str, object],
+        sort: str,
+    ) -> PagedModuleItemsDTO:
+        started = time.perf_counter()
+        if not isinstance(page, int) or page < 1 or page_size not in ALLOWED_PAGE_SIZES:
+            raise ApplicationError("INVALID_ARGUMENT")
+        if sort not in {"default", "date_desc", "date_asc"}:
+            raise ApplicationError("INVALID_ARGUMENT")
+        supported = {definition.key for definition in _filters(self.items)}
+        if any(key not in supported for key, value in filters.items() if value not in (None, "")):
+            raise ApplicationError("INVALID_ARGUMENT")
+        selected = list(self.items)
+        for key, field in (("status", "review_status"), ("category", "category"), ("source", "source_name")):
+            value = str(filters.get(key) or "")
+            if value:
+                selected = [item for item in selected if getattr(item, field) == value]
+        keyword = str(filters.get("keyword") or "").strip().casefold()
+        if keyword:
+            selected = [
+                item for item in selected
+                if keyword in " ".join(str(value or "") for value in (
+                    item.primary_text, item.secondary_text, item.counterparty,
+                    item.matched_text, item.interpretation, item.source_name,
+                )).casefold()
+            ]
+        date_from = str(filters.get("date_from") or "")[:10]
+        date_to = str(filters.get("date_to") or "")[:10]
+        if date_from:
+            selected = [item for item in selected if (item.date or "")[:10] >= date_from]
+        if date_to:
+            selected = [item for item in selected if (item.date or "")[:10] <= date_to]
+        if sort != "default":
+            selected.sort(key=lambda item: item.date or "", reverse=sort == "date_desc")
+        start = (page - 1) * page_size
+        elapsed = round((time.perf_counter() - started) * 1000, 3)
+        return PagedModuleItemsDTO(
+            self.module_id, case_session_id, page, page_size, len(selected),
+            max(1, math.ceil(len(selected) / page_size)),
+            selected[start:start + page_size], _filters(self.items),
+            {"query_elapsed_ms": elapsed, "sort": sort},
+        )
+
+
+class PurchaseModuleAdapter(ModuleAdapter):
+    module_id = "purchase"
+    title = "下定与购车"
+    icon = "car-front"
+    description = "展示标准结果中已有的下定、购车与此前收入候选。"
+    boundary_note = PURCHASE_BOUNDARY_NOTE
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        adapter = PurchaseResultAdapter(self.result, self.case_name)
+        page = adapter.list_transactions(page=1, page_size=100)
+        rows = list(page.items)
+        for number in range(2, page.total_pages + 1):
+            rows.extend(adapter.list_transactions(number, 100).items)
+        return [ReviewItemDTO(
+            item_id=row.transaction_id, transaction_id=row.transaction_id,
+            date=row.date, direction=row.direction, amount=row.amount,
+            primary_text=redact_sensitive_text(row.counterparty),
+            secondary_text=None, counterparty=redact_sensitive_text(row.counterparty),
+            matched_text=redact_sensitive_text(row.matched_text),
+            interpretation=row.interpretation, category=row.category,
+            review_status=row.review_status, source_name=row.source_name,
+            evidence_available=True,
+        ) for row in rows]
+
+
+class SensitiveModuleAdapter(ModuleAdapter):
+    module_id = "sensitive"
+    title = "敏感交易"
+    icon = "shield-alert"
+    description = "展示标准结果中已有的敏感文字上下文候选，仅表示文字共现。"
+    boundary_note = "候选命中只表示文字共现，需结合交易实际性质和背景核实。"
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        rows: list[ReviewItemDTO] = []
+        for candidate in sensitive_transaction_candidates(self.result):
+            if not isinstance(candidate, Mapping):
+                continue
+            transaction_id = str(candidate.get("transaction_id") or "") or None
+            terms = sorted({str(value) for value in _list(candidate.get("matched_terms")) if value})
+            rows.append(_common_item(
+                candidate, item_id=transaction_id or f"sensitive-{len(rows)}",
+                transaction_id=transaction_id, category="敏感文字",
+                matched_text="、".join(terms) or None,
+                interpretation="需结合交易背景人工核实", review_status="review",
+            ))
+        return rows
+
+
+class FundsBalanceModuleAdapter(ModuleAdapter):
+    module_id = "funds_balance"
+    title = "资金与余额"
+    icon = "landmark"
+    description = "展示标准结果中已有的大额交易候选；不在展示层重算资金规则。"
+    boundary_note = "大额和余额观察仅用于定位既有结果，不代表资金来源或用途结论。"
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        observation = observation_by_type(self.result, "large_transaction_candidates")
+        value = _mapping(observation.get("value"))
+        rows: list[ReviewItemDTO] = []
+        for candidate in _list(value.get("candidates")):
+            if not isinstance(candidate, Mapping):
+                continue
+            transaction_id = str(candidate.get("transaction_id") or "") or None
+            rows.append(_common_item(
+                candidate, item_id=transaction_id or f"funds-{len(rows)}",
+                transaction_id=transaction_id, category="大额交易",
+                matched_text="大额交易候选", interpretation="来自 schema 1.16 既有观察",
+                review_status="review",
+            ))
+        return rows
+
+
+class DeclarationCompareModuleAdapter(ModuleAdapter):
+    module_id = "declaration"
+    title = "申报对照"
+    icon = "clipboard-check"
+    display_kind = "summary"
+    description = "展示标准结果中已有的申报对照项。"
+    evidence_supported = True
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        observation = observation_by_type(self.result, "declaration_flow_cross_checks")
+        value = _mapping(observation.get("value"))
+        items = [item for key in ("items", "display_only_items") for item in _list(value.get(key)) if isinstance(item, Mapping)]
+        rows: list[ReviewItemDTO] = []
+        for item in items:
+            ids = [str(value) for value in _list(item.get("evidence_transaction_ids")) if value]
+            transaction_id = ids[0] if ids else None
+            rows.append(ReviewItemDTO(
+                str(item.get("check_type") or f"declaration-{len(rows)}"), transaction_id,
+                None, None, None, redact_sensitive_text(item.get("check_type") or "申报项"),
+                redact_sensitive_text(item.get("reason") or ""), None, None,
+                "展示已有申报对照结果", str(item.get("check_type") or "申报项"),
+                "review" if str(item.get("status") or "") not in {"matched", "display_only"} else "direct",
+                None, bool(transaction_id),
+            ))
+        return rows
+
+
+class BusinessModuleAdapter(ModuleAdapter):
+    module_id = "business"
+    title = "经营痕迹"
+    icon = "briefcase-business"
+    description = "仅读取标准结果中已有的经营关联候选，不发起 AI 调用。"
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        observation = observation_by_type(self.result, "ai_business_relevance_candidates")
+        value = _mapping(observation.get("value"))
+        rows: list[ReviewItemDTO] = []
+        for source_key, source_label in (("deterministic_candidates", "确定性候选"), ("ai_candidates", "既有 AI 观察")):
+            for candidate in _list(value.get(source_key)):
+                if not isinstance(candidate, Mapping):
+                    continue
+                transaction_id = str(candidate.get("transaction_id") or "") or None
+                rows.append(_common_item(
+                    candidate, item_id=transaction_id or f"business-{len(rows)}",
+                    transaction_id=transaction_id, category=source_label,
+                    matched_text=str(candidate.get("classification") or source_label),
+                    interpretation=str(candidate.get("reason") or "已有结果"),
+                    review_status="review",
+                ))
+        if not bool(value.get("available")) and not rows:
+            self.forced_availability = "unavailable"
+        return rows
+
+
+class ManualReviewModuleAdapter(ModuleAdapter):
+    module_id = "manual_review"
+    title = "人工核实"
+    icon = "circle-help"
+    display_kind = "summary"
+    description = "展示标准结果中已有的人工核实问题。"
+
+    def build_items(self) -> list[ReviewItemDTO]:
+        rows: list[ReviewItemDTO] = []
+        for question in manual_verification_questions(self.result):
+            if not isinstance(question, Mapping):
+                continue
+            ids = [str(value) for value in _list(question.get("evidence_transaction_ids")) if value]
+            transaction_id = ids[0] if ids else None
+            rows.append(ReviewItemDTO(
+                str(question.get("question_id") or f"question-{len(rows)}"),
+                transaction_id, None, None, None,
+                redact_sensitive_text(question.get("question_text") or "待人工核实"),
+                redact_sensitive_text(question.get("trigger_reason") or ""), None, None,
+                redact_sensitive_text(question.get("non_conclusion") or "仅供人工核实"),
+                str(question.get("attention_category") or "人工核实"), "review", None,
+                bool(transaction_id),
+            ))
+        return rows
+
+
+class DisabledModuleAdapter(ModuleAdapter):
+    display_kind = "disabled"
+    forced_availability = "not_implemented"
+    evidence_supported = False
+
+    def __init__(self, module_id: str, title: str, icon: str) -> None:
+        self.module_id, self.title, self.icon = module_id, title, icon
+        self.description = "当前版本尚未实施"
+        self.result, self.case_name, self.items = {}, "", []
+
+
+class ModuleRegistry:
+    def __init__(self, result: Mapping[str, object], case_name: str) -> None:
+        self._adapters: dict[str, ModuleAdapter] = {}
+        for adapter in (
+            PurchaseModuleAdapter(result, case_name),
+            SensitiveModuleAdapter(result, case_name),
+            BusinessModuleAdapter(result, case_name),
+            FundsBalanceModuleAdapter(result, case_name),
+            DeclarationCompareModuleAdapter(result, case_name),
+            ManualReviewModuleAdapter(result, case_name),
+            DisabledModuleAdapter("vehicle_records", "用车记录", "car"),
+            DisabledModuleAdapter("life_trajectory", "居住/工作轨迹", "map-pin"),
+            DisabledModuleAdapter("consumption_level", "消费水平", "wallet-cards"),
+        ):
+            self._adapters[adapter.module_id] = adapter
+
+    def catalogue(self, case_session_id: str) -> ModuleRegistryDTO:
+        return ModuleRegistryDTO(case_session_id, [adapter.descriptor() for adapter in self._adapters.values()])
+
+    def adapter(self, module_id: str) -> ModuleAdapter:
+        adapter = self._adapters.get(module_id)
+        if adapter is None:
+            raise ApplicationError("INVALID_ARGUMENT")
+        return adapter

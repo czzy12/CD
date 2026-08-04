@@ -18,6 +18,15 @@ class WebView2ShellSmokeTests(unittest.TestCase):
         self.assertIn('renderer != "edgechromium"', source)
         self.assertNotIn('gui="mshtml"', source)
 
+    def test_formal_launcher_and_spike_launcher_are_separate(self):
+        formal = (ROOT / "gui_webview2_app.py").read_text(encoding="utf-8")
+        spike = (ROOT / "gui_webview2_spike_app.py").read_text(encoding="utf-8")
+        starter = (ROOT / "启动WebView2流水核查工作台.bat").read_text(encoding="utf-8")
+        self.assertIn('title="流水核查工作台"', formal)
+        self.assertIn("gui_webview2_app.py", starter)
+        self.assertIn("WebView2 integration spike", spike)
+        self.assertNotEqual(formal, spike)
+
     def test_built_frontend_is_inlined_and_offline(self):
         html = build_offline_frontend_html()
         self.assertIn("connect-src 'none'", CONTENT_SECURITY_POLICY)
@@ -27,10 +36,10 @@ class WebView2ShellSmokeTests(unittest.TestCase):
         self.assertNotIn("BF-001", html)
 
     def test_frontend_defaults_to_pywebview_adapter(self):
-        source = (ROOT / "web_frontend" / "src" / "bridge" / "desktopBridge.ts").read_text(encoding="utf-8")
+        source = (ROOT / "web_frontend" / "src" / "bridge" / "pywebviewBridgeAdapter.ts").read_text(encoding="utf-8")
         self.assertIn("new PyWebviewBridgeAdapter", source)
-        self.assertIn('get("bridge") === "qwebchannel"', source)
         self.assertIn("pywebview API unavailable", source)
+        self.assertNotIn("QWebChannel", source)
 
     @unittest.skipUnless(os.environ.get("BANKFLOW_RUN_WEBVIEW2_SMOKE") == "1", "set BANKFLOW_RUN_WEBVIEW2_SMOKE=1 for visible shell smoke")
     def test_visible_shell_connects_and_closes(self):

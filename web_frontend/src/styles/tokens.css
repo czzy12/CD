@@ -1,0 +1,8 @@
+:root {
+  --font-ui: Inter, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, monospace;
+  --motion-fast: 120ms;
+  --motion-normal: 150ms;
+  --radius-control: 6px;
+  font-family: var(--font-ui);
+}

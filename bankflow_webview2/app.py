@@ -15,11 +15,17 @@ class StartupError(RuntimeError):
     pass
 
 
-def runtime_storage_path() -> Path:
-    return Path(__file__).resolve().parents[2] / ".runtime" / "cd-bankflow-webview2-spike"
+def runtime_storage_path(runtime_tag: str = "cd-bankflow-webview2-spike") -> Path:
+    return Path(__file__).resolve().parents[2] / ".runtime" / runtime_tag
 
 
-def run_app(*, debug: bool = False, smoke_close_after_ready: float | None = None) -> dict[str, object]:
+def run_app(
+    *,
+    debug: bool = False,
+    smoke_close_after_ready: float | None = None,
+    title: str = "流水核查工作台 · WebView2 集成切片",
+    runtime_tag: str = "cd-bankflow-webview2-spike",
+) -> dict[str, object]:
     started = time.perf_counter()
     runtime = check_webview2_runtime()
     if runtime.status is not RuntimeStatus.AVAILABLE:
@@ -35,7 +41,7 @@ def run_app(*, debug: bool = False, smoke_close_after_ready: float | None = None
     api = WebView2Api()
     frontend_html = build_offline_frontend_html()
     window = webview.create_window(
-        "流水核查工作台 · WebView2 集成切片",
+        title,
         html=frontend_html,
         js_api=api,
         width=1500,
@@ -60,6 +66,7 @@ def run_app(*, debug: bool = False, smoke_close_after_ready: float | None = None
         return None
 
     window.events.initialized += on_initialized
+    window.events.closing += api._on_closing
     window.events.closed += api._shutdown
     if smoke_close_after_ready is not None:
         def close_smoke_window() -> None:
@@ -75,7 +82,7 @@ def run_app(*, debug: bool = False, smoke_close_after_ready: float | None = None
             window.destroy()
 
         threading.Thread(target=close_smoke_window, name="webview2-shell-smoke", daemon=True).start()
-    storage = runtime_storage_path()
+    storage = runtime_storage_path(runtime_tag)
     storage.mkdir(parents=True, exist_ok=True)
     try:
         webview.start(

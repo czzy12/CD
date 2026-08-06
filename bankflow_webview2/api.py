@@ -14,6 +14,7 @@ from bankflow_web.case_workspace import (
     business_confirmation_from_record,
     load_manual_case_context as load_workspace_manual_context,
     save_manual_case_context as save_workspace_manual_context,
+    standard_result_path,
 )
 from bankflow_web.contracts import (
     AppStateDTO,
@@ -78,7 +79,16 @@ class WebView2Api:
                 raise ApplicationError("INTERNAL_ERROR", "桌面窗口正在关闭")
             self._session.load_result_dict(result, case_name=case_name, origin="analysis")
             header = self._session.adapter().case_header()
-            self._record_recent_case(to_dict(header), header.case_name, case_dir=self._current_case_dir)
+            saved_result_path = None
+            if self._current_case_dir is not None:
+                saved_result_path = standard_result_path(self._current_case_dir)
+                write_bankflow_json(result, saved_result_path)
+            self._record_recent_case(
+                to_dict(header),
+                header.case_name,
+                case_dir=self._current_case_dir,
+                result_path=saved_result_path,
+            )
             return header.case_session_id, header.case_revision, header.transaction_count
 
     def _load(self, path: str) -> object:
@@ -251,7 +261,10 @@ class WebView2Api:
                 raise ApplicationError("RECENT_CASE_NOT_FOUND")
             case_dir = Path(str(record.get("case_dir") or ""))
             if str(record.get("case_dir") or "") and case_dir.is_dir():
-                return self._open_case_directory(case_dir)
+                return self._open_case_directory(
+                    case_dir,
+                    case_name=str(record.get("case_name") or case_dir.name),
+                )
             result_path = Path(str(record.get("result_path") or ""))
             if str(record.get("result_path") or "") and result_path.is_file():
                 return self._load(str(result_path))
@@ -273,12 +286,32 @@ class WebView2Api:
             selection = self._case_directories.get(case_handle)
             record = load_workspace_manual_context(selection.path)
             confirmation = business_confirmation_from_record(record)
-            business = {}
-            value = record.get("original_extracted_information")
-            if isinstance(value, dict):
-                context = value.get("business_context")
-                if isinstance(context, dict):
-                    business = context
+            if record:
+                value = record.get("original_extracted_information")
+                extracted = dict(value) if isinstance(value, dict) else {}
+                search = extracted.get("search_context")
+                search = dict(search) if isinstance(search, dict) else {}
+                business = extracted.get("business_context")
+                business = dict(business) if isinstance(business, dict) else {}
+                source_names = [
+                    str(source.get("source_ref") or "")
+                    for source in extracted.get("sources", [])
+                    if isinstance(source, dict) and source.get("source_ref")
+                ]
+            else:
+                try:
+                    base = build_case_context_from_directory(selection.path)
+                except OSError:
+                    base = {}
+                business = base.get("business_context")
+                business = dict(business) if isinstance(business, dict) else {}
+                search = base.get("search_context")
+                search = dict(search) if isinstance(search, dict) else {}
+                source_names = [
+                    str(source.get("source_ref") or "")
+                    for source in base.get("sources", [])
+                    if isinstance(source, dict) and source.get("source_ref")
+                ]
             return ManualContextDTO(
                 case_name=selection.path.name or "未命名案件",
                 saved=bool(record),
@@ -288,6 +321,28 @@ class WebView2Api:
                     or confirmation.get("company_name")
                     or ""
                 ),
+                declared_work_description=str(
+                    business.get("declared_work_description") or ""
+                ),
+                declared_work_status=str(
+                    business.get("declared_work_status") or ""
+                ),
+                work_units=[
+                    str(value)
+                    for value in search.get("work_units", [])
+                    if str(value)
+                ],
+                work_locations=[
+                    str(value)
+                    for value in search.get("work_locations", [])
+                    if str(value)
+                ],
+                residence_locations=[
+                    str(value)
+                    for value in search.get("residence_locations", [])
+                    if str(value)
+                ],
+                source_names=source_names,
                 confirmed_primary_business=str(
                     confirmation.get("confirmed_primary_business") or ""
                 ),
@@ -584,7 +639,7 @@ class WebView2Api:
         except OSError:
             pass
 
-    def _open_case_directory(self, case_dir: Path) -> object:
+    def _open_case_directory(self, case_dir: Path, *, case_name: str | None = None) -> object:
         def sort_key(path: Path) -> tuple[object, float]:
             try:
                 return (path.name == STANDARD_RESULT_FILENAME, path.stat().st_mtime)
@@ -592,6 +647,9 @@ class WebView2Api:
                 return (False, 0.0)
 
         candidates = sorted(case_dir.rglob("*.json"), key=sort_key, reverse=True)
+        fallback = standard_result_path(case_dir)
+        if not candidates and fallback.is_file():
+            candidates = [fallback]
         for candidate in candidates:
             try:
                 result = load_standard_result(candidate)
@@ -602,7 +660,7 @@ class WebView2Api:
                     raise ApplicationError("INTERNAL_ERROR", "桌面窗口正在关闭")
                 self._session.load_result_dict(
                     result,
-                    case_name=case_dir.name,
+                    case_name=case_name or case_dir.name,
                     origin="file",
                     path=candidate,
                 )
@@ -610,12 +668,15 @@ class WebView2Api:
             self._current_case_dir = case_dir
             self._record_recent_case(
                 to_dict(header),
-                case_dir.name,
+                case_name or case_dir.name,
                 case_dir=case_dir,
                 result_path=candidate,
             )
             return header
-        raise ApplicationError("RECENT_CASE_NOT_FOUND")
+        raise ApplicationError(
+            "RECENT_CASE_NOT_FOUND",
+            "该历史案件还没有保存标准结果，请重新分析后再打开。",
+        )
 
     def _shutdown(self) -> None:
         self._closed.set()

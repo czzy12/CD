@@ -196,6 +196,8 @@ test("history page and context controls are wired in the UI", () => {
   assert.match(source, /重新构建上下文观察/);
   assert.match(source, /导出报告/);
   assert.match(source, /保存经营上下文/);
+  assert.match(source, /案件上下文（来自 TXT 自动提取）/);
+  assert.match(source, /上下文资料/);
   assert.match(source, /listRecentCases/);
   assert.match(source, /rebuildContextObservations/);
   assert.match(source, /exportReport/);

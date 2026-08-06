@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bankflow_web.analysis.service import AnalysisService  # noqa: E402
 from bankflow_web.analysis.task_manager import AnalysisTaskManager  # noqa: E402
-from bankflow_web.case_workspace import manual_context_path  # noqa: E402
+from bankflow_web.case_workspace import manual_context_path, standard_result_path  # noqa: E402
 
 
 class _DialogStub:
@@ -161,10 +161,13 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
             preflight_layout = json.loads(js("""
                 JSON.stringify((() => {
                   const wa = document.querySelector('.work-area');
+                  const page = document.querySelector('.workflow-page');
                   const btn = document.querySelector('.workflow-actions .primary-button');
                   if (wa) wa.scrollTop = 0;
+                  if (page) page.scrollTop = 0;
                   const before = btn ? Math.round(btn.getBoundingClientRect().bottom) : -1;
                   if (wa) wa.scrollTop = wa.scrollHeight;
+                  if (page) page.scrollTop = page.scrollHeight;
                   const after = btn ? Math.round(btn.getBoundingClientRect().bottom) : -1;
                   return {
                     innerHeight: window.innerHeight,
@@ -305,6 +308,8 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
             header_after_success = header_snapshot()
             if header_after_success["case_session_id"] == session_before:
                 raise AssertionError("success flow did not switch to the new case")
+            if not standard_result_path(case_dir).exists():
+                raise AssertionError("workspace standard result was not saved after analysis")
             success_result = {
                 "state_reached": "completed",
                 "total_sources": None,
@@ -313,6 +318,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "ui_entered_workbench": True,
                 "module_count": module_count,
                 "new_case_session": True,
+                "workspace_result_saved": True,
             }
 
             # 5. Recent cases: backend index + history page open flow.

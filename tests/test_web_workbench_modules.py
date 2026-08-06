@@ -6,6 +6,11 @@ import unittest
 from bankflow_v2.standard_result_view import observation_by_type
 from bankflow_web.case_session import CaseSession
 from bankflow_web.contracts import ApplicationError, to_dict
+from bankflow_web.module_registry import (
+    BusinessModuleAdapter,
+    DeclarationCompareModuleAdapter,
+    PurchaseModuleAdapter,
+)
 from bankflow_webview2.api import WebView2Api
 from tests.test_web_result_adapter import fixture_result
 
@@ -129,6 +134,128 @@ class WorkbenchModuleTests(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["data"]["total"], 1)
         self.assertEqual(response["data"]["items"][0]["status"], "review")
+
+
+class ModuleDisplayContentTests(unittest.TestCase):
+    def test_business_declaration_and_purchase_rows_show_chinese_content(self):
+        result = {
+            "schema_version": "1.16",
+            "module": "bankflow",
+            "result": {
+                "observations": [
+                    {
+                        "observation_type": "declaration_flow_cross_checks",
+                        "value": {
+                            "items": [
+                                {
+                                    "check_type": "work_unit",
+                                    "declared_values": ["某某公司"],
+                                    "status": "no_evidence_in_reliable_fields",
+                                    "reason": "在当前可靠文字字段和流水期间内未发现对应文字依据",
+                                    "evidence_transaction_ids": [],
+                                }
+                            ],
+                            "display_only_items": [],
+                        },
+                    },
+                    {
+                        "observation_type": "ai_business_relevance_candidates",
+                        "value": {
+                            "available": True,
+                            "deterministic_candidates": [
+                                {
+                                    "transaction_id": "tx:business",
+                                    "classification": "possibly_related",
+                                    "reason": "行业语义弱提示",
+                                    "transaction_context": {
+                                        "direction": "expense",
+                                        "income": "0",
+                                        "expense": "100.00",
+                                        "source_file": "a.pdf",
+                                        "transaction_time": "2026-01-01T00:00:00",
+                                        "reliable_standard_fields": {
+                                            "counterparty_name": "某商户",
+                                            "summary": "购买护栏",
+                                        },
+                                    },
+                                }
+                            ],
+                            "ai_candidates": [],
+                        },
+                    },
+                    {
+                        "observation_type": "purchase_prepayment_funding_candidates",
+                        "value": {
+                            "purchase_candidates": [
+                                {
+                                    "purchase_transaction_id": "tx:purchase",
+                                    "direction": "expense",
+                                    "income": "0",
+                                    "expense": "10000.00",
+                                    "matched_terms": ["订金"],
+                                    "transaction_context": {
+                                        "direction": "expense",
+                                        "income": "0",
+                                        "expense": "10000.00",
+                                        "source_file": "a.pdf",
+                                        "transaction_time": "2026-01-02T00:00:00",
+                                        "reliable_standard_fields": {
+                                            "counterparty_name": "某经销商",
+                                            "summary": "购车订金",
+                                        },
+                                    },
+                                    "prior_income_candidates": [
+                                        {
+                                            "transaction_id": "tx:prior",
+                                            "income": "10000.00",
+                                            "counterparty_name": "",
+                                            "transaction_context": {
+                                                "direction": "income",
+                                                "income": "10000.00",
+                                                "expense": "0",
+                                                "source_file": "a.pdf",
+                                                "transaction_time": "2026-01-01T00:00:00",
+                                                "reliable_standard_fields": {
+                                                    "summary": "工资收入"
+                                                },
+                                            },
+                                        }
+                                    ],
+                                }
+                            ]
+                        },
+                    },
+                ],
+                "facts": [],
+                "indicators": [],
+                "evidence": {
+                    "transaction_index": {},
+                    "references": [],
+                    "coverage": {},
+                    "integrity": {},
+                },
+            },
+            "manual_review": {"required": True, "items": []},
+            "source_files": [],
+            "warnings": [],
+            "notes": [],
+            "created_at": "",
+        }
+
+        declaration = DeclarationCompareModuleAdapter(result, "case").items[0]
+        self.assertEqual(declaration.primary_text, "某某公司")
+        self.assertEqual(declaration.matched_text, "可靠字段内未发现")
+        self.assertEqual(declaration.interpretation, "工作单位")
+
+        business = BusinessModuleAdapter(result, "case").items[0]
+        self.assertEqual(business.matched_text, "可能相关")
+        self.assertIn("某商户", business.primary_text)
+        self.assertIn("确定性候选：可能相关", business.interpretation)
+
+        purchase_rows = PurchaseModuleAdapter(result, "case").items
+        prior = next(row for row in purchase_rows if row.item_id == "tx:prior")
+        self.assertIn("此前收入；工资收入", prior.matched_text)
+        self.assertEqual(prior.primary_text, "工资收入")
 
 
 if __name__ == "__main__":

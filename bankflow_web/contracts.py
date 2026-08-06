@@ -103,11 +103,17 @@ class ManualContextDTO:
     saved: bool
     has_file: bool
     company_name: str
-    confirmed_primary_business: str
-    confirmed_products_or_services: str
-    confirmation_note: str
-    confirmation_status: str
-    enable_ai_business_analysis: bool
+    declared_work_description: str
+    declared_work_status: str
+    work_units: list[str] = field(default_factory=list)
+    work_locations: list[str] = field(default_factory=list)
+    residence_locations: list[str] = field(default_factory=list)
+    source_names: list[str] = field(default_factory=list)
+    confirmed_primary_business: str = ""
+    confirmed_products_or_services: str = ""
+    confirmation_note: str = ""
+    confirmation_status: str = "unconfirmed"
+    enable_ai_business_analysis: bool = False
 
 
 @dataclass(frozen=True)

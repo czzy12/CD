@@ -310,16 +310,39 @@ class DeclarationCompareModuleAdapter(ModuleAdapter):
         observation = observation_by_type(self.result, "declaration_flow_cross_checks")
         value = _mapping(observation.get("value"))
         items = [item for key in ("items", "display_only_items") for item in _list(value.get(key)) if isinstance(item, Mapping)]
+        check_labels = {
+            "work_unit": "工作单位",
+            "declared_industry": "申报行业",
+            "purchase_deposit_expense": "下定相关支出",
+        }
+        status_labels = {
+            "direct_match": "直接命中",
+            "candidate_match": "候选命中",
+            "no_evidence_in_reliable_fields": "可靠字段内未发现",
+            "unavailable": "字段覆盖不足",
+            "display_only": "仅展示",
+        }
         rows: list[ReviewItemDTO] = []
         for item in items:
             ids = [str(value) for value in _list(item.get("evidence_transaction_ids")) if value]
             transaction_id = ids[0] if ids else None
+            check_type = str(item.get("check_type") or "申报对照")
+            status = str(item.get("status") or "unavailable")
+            declared = "、".join(
+                str(value)
+                for value in _list(item.get("declared_values"))
+                if str(value)
+            )
             rows.append(ReviewItemDTO(
-                str(item.get("check_type") or f"declaration-{len(rows)}"), transaction_id,
-                None, None, None, redact_sensitive_text(item.get("check_type") or "申报项"),
-                redact_sensitive_text(item.get("reason") or ""), None, None,
-                "展示已有申报对照结果", str(item.get("check_type") or "申报项"),
-                "review" if str(item.get("status") or "") not in {"matched", "display_only"} else "direct",
+                f"declaration-{check_type}-{len(rows)}", transaction_id,
+                None, None, None,
+                redact_sensitive_text(declared or check_labels.get(check_type, check_type)),
+                redact_sensitive_text(str(item.get("reason") or "")),
+                None,
+                status_labels.get(status, status),
+                check_labels.get(check_type, check_type),
+                status_labels.get(status, status),
+                "direct" if status in {"direct_match", "candidate_match", "display_only"} else "review",
                 None, bool(transaction_id),
             ))
         return rows
@@ -334,17 +357,33 @@ class BusinessModuleAdapter(ModuleAdapter):
     def build_items(self) -> list[ReviewItemDTO]:
         observation = observation_by_type(self.result, "ai_business_relevance_candidates")
         value = _mapping(observation.get("value"))
+        classification_labels = {
+            "directly_related": "直接相关",
+            "possibly_related": "可能相关",
+            "no_relation_evidence": "无关联证据",
+            "undetermined": "无法判断",
+            "none": "无关联",
+        }
         rows: list[ReviewItemDTO] = []
         for source_key, source_label in (("deterministic_candidates", "确定性候选"), ("ai_candidates", "既有 AI 观察")):
             for candidate in _list(value.get(source_key)):
                 if not isinstance(candidate, Mapping):
                     continue
                 transaction_id = str(candidate.get("transaction_id") or "") or None
+                classification = str(candidate.get("classification") or source_label)
+                classification_cn = classification_labels.get(
+                    classification,
+                    classification if classification != source_label else source_label,
+                )
+                reason = str(candidate.get("reason") or "")
+                interpretation = f"{source_label}：{classification_cn}"
+                if reason:
+                    interpretation = f"{interpretation}；{reason}"
                 rows.append(_common_item(
                     candidate, item_id=transaction_id or f"business-{len(rows)}",
                     transaction_id=transaction_id, category=source_label,
-                    matched_text=str(candidate.get("classification") or source_label),
-                    interpretation=str(candidate.get("reason") or "已有结果"),
+                    matched_text=classification_cn,
+                    interpretation=interpretation,
                     review_status="review",
                 ))
         if not bool(value.get("available")) and not rows:

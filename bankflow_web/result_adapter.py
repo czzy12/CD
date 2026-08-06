@@ -89,6 +89,15 @@ def _purchase_item(candidate: Mapping[str, object]) -> TransactionListItemDTO:
     direction, amount = _direction_amount(candidate)
     context = _mapping(candidate.get("transaction_context"))
     matched = _matched_text(candidate)
+    fields = _display_fields(candidate)
+    summary = str(
+        fields.get("summary")
+        or fields.get("purpose")
+        or fields.get("remark")
+        or ""
+    )
+    if summary:
+        matched = f"{matched}；{summary}"
     return TransactionListItemDTO(
         transaction_id=str(candidate.get("purchase_transaction_id") or candidate.get("transaction_id") or ""),
         date=str(candidate.get("transaction_time") or context.get("transaction_time") or "")[:19],
@@ -106,13 +115,29 @@ def _purchase_item(candidate: Mapping[str, object]) -> TransactionListItemDTO:
 def _prior_income_item(prior: Mapping[str, object], purchase: Mapping[str, object]) -> TransactionListItemDTO:
     context = _mapping(prior.get("transaction_context"))
     source = Path(str(prior.get("source_file") or context.get("source_file") or "")).name
+    fields = _display_fields(prior)
+    summary = str(
+        fields.get("summary")
+        or fields.get("purpose")
+        or fields.get("remark")
+        or ""
+    )
+    counterparty = str(
+        prior.get("counterparty_name")
+        or fields.get("counterparty_name")
+        or summary
+        or "此前收入"
+    )
+    matched_text = "此前收入"
+    if summary:
+        matched_text = f"{matched_text}；{summary}"
     return TransactionListItemDTO(
         transaction_id=str(prior.get("transaction_id") or ""),
         date=str(prior.get("transaction_time") or context.get("transaction_time") or "")[:19],
         direction="收入",
         amount=str(prior.get("income") or prior.get("amount") or "0.00"),
-        counterparty=str(prior.get("counterparty_name") or "此前收入"),
-        matched_text="此前收入",
+        counterparty=counterparty,
+        matched_text=matched_text,
         interpretation=PURCHASE_BOUNDARY_NOTE,
         source_name=source,
         category="此前收入",

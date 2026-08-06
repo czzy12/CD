@@ -54,6 +54,13 @@
 - 报告导出：工作台“导出报告”将当前案件渲染为 Markdown 验收报告；实测成功生成约 91 KB 文件。
 - 完整实测结果：`outputs/web-gui-12b2/flow-qa-20260807-full.json`；详见 `chg-20260807-02`。
 
+### 场景 E：显示与历史/上下文修复（2026-08-07）
+
+- 经营痕迹、申报对照、下定购车列表改为直接显示中文具体内容（申报值、摘要/用途、中文状态），不再只显示英文分类。
+- 历史案件：分析成功后自动保存标准结果到工作区，历史记录可重新打开；无结果的旧记录给出明确提示。
+- 预检页恢复 TXT 自动提取内容展示（工作单位、工作/居住地、来源文件），人工表单保留为辅助；TXT 状态显示为“上下文资料”。
+- 完整实测结果：`outputs/web-gui-12b2/flow-qa-20260807-fixes.json`；详见 `chg-20260807-03`。
+
 ## 四、自动测试基线（2026-08-06 实际重跑）
 
 - Python 定向：55 PASS / 2 SKIP（57 项）。
@@ -86,7 +93,8 @@
 - `web_frontend/src/styles/app.css`（底部显示修复：工作区滚动、分页脚固定，`chg-20260807-01`）
 - `bankflow_web/case_workspace.py`、`bankflow_web/contracts.py`、`bankflow_webview2/api.py`（历史案件、经营上下文、报告导出，`chg-20260807-02`）
 - `web_frontend/src/app/App.tsx`、`web_frontend/src/bridge/contracts.ts`、`web_frontend/src/bridge/pywebviewBridgeAdapter.ts`、`web_frontend/src/styles/app.css`（历史案件页、预检经营上下文、重建与导出按钮，`chg-20260807-02`）
+- `bankflow_web/module_registry.py`、`bankflow_web/result_adapter.py`、`bankflow_web/analysis/source_discovery.py`、`bankflow_webview2/api.py`、`web_frontend/src/app/App.tsx`（列表中文显示、历史结果保存与回退、TXT 上下文展示，`chg-20260807-03`）
 - `web_frontend/dist`（重新构建，本地运行入口使用）
-- `技术变更记录.md`、`docs/change-history/2026-08.md`（记录 `chg-20260806-01/02/03`、`chg-20260807-01/02`）
+- `技术变更记录.md`、`docs/change-history/2026-08.md`（记录 `chg-20260806-01/02/03`、`chg-20260807-01/02/03`）
 
 本轮未 commit、未 push。

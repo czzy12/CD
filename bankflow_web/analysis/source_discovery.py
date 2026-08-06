@@ -84,7 +84,10 @@ class CaseDirectoryRegistry:
             elif supported:
                 bank_type = "excel"
             else:
-                warning = "当前正式流程不处理此文件类型"
+                if extension == ".txt":
+                    warning = "作为案件上下文资料读取，不参与流水解析"
+                else:
+                    warning = "当前正式流程不处理此文件类型"
             if supported:
                 discovered.append(SourceSelection(source_ref, path, source_type))
             try:
@@ -98,7 +101,13 @@ class CaseDirectoryRegistry:
                 detected_source_type=source_type,
                 detected_bank_type=bank_type,
                 supported=supported,
-                initial_status="ready" if supported else "unsupported",
+                initial_status=(
+                    "ready"
+                    if supported
+                    else "context"
+                    if extension == ".txt"
+                    else "unsupported"
+                ),
                 warning=warning,
                 size=size,
                 may_use_generic_fallback=may_fallback,

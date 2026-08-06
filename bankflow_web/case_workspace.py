@@ -45,6 +45,10 @@ def manual_context_path(case_dir: str | Path) -> Path:
     return case_workspace_dir(case_dir) / MANUAL_CASE_CONTEXT_FILENAME
 
 
+def standard_result_path(case_dir: str | Path) -> Path:
+    return case_workspace_dir(case_dir) / STANDARD_RESULT_FILENAME
+
+
 def load_manual_case_context(case_dir: str | Path) -> dict[str, object]:
     path = manual_context_path(case_dir)
     if not path.exists():

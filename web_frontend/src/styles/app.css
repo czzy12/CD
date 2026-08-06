@@ -38,6 +38,7 @@
 .source-table-row strong { overflow: hidden; color: var(--text-primary); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .source-table-row em { overflow: hidden; color: var(--warning); font-size: 11px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .source-ready { color: var(--success); }
+.source-context { color: var(--accent); }
 .source-unsupported { color: var(--text-muted); }
 .workflow-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 18px; }
 .workflow-actions > span { margin-right: auto; color: var(--text-muted); font-size: 12px; }
@@ -80,6 +81,9 @@
 .context-section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .context-section header span { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 .context-notice { margin: 0 0 8px; color: var(--success); font-size: 12px; }
+.context-note { margin: 0 0 8px; color: var(--text-muted); font-size: 11px; }
+.extracted-context { background: color-mix(in srgb, var(--surface-raised) 55%, transparent); }
+.extract-value { color: var(--text-primary); font-size: 12px; font-weight: 500; }
 .context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
 .context-grid label { display: grid; gap: 5px; color: var(--text-muted); font-size: 11px; }
 .context-grid input, .context-grid select, .context-grid textarea { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-control); color: var(--text-secondary); background: var(--surface); font-size: 12px; outline: none; }

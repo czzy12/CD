@@ -12,7 +12,7 @@ from unittest.mock import patch
 from bankflow_v2.models import Transaction
 from bankflow_v2.result_export import build_bankflow_result
 from bankflow_web.case_session import CaseSession
-from bankflow_web.case_workspace import manual_context_path
+from bankflow_web.case_workspace import manual_context_path, standard_result_path
 from bankflow_webview2.api import WebView2Api
 from recent_cases import RecentCaseStore
 
@@ -132,6 +132,42 @@ class WebView2FollowUpTests(unittest.TestCase):
         fetched = self.api.get_manual_case_context(handle)
         self.assertEqual(fetched["data"]["company_name"], "测试单位")
         self.assertEqual(fetched["data"]["confirmed_products_or_services"], "护栏、围栏")
+        self.assertEqual(fetched["data"]["source_names"], [])
+
+    def test_extracted_txt_context_is_surfaced(self):
+        case_dir = self.root / "caseTxt"
+        case_dir.mkdir()
+        (case_dir / "客户资料.txt").write_text("测试文本", encoding="utf-8")
+        handle = self.api._case_directories.register(case_dir).case_handle
+
+        fetched = self.api.get_manual_case_context(handle)
+        self.assertTrue(fetched["ok"])
+        self.assertEqual(fetched["data"]["source_names"], ["客户资料.txt"])
+        self.assertIsInstance(fetched["data"]["work_units"], list)
+        self.assertIsInstance(fetched["data"]["declared_work_status"], str)
+
+    def test_promote_saves_workspace_result_and_history_can_open_it(self):
+        case_dir = self.root / "caseC"
+        case_dir.mkdir()
+        self.api._current_case_dir = case_dir
+        session_id, revision, count = self.api._promote_analysis_result(
+            _fixture_result(),
+            "caseC",
+        )
+        self.assertTrue(session_id)
+        saved = standard_result_path(case_dir)
+        self.assertTrue(saved.exists())
+
+        records = self.store.load()
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["case_name"], "caseC")
+        self.assertEqual(Path(str(records[0]["case_dir"])), case_dir)
+        self.assertEqual(Path(str(records[0]["result_path"])), saved)
+
+        record_id = records[0]["record_id"]
+        opened = self.api.open_recent_case(record_id)
+        self.assertTrue(opened["ok"], str(opened))
+        self.assertEqual(opened["data"]["case_name"], "caseC")
 
     def test_rebuild_context_observations(self):
         case_dir = self.root / "caseB"

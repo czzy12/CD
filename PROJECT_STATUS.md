@@ -1,6 +1,6 @@
 # PDF流水项目当前状态
 
-更新时间：2026-08-06
+更新时间：2026-08-07
 
 ## 当前仓库
 
@@ -25,10 +25,14 @@ origin/work/2026-07-18-bankflow-verification
 已提交的当前实现：
 
 ```text
-24a9d96 feat: 完成 12B-1/12B-2 工作台成果落地
+45891bb fix: list display, recent-case reopening and preflight TXT context
 ```
 
-`work/2026-07-18-bankflow-verification` 与备份分支 `backup/codex-24a9d96` 均指向同一 `24a9d96`；远端同名分支仍为 `2c6c246`，本地领先 1、落后 0，尚未 push。12B-1/12B-2 已随 `24a9d96` 本地提交；2026-08-06 已补充 12B-2 完整分析流程接入报告并完成真实 WebView2 窗口实测（协作取消与失败恢复，旧案件均保留）。正式工作台未打包；最终用户界面确认与 push 待用户决定。
+当前分支为 `work/deepseek-12b2-followup`；`work/2026-07-18-bankflow-verification` 与 `backup/codex-24a9d96` 仍指向 `24a9d96`，远端同名分支停在 `2c6c246`，尚未 push。工作区唯一未跟踪文件为仓库根目录 `CD-bankflow-refactor.bundle`（保留原样）。12B-1/12B-2 工作台及后续修复已提交到 `24a9d96 → 1bfdb8d → 45891bb`。
+
+AI 经营关联验收链：2026-07-28 曾在检查点 `68e0ac8` 完成 v11 验收；当前代码在其后有 `6e149d6/7b08441` 经营上下文准入改动，旧缓存离线重放 286 项全部未命中，不能沿用。2026-08-07 已用当前代码完成 development 50 真实调用（`status=ok`，50/50 采用，1 次调用），产物在 `outputs/mvp-acceptance-2026-08-07/`（仓库外）。reserved 50 与 337 完整验收待用户确认后继续。
+
+AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
 
@@ -39,6 +43,7 @@ origin/work/2026-07-18-bankflow-verification
 
 最近重要变更：
 
+- 2026-08-07：AI 经营关联验收链重跑开始。development 50 真实验收通过（`status=ok`，50/50 采用）；reserved 50 与 337 完整验收待用户确认节点继续。新增 Key 持久化脚本（`chg-20260807-04`）。另完成生活轨迹/用车痕迹/消费水平立项讨论：AI 生活轨迹单独立项、用车痕迹并入生活轨迹数据层不单独 AI 立项、消费水平单独确定性统计立项；均需用户确认 schema 方案后执行。详见 `docs/续接_2026-08-07_新窗口.md`。
 - 2026-08-06/07：12B-2 完整分析流程接入报告已补充；真实 WebView2 窗口实测通过协作取消（MVP-input 14 个来源中完成 2 个后取消，旧案件保持不变）、任务级失败恢复（旧案件保持不变）与完整分析成功自动进入工作台（20006 笔、9 个模块）。修复前端“分析完成未自动进入工作台”竞态（`chg-20260806-02`）、测试入口 bat 编码问题（`chg-20260806-01`）并完成工作台 UI 修正（滚轮翻页、原始字段分隔符过滤、筛选行换行、底部显示完整，`chg-20260806-03`、`chg-20260807-01`）；新增 `tools/run_12b2_flow_qa.py` 与 `运行12B2完整流程实测.bat` 作为可运行测试入口；未打包、未提交、未推送。详见 `docs/Web_GUI_12B2_完整分析流程接入报告.md`。
 - 2026-08-07：完成历史案件页、经营上下文闭环与报告导出（`chg-20260807-02`）；Python 全量 363 项、前端 26 项与真实 WebView2 完整实测全部通过；经营上下文仅预检录入、确认人/时间不强制、手动重建观察；报告导出 Markdown 验收视图；未提交、未推送。详见 `docs/Web_GUI_12B2_完整分析流程接入报告.md`。
 - 2026-08-07：修复列表明细中文显示、历史案件打开失败、预检 TXT 上下文展示（`chg-20260807-03`）；分析后自动保存工作区标准结果，历史案件可回退打开；Python 全量 366 项、前端 26 项与真实 WebView2 完整实测全部通过；未提交、未推送。详见 `docs/Web_GUI_12B2_完整分析流程接入报告.md`。

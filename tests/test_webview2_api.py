@@ -62,6 +62,9 @@ class WebView2ApiTests(unittest.TestCase):
             "choose_case_directory", "inspect_case_directory",
             "start_case_analysis", "get_analysis_status", "cancel_analysis",
             "dismiss_analysis_task", "save_current_standard_result",
+            "list_recent_cases", "open_recent_case", "remove_recent_case",
+            "get_manual_case_context", "save_manual_case_context",
+            "rebuild_context_observations", "export_report",
         })
 
     def test_state_summary_page_and_evidence_reuse_existing_session(self):

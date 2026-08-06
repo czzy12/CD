@@ -26,6 +26,9 @@ ERROR_MESSAGES = {
     "ANALYSIS_FAILED": "分析未完成，请重试",
     "SAVE_CANCELLED": "已取消保存",
     "SAVE_INPUT_OVERWRITE_FORBIDDEN": "不能覆盖当前打开的输入结果文件",
+    "RECENT_CASE_NOT_FOUND": "未找到该历史案件或案件位置不可用",
+    "REBUILD_UNAVAILABLE": "当前结果不是从案件工作区打开，无法重建经营上下文",
+    "REPORT_EXPORT_FAILED": "报告导出失败",
     "INTERNAL_ERROR": "程序处理请求时发生内部错误",
 }
 
@@ -50,6 +53,7 @@ class AppStateDTO:
         "load_standard_result", "review_modules", "paged_items",
         "evidence_inspector", "source_review", "theme", "case_switch",
         "case_analysis", "analysis_progress", "analysis_cancellation", "save_result",
+        "recent_cases", "manual_context", "context_rebuild", "report_export",
     ])
     case_session_id: str | None = None
     case_revision: int = 0
@@ -71,6 +75,52 @@ class SourceReviewSummaryDTO:
     case_session_id: str
     total: int
     items: list[SourceReviewItemDTO] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RecentCaseDTO:
+    record_id: str
+    case_name: str
+    updated_at: str
+    period_start: str
+    period_end: str
+    source_count: int
+    transaction_count: int
+    analysis_status: str
+    schema_version: str
+    available: bool
+
+
+@dataclass(frozen=True)
+class RecentCasesDTO:
+    cases: list[RecentCaseDTO] = field(default_factory=list)
+    corrupt_index: bool = False
+
+
+@dataclass(frozen=True)
+class ManualContextDTO:
+    case_name: str
+    saved: bool
+    has_file: bool
+    company_name: str
+    confirmed_primary_business: str
+    confirmed_products_or_services: str
+    confirmation_note: str
+    confirmation_status: str
+    enable_ai_business_analysis: bool
+
+
+@dataclass(frozen=True)
+class ManualContextSaveDTO:
+    saved: bool
+    case_name: str
+    confirmation_status: str
+
+
+@dataclass(frozen=True)
+class ExportReportDTO:
+    saved: bool
+    display_name: str
 
 
 @dataclass(frozen=True)

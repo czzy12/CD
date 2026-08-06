@@ -11,6 +11,8 @@
 .save-result-button { display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 8px; border-radius: var(--radius-control); color: var(--text-secondary); background: transparent; white-space: nowrap; }
 .save-result-button:hover { color: var(--text-primary); background: var(--hover); }
 .save-result-button svg { width: 14px; }
+.module-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.module-summary .save-result-button { margin-left: 0; }
 .empty-actions { display: flex; align-items: center; gap: 8px; }
 .secondary-button { display: flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border: 1px solid var(--border); border-radius: var(--radius-control); color: var(--text-secondary); background: var(--surface); font-size: 13px; }
 .secondary-button:hover:not(:disabled) { color: var(--text-primary); background: var(--hover); }
@@ -66,6 +68,23 @@
 .list-region { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .issue-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .page-footer { flex: 0 0 auto; position: static; }
+.history-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.history-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; gap: 14px; align-items: center; min-height: 54px; padding: 8px 14px; border-bottom: 1px solid var(--border-subtle); }
+.history-row:last-child { border-bottom: 0; }
+.history-row strong { color: var(--text-primary); font-size: 13px; font-weight: 500; }
+.history-row em { display: block; margin-top: 3px; color: var(--text-muted); font-size: 11px; font-style: normal; }
+.history-row > span { color: var(--text-muted); font-size: 11px; }
+.history-actions { display: flex; gap: 6px; }
+.danger-text { color: var(--error); }
+.context-section { margin-top: 18px; padding: 14px; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.context-section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.context-section header span { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.context-notice { margin: 0 0 8px; color: var(--success); font-size: 12px; }
+.context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.context-grid label { display: grid; gap: 5px; color: var(--text-muted); font-size: 11px; }
+.context-grid input, .context-grid select, .context-grid textarea { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-control); color: var(--text-secondary); background: var(--surface); font-size: 12px; outline: none; }
+.context-grid textarea { height: 64px; padding: 6px 8px; resize: vertical; }
+.context-grid input:focus, .context-grid select:focus, .context-grid textarea:focus { color: var(--text-primary); border-color: var(--focus); }
 .inspector-bar > div { display: flex; align-items: center; }
 .inspector-bar > div > button { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 5px; color: var(--text-muted); background: transparent; }
 .inspector-bar > div > button:hover:not(:disabled) { color: var(--text-primary); background: var(--hover); }

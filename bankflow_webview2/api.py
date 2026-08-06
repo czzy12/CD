@@ -9,23 +9,52 @@ from pathlib import Path
 from typing import Any
 
 from bankflow_web.case_session import CaseSession
-from bankflow_web.contracts import AppStateDTO, ApplicationError
+from bankflow_web.case_workspace import (
+    STANDARD_RESULT_FILENAME,
+    business_confirmation_from_record,
+    load_manual_case_context as load_workspace_manual_context,
+    save_manual_case_context as save_workspace_manual_context,
+)
+from bankflow_web.contracts import (
+    AppStateDTO,
+    ApplicationError,
+    ExportReportDTO,
+    ManualContextDTO,
+    ManualContextSaveDTO,
+    RecentCaseDTO,
+    RecentCasesDTO,
+    to_dict,
+)
 from bankflow_web.analysis.source_discovery import CaseDirectoryRegistry
 from bankflow_web.analysis.task_manager import AnalysisTaskManager
-from bankflow_v2.result_export import write_bankflow_json
-from bankflow_v2.standard_result_view import build_case_context_from_directory
+from bankflow_v2.mvp_report import render_mvp_markdown
+from bankflow_v2.result_export import rebuild_business_context_result, write_bankflow_json
+from bankflow_v2.standard_result_view import (
+    StandardResultError,
+    build_case_context_from_directory,
+    load_standard_result,
+    transactions_from_standard_result,
+)
+from recent_cases import RecentCaseStore
+from bankflow_web.case_workspace import recent_cases_path
 
 from .bridge_adapter import PyWebviewBridgeAdapter
 
 
 STANDARD_RESULT_FILE_FILTER = "JSON 标准结果 (*.json)"
 STANDARD_RESULT_SAVE_FILTER = "JSON 标准结果 (*.json)"
+REPORT_SAVE_FILTER = "Markdown 报告 (*.md)"
 
 
 class WebView2Api:
     """Only public methods on this class are exposed to JavaScript."""
 
-    def __init__(self, session: CaseSession | None = None) -> None:
+    def __init__(
+        self,
+        session: CaseSession | None = None,
+        *,
+        recent_store: RecentCaseStore | None = None,
+    ) -> None:
         self._session = session or CaseSession()
         self._bridge = PyWebviewBridgeAdapter()
         self._lock = threading.RLock()
@@ -36,6 +65,8 @@ class WebView2Api:
         self._frontend_ready_at: float | None = None
         self._case_directories = CaseDirectoryRegistry()
         self._inspected_cases: set[str] = set()
+        self._current_case_dir: Path | None = None
+        self._recent_store = recent_store or RecentCaseStore(recent_cases_path())
         self._tasks = AnalysisTaskManager(self._promote_analysis_result)
 
     def _attach_window(self, window: Any) -> None:
@@ -47,6 +78,7 @@ class WebView2Api:
                 raise ApplicationError("INTERNAL_ERROR", "桌面窗口正在关闭")
             self._session.load_result_dict(result, case_name=case_name, origin="analysis")
             header = self._session.adapter().case_header()
+            self._record_recent_case(to_dict(header), header.case_name, case_dir=self._current_case_dir)
             return header.case_session_id, header.case_revision, header.transaction_count
 
     def _load(self, path: str) -> object:
@@ -61,6 +93,9 @@ class WebView2Api:
             self._loading = True
             try:
                 self._session.load(candidate)
+                self._current_case_dir = None
+                header = self._session.adapter().case_header()
+                self._record_recent_case(to_dict(header), header.case_name, result_path=candidate)
                 return self._session.adapter().case_header()
             finally:
                 self._loading = False
@@ -153,6 +188,14 @@ class WebView2Api:
                 case_context = build_case_context_from_directory(selection.path)
             except OSError as exc:
                 raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
+            manual = load_workspace_manual_context(selection.path)
+            confirmation = business_confirmation_from_record(manual)
+            if confirmation:
+                case_context = build_case_context_from_directory(
+                    selection.path,
+                    business_confirmation=confirmation,
+                )
+            self._current_case_dir = selection.path
             paths = [source.path for source in selection.sources]
             refs = {source.path: source.source_ref for source in selection.sources}
             return self._tasks.start(selection.path.name or "未命名案件", paths, case_context, refs)
@@ -167,6 +210,223 @@ class WebView2Api:
 
     def dismiss_analysis_task(self, analysis_task_id: str) -> dict[str, object]:
         return self._bridge.invoke(lambda: self._tasks.dismiss(analysis_task_id))
+
+    def list_recent_cases(self) -> dict[str, object]:
+        def query() -> object:
+            records = self._recent_store.load()
+            return RecentCasesDTO(
+                cases=[
+                    RecentCaseDTO(
+                        record_id=str(record.get("record_id") or ""),
+                        case_name=str(record.get("case_name") or "未命名案件"),
+                        updated_at=str(record.get("updated_at") or ""),
+                        period_start=str(record.get("period_start") or ""),
+                        period_end=str(record.get("period_end") or ""),
+                        source_count=int(record.get("source_count") or 0),
+                        transaction_count=int(record.get("transaction_count") or 0),
+                        analysis_status=str(record.get("analysis_status") or ""),
+                        schema_version=str(record.get("schema_version") or ""),
+                        available=bool(record.get("available")),
+                    )
+                    for record in records
+                ],
+                corrupt_index=self._recent_store.last_load_was_corrupt,
+            )
+
+        return self._bridge.invoke(query)
+
+    def open_recent_case(self, record_id: str) -> dict[str, object]:
+        def open() -> object:
+            if not isinstance(record_id, str) or not record_id:
+                raise ApplicationError("INVALID_ARGUMENT")
+            record = next(
+                (
+                    item
+                    for item in self._recent_store.load()
+                    if str(item.get("record_id") or "") == record_id
+                ),
+                None,
+            )
+            if record is None:
+                raise ApplicationError("RECENT_CASE_NOT_FOUND")
+            case_dir = Path(str(record.get("case_dir") or ""))
+            if str(record.get("case_dir") or "") and case_dir.is_dir():
+                return self._open_case_directory(case_dir)
+            result_path = Path(str(record.get("result_path") or ""))
+            if str(record.get("result_path") or "") and result_path.is_file():
+                return self._load(str(result_path))
+            raise ApplicationError("RECENT_CASE_NOT_FOUND")
+
+        return self._bridge.invoke(open)
+
+    def remove_recent_case(self, record_id: str) -> dict[str, object]:
+        def remove() -> object:
+            if not isinstance(record_id, str) or not record_id:
+                raise ApplicationError("INVALID_ARGUMENT")
+            self._recent_store.remove(record_id)
+            return {"removed": True}
+
+        return self._bridge.invoke(remove)
+
+    def get_manual_case_context(self, case_handle: str) -> dict[str, object]:
+        def query() -> object:
+            selection = self._case_directories.get(case_handle)
+            record = load_workspace_manual_context(selection.path)
+            confirmation = business_confirmation_from_record(record)
+            business = {}
+            value = record.get("original_extracted_information")
+            if isinstance(value, dict):
+                context = value.get("business_context")
+                if isinstance(context, dict):
+                    business = context
+            return ManualContextDTO(
+                case_name=selection.path.name or "未命名案件",
+                saved=bool(record),
+                has_file=bool(record),
+                company_name=str(
+                    business.get("company_name")
+                    or confirmation.get("company_name")
+                    or ""
+                ),
+                confirmed_primary_business=str(
+                    confirmation.get("confirmed_primary_business") or ""
+                ),
+                confirmed_products_or_services=str(
+                    confirmation.get("confirmed_products_or_services") or ""
+                ),
+                confirmation_note=str(confirmation.get("confirmation_note") or ""),
+                confirmation_status=str(
+                    confirmation.get("confirmation_status") or "unconfirmed"
+                ),
+                enable_ai_business_analysis=False,
+            )
+
+        return self._bridge.invoke(query)
+
+    def save_manual_case_context(
+        self,
+        case_handle: str,
+        fields: object | None = None,
+    ) -> dict[str, object]:
+        def save() -> object:
+            if not isinstance(fields, dict):
+                raise ApplicationError("INVALID_ARGUMENT")
+            selection = self._case_directories.get(case_handle)
+            confirmation = {
+                "confirmed_primary_business": str(
+                    fields.get("confirmed_primary_business") or ""
+                ),
+                "confirmed_products_or_services": str(
+                    fields.get("confirmed_products_or_services") or ""
+                ),
+                "confirmation_note": str(fields.get("confirmation_note") or ""),
+                "confirmation_status": str(
+                    fields.get("confirmation_status") or "unconfirmed"
+                ),
+                "confirmed_by": str(fields.get("confirmed_by") or ""),
+                "enable_ai_business_analysis": False,
+            }
+            try:
+                base = build_case_context_from_directory(selection.path)
+            except OSError as exc:
+                raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
+            company_name = str(fields.get("company_name") or "")
+            if company_name:
+                business = base.get("business_context")
+                if isinstance(business, dict):
+                    updated = dict(business)
+                    updated["company_name"] = company_name
+                    base["business_context"] = updated
+            record = save_workspace_manual_context(selection.path, base, confirmation)
+            return ManualContextSaveDTO(
+                saved=True,
+                case_name=selection.path.name or "未命名案件",
+                confirmation_status=str(record.get("confirmation_status") or "unconfirmed"),
+            )
+
+        return self._bridge.invoke(save)
+
+    def rebuild_context_observations(self) -> dict[str, object]:
+        def rebuild() -> object:
+            if self._current_case_dir is None:
+                raise ApplicationError("REBUILD_UNAVAILABLE")
+            result = self._session.current_result()
+            manual = load_workspace_manual_context(self._current_case_dir)
+            case_context = build_case_context_from_directory(
+                self._current_case_dir,
+                business_confirmation=business_confirmation_from_record(manual),
+            )
+            transactions = transactions_from_standard_result(result)
+            rebuilt = rebuild_business_context_result(
+                dict(result),
+                transactions,
+                case_context,
+                ai_config={},
+            )
+            with self._lock:
+                self._session.load_result_dict(
+                    rebuilt,
+                    case_name=self._session.case_name,
+                    origin="analysis",
+                )
+                header = self._session.adapter().case_header()
+            self._record_recent_case(
+                to_dict(header),
+                header.case_name,
+                case_dir=self._current_case_dir,
+            )
+            return header
+
+        return self._bridge.invoke(rebuild)
+
+    def export_report(self) -> dict[str, object]:
+        def export() -> object:
+            if self._window is None:
+                raise ApplicationError("INTERNAL_ERROR", "桌面窗口尚未初始化")
+            result = self._session.current_result()
+            if self._current_case_dir is not None:
+                manual = load_workspace_manual_context(self._current_case_dir)
+                case_context = build_case_context_from_directory(
+                    self._current_case_dir,
+                    business_confirmation=business_confirmation_from_record(manual),
+                )
+            else:
+                case_context = {
+                    "case_id": self._session.case_name,
+                    "search_context": {},
+                }
+            try:
+                markdown = render_mvp_markdown(result, case_context)
+            except Exception as exc:
+                raise ApplicationError("REPORT_EXPORT_FAILED", str(exc)) from exc
+            import webview
+
+            selected = self._window.create_file_dialog(
+                webview.FileDialog.SAVE,
+                directory=str(Path.home()),
+                save_filename=f"{self._session.case_name}_验收报告.md",
+                file_types=(REPORT_SAVE_FILTER,),
+            )
+            if not selected:
+                raise ApplicationError("CANCELLED", "已取消导出")
+            if isinstance(selected, (str, Path)):
+                filename = str(selected)
+            else:
+                try:
+                    filename = str(next(iter(selected)))
+                except (TypeError, StopIteration) as exc:
+                    raise ApplicationError("CANCELLED", "已取消导出") from exc
+            target = Path(filename)
+            if target.suffix.lower() != ".md":
+                target = target.with_suffix(".md")
+            try:
+                target.write_text(markdown, encoding="utf-8")
+            except OSError as exc:
+                raise ApplicationError("REPORT_EXPORT_FAILED", str(exc)) from exc
+            return ExportReportDTO(saved=True, display_name=target.name)
+
+        with self._lock:
+            return self._bridge.invoke(export)
 
     def save_current_standard_result(self) -> dict[str, object]:
         def save() -> object:
@@ -293,9 +553,69 @@ class WebView2Api:
         def close() -> None:
             with self._lock:
                 self._session.close()
+                self._current_case_dir = None
             return None
 
         return self._bridge.invoke(close)
+
+    def _record_recent_case(
+        self,
+        header: dict[str, object],
+        case_name: str,
+        *,
+        case_dir: Path | str | None = None,
+        result_path: Path | str | None = None,
+    ) -> None:
+        summary = {
+            "case_name": case_name,
+            "period_start": str(header.get("period_start") or ""),
+            "period_end": str(header.get("period_end") or ""),
+            "source_count": int(header.get("source_count") or 0),
+            "transaction_count": int(header.get("transaction_count") or 0),
+            "analysis_status": str(header.get("analysis_status") or "已完成"),
+            "schema_version": str(header.get("schema_version") or ""),
+        }
+        try:
+            self._recent_store.upsert(
+                summary,
+                case_dir=case_dir,
+                result_path=result_path,
+            )
+        except OSError:
+            pass
+
+    def _open_case_directory(self, case_dir: Path) -> object:
+        def sort_key(path: Path) -> tuple[object, float]:
+            try:
+                return (path.name == STANDARD_RESULT_FILENAME, path.stat().st_mtime)
+            except OSError:
+                return (False, 0.0)
+
+        candidates = sorted(case_dir.rglob("*.json"), key=sort_key, reverse=True)
+        for candidate in candidates:
+            try:
+                result = load_standard_result(candidate)
+            except (OSError, StandardResultError):
+                continue
+            with self._lock:
+                if self._closed.is_set():
+                    raise ApplicationError("INTERNAL_ERROR", "桌面窗口正在关闭")
+                self._session.load_result_dict(
+                    result,
+                    case_name=case_dir.name,
+                    origin="file",
+                    path=candidate,
+                )
+                header = self._session.adapter().case_header()
+            self._current_case_dir = case_dir
+            self._record_recent_case(
+                to_dict(header),
+                case_dir.name,
+                case_dir=case_dir,
+                result_path=candidate,
+            )
+            return header
+        raise ApplicationError("RECENT_CASE_NOT_FOUND")
 
     def _shutdown(self) -> None:
         self._closed.set()

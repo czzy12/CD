@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent as R
 import {
   Archive, BriefcaseBusiness, Car, CarFront, ChevronLeft, ChevronRight,
   CircleHelp, ClipboardCheck, Command, FileJson, FolderOpen, Landmark,
-  FolderPlus, LoaderCircle, MapPin, Moon, Save, Search, ShieldAlert, SlidersHorizontal,
-  StopCircle, Sun, WalletCards, X, type LucideIcon,
+  FileText, FolderPlus, History, LoaderCircle, MapPin, Moon, RefreshCw, Save,
+  Search, ShieldAlert, SlidersHorizontal, StopCircle, Sun, WalletCards, X, type LucideIcon,
 } from "lucide-react";
 import { connectDesktopBridge } from "../bridge/desktopBridge";
 import type {
-  AnalysisStatusDTO, AppStateDTO, CaseHeaderDTO, CasePreflightDTO, DesktopBridge, EvidenceDetailDTO,
-  ModuleDescriptorDTO, ModuleSummaryDTO, PagedModuleItemsDTO,
-  ReviewItemDTO, SourceReviewSummaryDTO,
+  AnalysisStatusDTO, AppStateDTO, CaseHeaderDTO, CasePreflightDTO, DesktopBridge,
+  EvidenceDetailDTO, ManualContextInput, ModuleDescriptorDTO, ModuleSummaryDTO,
+  PagedModuleItemsDTO, RecentCaseDTO, ReviewItemDTO, SourceReviewSummaryDTO,
 } from "../bridge/contracts";
 import { IconButton } from "../components/IconButton";
 import { canChangePage, clearedCaseState, isAnalysisActive, isCompatibleApiVersion, isCurrentAnalysis, isCurrentCase, isModuleEnabled, nextTheme, shouldShowSourceReview } from "./requestGuard";
@@ -51,6 +51,15 @@ export function App() {
   const [analysis, setAnalysis] = useState<AnalysisStatusDTO | null>(null);
   const [completion, setCompletion] = useState<{ sources: number; transactions: number; reviews: number } | null>(null);
   const [notice, setNotice] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [recentCases, setRecentCases] = useState<RecentCaseDTO[]>([]);
+  const [recentCorrupt, setRecentCorrupt] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [contextDraft, setContextDraft] = useState<ManualContextInput>({
+    company_name: "", confirmed_primary_business: "", confirmed_products_or_services: "",
+    confirmation_note: "", confirmation_status: "unconfirmed",
+  });
+  const [contextNotice, setContextNotice] = useState("");
   const sessionRef = useRef<string | null>(null);
   const analysisTaskRef = useRef<string | null>(null);
   const requestRef = useRef(0);
@@ -126,7 +135,9 @@ export function App() {
       setLoading(false); return;
     }
     setAppState((current) => current ? { ...current, case_loaded: true, case_session_id: response.data!.case_session_id, case_revision: response.data!.case_revision } : current);
-    setPreflight(null); setAnalysis(null); analysisTaskRef.current = null;
+    setPreflight(null); setAnalysis(null); setHistoryOpen(false); analysisTaskRef.current = null;
+    setContextDraft({ company_name: "", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "", confirmation_status: "unconfirmed" });
+    setContextNotice("");
     await activateCase(bridge, response.data);
   };
 
@@ -142,7 +153,19 @@ export function App() {
     if (!inspected.ok || !inspected.data) {
       setError(inspected.error?.message || "来源预检失败"); setLoading(false); return;
     }
-    setPreflight(inspected.data); setAnalysis(null); analysisTaskRef.current = null; setLoading(false);
+    setPreflight(inspected.data); setAnalysis(null); setHistoryOpen(false); analysisTaskRef.current = null; setLoading(false);
+    setContextDraft({ company_name: "", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "", confirmation_status: "unconfirmed" });
+    setContextNotice("");
+    const contextResponse = await bridge.getManualCaseContext(selected.data.case_handle);
+    if (contextResponse.ok && contextResponse.data) {
+      setContextDraft({
+        company_name: contextResponse.data.company_name,
+        confirmed_primary_business: contextResponse.data.confirmed_primary_business,
+        confirmed_products_or_services: contextResponse.data.confirmed_products_or_services,
+        confirmation_note: contextResponse.data.confirmation_note,
+        confirmation_status: contextResponse.data.confirmation_status,
+      });
+    }
   };
 
   const startAnalysis = async () => {
@@ -167,6 +190,67 @@ export function App() {
     const response = await bridge.saveCurrentStandardResult();
     if (response.ok && response.data) setNotice(`已保存：${response.data.display_name}`);
     else if (response.error?.code !== "CANCELLED") setError(response.error?.message || "保存标准结果失败");
+  };
+
+  const openHistory = async () => {
+    if (!bridge) return;
+    setError(""); setHistoryLoading(true); setHistoryOpen(true);
+    setRecentCases([]); setRecentCorrupt(false);
+    const response = await bridge.listRecentCases();
+    setHistoryLoading(false);
+    if (!response.ok || !response.data) { setError(response.error?.message || "读取历史案件失败"); return; }
+    setRecentCases(response.data.cases); setRecentCorrupt(response.data.corrupt_index);
+  };
+
+  const openRecentCase = async (recordId: string) => {
+    if (!bridge || historyLoading) return;
+    setHistoryLoading(true); setError("");
+    const response = await bridge.openRecentCase(recordId);
+    setHistoryLoading(false);
+    if (!response.ok || !response.data) { setError(response.error?.message || "打开历史案件失败"); return; }
+    setHistoryOpen(false); setPreflight(null); setAnalysis(null); analysisTaskRef.current = null;
+    setContextDraft({ company_name: "", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "", confirmation_status: "unconfirmed" });
+    setContextNotice("");
+    setAppState((current) => current ? { ...current, case_loaded: true, case_session_id: response.data!.case_session_id, case_revision: response.data!.case_revision } : current);
+    await activateCase(bridge, response.data);
+  };
+
+  const removeRecentCase = async (recordId: string) => {
+    if (!bridge) return;
+    const response = await bridge.removeRecentCase(recordId);
+    if (response.ok) setRecentCases((items) => items.filter((item) => item.record_id !== recordId));
+    else setError(response.error?.message || "删除历史案件失败");
+  };
+
+  const saveContext = async () => {
+    if (!bridge || !preflight) return;
+    setLoading(true); setError(""); setContextNotice("");
+    const response = await bridge.saveManualCaseContext(preflight.case_handle, contextDraft);
+    setLoading(false);
+    if (!response.ok || !response.data) { setError(response.error?.message || "保存经营上下文失败"); return; }
+    setContextNotice("经营上下文已保存，开始分析时会自动使用");
+  };
+
+  const rebuildContext = async () => {
+    if (!bridge) return;
+    setLoading(true); setError(""); setNotice("");
+    const response = await bridge.rebuildContextObservations();
+    setLoading(false);
+    if (!response.ok || !response.data) { setError(response.error?.message || "重新构建经营上下文失败"); return; }
+    setNotice("经营上下文观察已重新构建");
+    await activateCase(bridge, response.data);
+  };
+
+  const exportReport = async () => {
+    if (!bridge) return;
+    setLoading(true); setError(""); setNotice("");
+    const response = await bridge.exportReport();
+    setLoading(false);
+    if (!response.ok || !response.data) {
+      if (response.error?.code !== "CANCELLED") setError(response.error?.message || "导出报告失败");
+      return;
+    }
+    setNotice(`报告已导出：${response.data.display_name}`);
   };
 
   const leaveAnalysis = async () => {
@@ -205,6 +289,9 @@ export function App() {
   const closeCase = async () => {
     if (!bridge) return;
     ++requestRef.current; await bridge.closeCase(); sessionRef.current = null; setHeader(null); clearCaseUi();
+    setHistoryOpen(false); setRecentCases([]); setRecentCorrupt(false);
+    setContextDraft({ company_name: "", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "", confirmation_status: "unconfirmed" });
+    setContextNotice("");
     setAppState((current) => current ? { ...current, case_loaded: false, case_session_id: null } : current);
   };
 
@@ -270,12 +357,12 @@ export function App() {
       <div className="sidebar-bottom"><button className="sidebar-row" onClick={() => setTheme(nextTheme(theme))}>{theme === "dark" ? <Moon /> : <Sun />}<span>主题：{theme === "dark" ? "深色" : "浅色"}</span></button></div>
     </aside>
     <section className="work-area">
-      <header className="context-bar"><div className="breadcrumb"><span>{analysis?.case_display_name || preflight?.case_display_name || header?.case_name || "未加载案件"}</span>{activeModule && !analysis && !preflight && <><i>/</i><strong>{activeModule.title}</strong></>}</div><div className="context-actions"><IconButton icon={Search} label="搜索命令 (Ctrl+K)" onClick={() => setCommandOpen(true)} /><IconButton icon={FolderPlus} label="新建案件" onClick={chooseNewCase} disabled={!bridge || loading || isAnalysisActive(analysis?.state)} /><IconButton icon={FolderOpen} label="打开标准结果" onClick={openResult} disabled={!bridge || loading || isAnalysisActive(analysis?.state)} /></div></header>
+      <header className="context-bar"><div className="breadcrumb"><span>{analysis?.case_display_name || preflight?.case_display_name || header?.case_name || "未加载案件"}</span>{activeModule && !analysis && !preflight && <><i>/</i><strong>{activeModule.title}</strong></>}</div><div className="context-actions"><IconButton icon={Search} label="搜索命令 (Ctrl+K)" onClick={() => setCommandOpen(true)} /><IconButton icon={History} label="历史案件" onClick={openHistory} disabled={!bridge || loading || historyOpen} /><IconButton icon={FolderPlus} label="新建案件" onClick={chooseNewCase} disabled={!bridge || loading || isAnalysisActive(analysis?.state)} /><IconButton icon={FolderOpen} label="打开标准结果" onClick={openResult} disabled={!bridge || loading || isAnalysisActive(analysis?.state)} /></div></header>
       {completion && <div className="completion-toast"><strong>分析完成</strong><span>共处理 {completion.sources} 个来源 · {completion.transactions} 笔交易 · {completion.reviews} 个来源需复核</span><button onClick={() => setCompletion(null)} aria-label="关闭完成提示"><X /></button></div>}
       {notice && <div className="save-toast">{notice}</div>}
-      {analysis ? <AnalysisProgress value={analysis} error={error} onCancel={cancelAnalysis} onBack={leaveAnalysis} /> : preflight ? <CasePreflight value={preflight} loading={loading} error={error} onStart={startAnalysis} onReselect={chooseNewCase} onCancel={() => { setPreflight(null); setError(""); }} /> : !header ? <EmptyWorkspace connection={connection} loading={loading} error={error} onNew={chooseNewCase} onOpen={openResult} /> : <>
+      {analysis ? <AnalysisProgress value={analysis} error={error} onCancel={cancelAnalysis} onBack={leaveAnalysis} /> : preflight ? <CasePreflight value={preflight} loading={loading} error={error} onStart={startAnalysis} onReselect={chooseNewCase} onCancel={() => { setPreflight(null); setError(""); }} context={contextDraft} contextNotice={contextNotice} onContextChange={setContextDraft} onSaveContext={saveContext} /> : historyOpen ? <HistoryPage cases={recentCases} corrupt={recentCorrupt} loading={historyLoading} error={error} onOpen={openRecentCase} onRemove={removeRecentCase} onClose={() => { setHistoryOpen(false); setError(""); }} /> : !header ? <EmptyWorkspace connection={connection} loading={loading} error={error} onNew={chooseNewCase} onOpen={openResult} /> : <>
         <header className="view-bar"><div className="view-title"><strong>{activeModule?.title}</strong><span>{pageData.total} 项</span></div><div className="summary-metrics"><span>总计 <b>{summary?.total_count ?? 0}</b></span><span className={summary?.review_count ? "warning-text" : ""}>需复核 <b>{summary?.review_count ?? 0}</b></span>{categories.slice(0, 2).map(([label, count]) => <span key={label}>{label} <b>{count}</b></span>)}</div><div className="case-meta">{header.period_start.slice(0, 10)}—{header.period_end.slice(0, 10)} · {header.source_count} 来源{shouldShowSourceReview(header.review_source_count) && <button className="source-review-alert" onClick={showSourceReviews}> · {header.review_source_count} 来源需复核</button>} · {header.transaction_count} 交易 · schema {header.schema_version}</div></header>
-        <div className="module-summary"><span>{summary?.description}</span>{summary?.boundary_note && <em>{summary.boundary_note}</em>}<button className="save-result-button" onClick={saveResult}><Save />保存标准结果</button></div>
+        <div className="module-summary"><span>{summary?.description}</span>{summary?.boundary_note && <em>{summary.boundary_note}</em>}<div className="module-actions"><button className="save-result-button" onClick={rebuildContext}><RefreshCw />重新构建上下文观察</button><button className="save-result-button" onClick={exportReport}><FileText />导出报告</button><button className="save-result-button" onClick={saveResult}><Save />保存标准结果</button></div></div>
         <div className="filter-bar"><div className="filter-controls"><span className="property-button static"><SlidersHorizontal />筛选</span>{pageData.available_filters.map((definition) => definition.kind === "select" ? <select key={definition.key} value={filterDraft[definition.key] || ""} onChange={(event) => setFilterDraft({ ...filterDraft, [definition.key]: event.target.value })}><option value="">{definition.label}：全部</option>{definition.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input key={definition.key} type={definition.kind === "date" ? "date" : "search"} aria-label={definition.label} placeholder={definition.label} value={filterDraft[definition.key] || ""} onChange={(event) => setFilterDraft({ ...filterDraft, [definition.key]: event.target.value })} />)}<button className="property-button applied" onClick={applyFilters}>应用</button><button className="property-button" onClick={resetFilters}>重置</button></div><select aria-label="每页数量" value={pageSize} onChange={(event) => { const size = Number(event.target.value); if (bridge && activeModule && sessionRef.current) void loadModule(bridge, activeModule, sessionRef.current, 1, filters, size); }}><option value="25">25 / 页</option><option value="50">50 / 页</option><option value="100">100 / 页</option></select></div>
         <section className="list-region" aria-label="模块候选列表" onWheel={handleListWheel}>{loading && <div className="loading-line"><LoaderCircle className="spin" />正在读取当前模块…</div>}{error && <div className="inline-error">{error}</div>}{activeModule?.availability === "empty" ? <ListState text="当前结果中没有该类候选" /> : pageData.items.length === 0 && !loading ? <ListState text="当前筛选下没有候选" /> : <div className="issue-list"><div className="list-header"><span /><span>日期</span><span>交易与命中内容</span><span>金额</span><span>分类</span><span>来源</span></div>{pageData.items.map((item) => <button className={`transaction-row ${selectedId === item.item_id ? "selected" : ""}`} key={item.item_id} onClick={() => selectItem(item)}><span className="row-status"><span className={`status-mark ${item.review_status === "review" ? "review" : "direct"}`} /></span><time>{item.date?.slice(5, 10) || "—"}</time><span className="transaction-title"><strong>{item.primary_text}</strong><em>{item.matched_text || item.secondary_text || item.interpretation}</em></span><span className="amount">{item.amount ? `${item.direction === "收入" ? "+" : item.direction === "支出" ? "−" : ""}${item.amount}` : "—"}</span><span className={`row-verdict ${item.review_status}`}>{item.category || "—"}</span><span className="source-name">{item.source_name || (item.evidence_available ? "证据可用" : "无交易证据")}</span></button>)}</div>}<footer className="page-footer"><span>第 {pageData.page} / {pageData.total_pages} 页 · {pageData.total} 条 · 查询 {pageData.meta.query_elapsed_ms ?? 0}ms</span><div><button onClick={() => changePage(pageData.page - 1)} disabled={pageData.page <= 1}><ChevronLeft />上一页</button><button onClick={() => changePage(pageData.page + 1)} disabled={pageData.page >= pageData.total_pages}>下一页<ChevronRight /></button></div></footer></section>
       </>}
@@ -291,8 +378,12 @@ function EmptyWorkspace({ connection, loading, error, onNew, onOpen }: { connect
   return <section className="empty-workspace"><span className="empty-icon">{loading ? <LoaderCircle className="spin" /> : disconnected ? <CircleHelp /> : <FileJson />}</span><h1>{loading ? "正在读取案件" : disconnected ? "未连接桌面 API" : "流水核查工作台"}</h1><p>{disconnected ? "请从“启动WebView2流水核查工作台.bat”打开。" : "从客户案件目录运行现有正式分析流程，或打开已有 schema 1.16 标准结果。"}</p>{error && <div className="empty-error">{error}</div>}<div className="empty-actions"><button className="primary-button" onClick={onNew} disabled={disconnected || loading}><FolderPlus />新建案件</button><button className="secondary-button" onClick={onOpen} disabled={disconnected || loading}><FolderOpen />打开标准结果</button></div></section>;
 }
 
-function CasePreflight({ value, loading, error, onStart, onReselect, onCancel }: { value: CasePreflightDTO; loading: boolean; error: string; onStart: () => void; onReselect: () => void; onCancel: () => void }) {
-  return <section className="workflow-page"><header className="workflow-header"><div><span>来源预检</span><h1>{value.case_display_name}</h1><p>只核对正式流程支持的来源，不运行完整流水解析。</p></div><dl><div><dt>支持</dt><dd>{value.supported_source_count}</dd></div><div><dt>不支持</dt><dd>{value.unsupported_source_count}</dd></div><div><dt>预检耗时</dt><dd>{value.elapsed_ms}ms</dd></div></dl></header>{value.warnings.length > 0 && <div className="workflow-warnings">{value.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}{error && <div className="inline-error">{error}</div>}<div className="source-table"><div className="source-table-head"><span>来源</span><span>类型</span><span>识别</span><span>大小</span><span>状态</span></div>{value.sources.map((source) => <div className="source-table-row" key={source.source_ref}><span><strong>{source.display_name}</strong>{source.warning && <em>{source.warning}</em>}</span><span>{source.detected_source_type === "pdf" ? "PDF" : source.detected_source_type === "excel" ? "Excel" : source.extension || "其他"}</span><span>{source.detected_bank_type || "未识别"}{source.may_use_generic_fallback ? " · 可能通用回退" : ""}</span><span>{formatBytes(source.size)}</span><span className={source.supported ? "source-ready" : "source-unsupported"}>{source.supported ? "可处理" : "将跳过"}</span></div>)}</div><footer className="workflow-actions"><button className="secondary-button" onClick={onCancel}>取消</button><button className="secondary-button" onClick={onReselect} disabled={loading}>重新选择</button><button className="primary-button" onClick={onStart} disabled={loading || !value.can_start}>{loading ? <LoaderCircle className="spin" /> : <ClipboardCheck />}开始分析</button></footer></section>;
+function CasePreflight({ value, loading, error, onStart, onReselect, onCancel, context, contextNotice, onContextChange, onSaveContext }: { value: CasePreflightDTO; loading: boolean; error: string; onStart: () => void; onReselect: () => void; onCancel: () => void; context: ManualContextInput; contextNotice: string; onContextChange: (next: ManualContextInput) => void; onSaveContext: () => void }) {
+  return <section className="workflow-page"><header className="workflow-header"><div><span>来源预检</span><h1>{value.case_display_name}</h1><p>只核对正式流程支持的来源，不运行完整流水解析。</p></div><dl><div><dt>支持</dt><dd>{value.supported_source_count}</dd></div><div><dt>不支持</dt><dd>{value.unsupported_source_count}</dd></div><div><dt>预检耗时</dt><dd>{value.elapsed_ms}ms</dd></div></dl></header>{value.warnings.length > 0 && <div className="workflow-warnings">{value.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}{error && <div className="inline-error">{error}</div>}<div className="source-table"><div className="source-table-head"><span>来源</span><span>类型</span><span>识别</span><span>大小</span><span>状态</span></div>{value.sources.map((source) => <div className="source-table-row" key={source.source_ref}><span><strong>{source.display_name}</strong>{source.warning && <em>{source.warning}</em>}</span><span>{source.detected_source_type === "pdf" ? "PDF" : source.detected_source_type === "excel" ? "Excel" : source.extension || "其他"}</span><span>{source.detected_bank_type || "未识别"}{source.may_use_generic_fallback ? " · 可能通用回退" : ""}</span><span>{formatBytes(source.size)}</span><span className={source.supported ? "source-ready" : "source-unsupported"}>{source.supported ? "可处理" : "将跳过"}</span></div>)}</div><section className="context-section"><header><span>经营上下文（可选）</span><button className="property-button" onClick={onSaveContext} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <Save />}保存经营上下文</button></header>{contextNotice && <p className="context-notice">{contextNotice}</p>}<div className="context-grid"><label>工作单位<input value={context.company_name} onChange={(event) => onContextChange({ ...context, company_name: event.target.value })} /></label><label>确认状态<select value={context.confirmation_status} onChange={(event) => onContextChange({ ...context, confirmation_status: event.target.value })}><option value="unconfirmed">未确认</option><option value="confirmed">已确认</option></select></label><label>主要经营内容<input value={context.confirmed_primary_business} onChange={(event) => onContextChange({ ...context, confirmed_primary_business: event.target.value })} /></label><label>产品 / 服务<input value={context.confirmed_products_or_services} onChange={(event) => onContextChange({ ...context, confirmed_products_or_services: event.target.value })} /></label><label>补充说明<textarea value={context.confirmation_note} onChange={(event) => onContextChange({ ...context, confirmation_note: event.target.value })} /></label></div></section><footer className="workflow-actions"><button className="secondary-button" onClick={onCancel}>取消</button><button className="secondary-button" onClick={onReselect} disabled={loading}>重新选择</button><button className="primary-button" onClick={onStart} disabled={loading || !value.can_start}>{loading ? <LoaderCircle className="spin" /> : <ClipboardCheck />}开始分析</button></footer></section>;
+}
+
+function HistoryPage({ cases, corrupt, loading, error, onOpen, onRemove, onClose }: { cases: RecentCaseDTO[]; corrupt: boolean; loading: boolean; error: string; onOpen: (recordId: string) => void; onRemove: (recordId: string) => void; onClose: () => void }) {
+  return <section className="workflow-page history-page"><header className="workflow-header"><div><span>历史案件</span><h1>最近打开的案件</h1><p>只记录摘要，不包含客户原始资料与完整结果。</p></div></header>{error && <div className="inline-error">{error}</div>}{corrupt && <div className="workflow-warnings"><p>最近案件索引损坏，已按空列表处理；打开新案件后会重建。</p></div>}{loading ? <div className="loading-line"><LoaderCircle className="spin" />正在读取历史案件…</div> : cases.length === 0 ? <ListState text="暂无历史案件" /> : <div className="history-list">{cases.map((record) => <div className="history-row" key={record.record_id}><div><strong>{record.case_name}</strong><em>{record.period_start || "—"} 至 {record.period_end || "—"} · {record.source_count} 来源 · {record.transaction_count} 交易 · schema {record.schema_version || "—"}</em></div><span>{record.updated_at}</span><div className="history-actions"><button className="property-button" disabled={!record.available || loading} onClick={() => onOpen(record.record_id)}>打开</button><button className="property-button danger-text" onClick={() => onRemove(record.record_id)}>删除</button></div></div>)}</div>}<footer className="workflow-actions"><button className="secondary-button" onClick={onClose}>返回</button></footer></section>;
 }
 
 const STAGE_LABELS: Record<string, string> = {

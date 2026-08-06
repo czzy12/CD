@@ -39,6 +39,12 @@ export type AnalysisSourceStatusDTO = { source_ref: string; display_name: string
 export type AnalysisState = "running" | "cancelling" | "completed" | "failed" | "cancelled";
 export type AnalysisStatusDTO = { analysis_task_id: string; state: AnalysisState; case_display_name: string; current_stage: string; current_source_name: string; completed_sources: number; total_sources: number; success_sources: number; review_sources: number; failed_sources: number; warning_count: number; started_at: string; elapsed_ms: number; cancellation_requested: boolean; error_code: string | null; error_message: string | null; result_ready: boolean; sources: AnalysisSourceStatusDTO[]; case_session_id: string | null; case_revision: number | null; transaction_count: number; result_build_ms: number | null; result_bind_ms: number | null; diagnostic_id: string | null };
 export type SaveResultDTO = { saved: boolean; display_name: string };
+export type RecentCaseDTO = { record_id: string; case_name: string; updated_at: string; period_start: string; period_end: string; source_count: number; transaction_count: number; analysis_status: string; schema_version: string; available: boolean };
+export type RecentCasesDTO = { cases: RecentCaseDTO[]; corrupt_index: boolean };
+export type ManualContextDTO = { case_name: string; saved: boolean; has_file: boolean; company_name: string; confirmed_primary_business: string; confirmed_products_or_services: string; confirmation_note: string; confirmation_status: string; enable_ai_business_analysis: boolean };
+export type ManualContextSaveDTO = { saved: boolean; case_name: string; confirmation_status: string };
+export type ExportReportDTO = { saved: boolean; display_name: string };
+export type ManualContextInput = { company_name: string; confirmed_primary_business: string; confirmed_products_or_services: string; confirmation_note: string; confirmation_status: string };
 
 export interface DesktopBridge {
   getAppState(): Promise<ApiEnvelope<AppStateDTO>>;
@@ -58,4 +64,11 @@ export interface DesktopBridge {
   listSourceReviews(caseSessionId: string): Promise<ApiEnvelope<SourceReviewSummaryDTO>>;
   getEvidence(transactionId: string, caseSessionId: string): Promise<ApiEnvelope<EvidenceDetailDTO>>;
   closeCase(): Promise<ApiEnvelope<null>>;
+  listRecentCases(): Promise<ApiEnvelope<RecentCasesDTO>>;
+  openRecentCase(recordId: string): Promise<ApiEnvelope<CaseHeaderDTO>>;
+  removeRecentCase(recordId: string): Promise<ApiEnvelope<{ removed: boolean }>>;
+  getManualCaseContext(caseHandle: string): Promise<ApiEnvelope<ManualContextDTO>>;
+  saveManualCaseContext(caseHandle: string, fields: ManualContextInput): Promise<ApiEnvelope<ManualContextSaveDTO>>;
+  rebuildContextObservations(): Promise<ApiEnvelope<CaseHeaderDTO>>;
+  exportReport(): Promise<ApiEnvelope<ExportReportDTO>>;
 }

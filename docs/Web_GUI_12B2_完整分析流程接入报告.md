@@ -47,6 +47,13 @@
 - 修复后：MVP-input 14 个来源全量真实解析完成，20006 笔交易，界面自动切换进入模块工作台（9 个模块），案件会话切换为新案件；前端错误 0。
 - 实测脚本已把该场景固化为第三个必测场景，防止回归。
 
+### 场景 D：历史案件页、经营上下文闭环与报告导出（2026-08-07）
+
+- 历史案件页：后端自动记录最近打开/分析案件摘要（不返回绝对路径），前端“历史案件”页可打开与删除；实测历史页 5 条记录，打开后正常进入工作台。
+- 经营上下文：在“来源预检”页可录入/保存工作单位、主要经营内容、产品/服务、补充说明与确认状态（确认人/时间不强制），保存到仓库外工作区；分析自动使用；工作台“重新构建上下文观察”实测约 1.17 秒完成且会话替换成功，AI 保持关闭。
+- 报告导出：工作台“导出报告”将当前案件渲染为 Markdown 验收报告；实测成功生成约 91 KB 文件。
+- 完整实测结果：`outputs/web-gui-12b2/flow-qa-20260807-full.json`；详见 `chg-20260807-02`。
+
 ## 四、自动测试基线（2026-08-06 实际重跑）
 
 - Python 定向：55 PASS / 2 SKIP（57 项）。
@@ -77,7 +84,9 @@
 - `web_frontend/src/app/App.tsx`（修复分析完成未自动进入工作台，`chg-20260806-02`）
 - `web_frontend/src/app/App.tsx`、`web_frontend/src/styles/app.css`（UI 修正：滚轮翻页、原始字段分隔符过滤、筛选行换行、小窗口显示完整，`chg-20260806-03`）
 - `web_frontend/src/styles/app.css`（底部显示修复：工作区滚动、分页脚固定，`chg-20260807-01`）
+- `bankflow_web/case_workspace.py`、`bankflow_web/contracts.py`、`bankflow_webview2/api.py`（历史案件、经营上下文、报告导出，`chg-20260807-02`）
+- `web_frontend/src/app/App.tsx`、`web_frontend/src/bridge/contracts.ts`、`web_frontend/src/bridge/pywebviewBridgeAdapter.ts`、`web_frontend/src/styles/app.css`（历史案件页、预检经营上下文、重建与导出按钮，`chg-20260807-02`）
 - `web_frontend/dist`（重新构建，本地运行入口使用）
-- `技术变更记录.md`、`docs/change-history/2026-08.md`（记录 `chg-20260806-01/02/03/04`）
+- `技术变更记录.md`、`docs/change-history/2026-08.md`（记录 `chg-20260806-01/02/03`、`chg-20260807-01/02`）
 
 本轮未 commit、未 push。

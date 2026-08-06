@@ -164,3 +164,46 @@ test("completed analysis enters review without frontend result payload", () => {
   assert.doesNotMatch(source, /standard_result/);
   assert.doesNotMatch(source, /original_transactions/);
 });
+
+test("adapter maps recent-case and context methods to the Python whitelist", async () => {
+  const calls = [];
+  const api = new Proxy({}, { get: (_target, key) => async (...args) => {
+    calls.push([key, ...args]);
+    return { ok: true, data: {}, error: null, meta: { elapsed_ms: 1 } };
+  }});
+  const bridge = new PyWebviewBridgeAdapter(api);
+  await bridge.listRecentCases();
+  await bridge.openRecentCase("record-a");
+  await bridge.removeRecentCase("record-a");
+  await bridge.getManualCaseContext("case-a");
+  await bridge.saveManualCaseContext("case-a", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "", confirmation_status: "unconfirmed" });
+  await bridge.rebuildContextObservations();
+  await bridge.exportReport();
+  assert.deepEqual(calls, [
+    ["list_recent_cases"],
+    ["open_recent_case", "record-a"],
+    ["remove_recent_case", "record-a"],
+    ["get_manual_case_context", "case-a"],
+    ["save_manual_case_context", "case-a", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "", confirmation_status: "unconfirmed" }],
+    ["rebuild_context_observations"],
+    ["export_report"],
+  ]);
+});
+
+test("history page and context controls are wired in the UI", () => {
+  const source = readFileSync(new URL("../src/app/App.tsx", import.meta.url), "utf8");
+  assert.match(source, /历史案件/);
+  assert.match(source, /重新构建上下文观察/);
+  assert.match(source, /导出报告/);
+  assert.match(source, /保存经营上下文/);
+  assert.match(source, /listRecentCases/);
+  assert.match(source, /rebuildContextObservations/);
+  assert.match(source, /exportReport/);
+});
+
+test("recent-case DTO never carries customer paths", () => {
+  const source = readFileSync(new URL("../src/bridge/contracts.ts", import.meta.url), "utf8");
+  assert.match(source, /RecentCaseDTO/);
+  assert.doesNotMatch(source, /case_dir/);
+  assert.doesNotMatch(source, /result_path/);
+});

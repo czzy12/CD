@@ -1,4 +1,5 @@
 import type { AnalysisStatusDTO, ApiEnvelope, AppStateDTO, CaseHeaderDTO, CasePreflightDTO, CaseSelectionDTO, DesktopBridge, EvidenceDetailDTO, ModuleRegistryDTO, ModuleSummaryDTO, PagedModuleItemsDTO, SaveResultDTO, SourceReviewSummaryDTO } from "./contracts";
+import type { ExportReportDTO, ManualContextDTO, ManualContextInput, ManualContextSaveDTO, RecentCasesDTO } from "./contracts";
 
 type RawApi = Record<string, (...args: unknown[]) => Promise<unknown>>;
 declare global { interface Window { pywebview?: { api?: RawApi } } }
@@ -34,6 +35,13 @@ export class PyWebviewBridgeAdapter implements DesktopBridge {
   listSourceReviews = (id: string) => this.call<SourceReviewSummaryDTO>("list_source_reviews", id);
   getEvidence = (transactionId: string, id: string) => this.call<EvidenceDetailDTO>("get_evidence", transactionId, id);
   closeCase = () => this.call<null>("close_case");
+  listRecentCases = () => this.call<RecentCasesDTO>("list_recent_cases");
+  openRecentCase = (recordId: string) => this.call<CaseHeaderDTO>("open_recent_case", recordId);
+  removeRecentCase = (recordId: string) => this.call<{ removed: boolean }>("remove_recent_case", recordId);
+  getManualCaseContext = (caseHandle: string) => this.call<ManualContextDTO>("get_manual_case_context", caseHandle);
+  saveManualCaseContext = (caseHandle: string, fields: ManualContextInput) => this.call<ManualContextSaveDTO>("save_manual_case_context", caseHandle, fields);
+  rebuildContextObservations = () => this.call<CaseHeaderDTO>("rebuild_context_observations");
+  exportReport = () => this.call<ExportReportDTO>("export_report");
 }
 
 function waitForApi(timeoutMs = 5000): Promise<RawApi> {

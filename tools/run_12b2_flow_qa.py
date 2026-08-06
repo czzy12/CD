@@ -28,20 +28,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bankflow_web.analysis.service import AnalysisService  # noqa: E402
 from bankflow_web.analysis.task_manager import AnalysisTaskManager  # noqa: E402
+from bankflow_web.case_workspace import manual_context_path  # noqa: E402
 
 
 class _DialogStub:
     """Returns the configured directory for FOLDER dialogs and file otherwise."""
 
-    def __init__(self, folder: Path, file: Path) -> None:
+    def __init__(self, folder: Path, file: Path, save_path: Path | None = None) -> None:
         self.folder = folder
         self.file = file
+        self.save_path = save_path
 
     def create_file_dialog(self, *args, **_kwargs):
         import webview
 
         if args and args[0] == webview.FileDialog.FOLDER:
             return (str(self.folder),)
+        if args and args[0] == webview.FileDialog.SAVE and self.save_path is not None:
+            return (str(self.save_path),)
         return (str(self.file),)
 
 
@@ -72,7 +76,9 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
     case_dir = case_dir.resolve(strict=True)
     old_case = old_case.resolve(strict=True)
     api = WebView2Api()
-    api._attach_window(_DialogStub(case_dir, old_case))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    report_save_path = output.parent / (output.stem + "-report.md")
+    api._attach_window(_DialogStub(case_dir, old_case, save_path=report_save_path))
     frontend_html = _inject_error_tracking(build_offline_frontend_html())
     window = webview.create_window(
         "流水核查工作台 · 12B-2 完整流程实测",
@@ -172,6 +178,29 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
             """))
             if not preflight_layout.get("startButtonFullyVisible"):
                 raise AssertionError("start button still clipped after scrolling: " + json.dumps(preflight_layout, ensure_ascii=False))
+            case_handle = next(iter(api._case_directories._cases))
+            context_saved = api.save_manual_case_context(case_handle, {
+                "company_name": "QA 测试单位",
+                "confirmed_primary_business": "建材销售",
+                "confirmed_products_or_services": "护栏、围栏",
+                "confirmation_note": "由完整流程实测写入",
+                "confirmation_status": "confirmed",
+            })
+            if not context_saved["ok"]:
+                raise AssertionError("manual context save failed: " + json.dumps(context_saved, ensure_ascii=False))
+            context_fetched = api.get_manual_case_context(case_handle)
+            if (
+                not context_fetched["ok"]
+                or context_fetched["data"]["company_name"] != "QA 测试单位"
+                or context_fetched["data"]["confirmed_primary_business"] != "建材销售"
+                or not manual_context_path(case_dir).exists()
+            ):
+                raise AssertionError("manual context roundtrip failed: " + json.dumps(context_fetched, ensure_ascii=False))
+            manual_context_result = {
+                "saved": True,
+                "roundtrip_ok": True,
+                "file_exists": manual_context_path(case_dir).exists(),
+            }
             click('.workflow-actions .primary-button')
             wait_for("!!document.querySelector('.analysis-page')", 30)
             cancel_task_id = wait_task()
@@ -286,6 +315,55 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "new_case_session": True,
             }
 
+            # 5. Recent cases: backend index + history page open flow.
+            recent = api.list_recent_cases()
+            if not recent["ok"] or not recent["data"]["cases"]:
+                raise AssertionError("recent cases index empty after success flow")
+            recent_result = {
+                "count": len(recent["data"]["cases"]),
+                "corrupt_index": recent["data"]["corrupt_index"],
+            }
+            click('button[aria-label="历史案件"]')
+            wait_for("!!document.querySelector('.history-page')", 30)
+            history_rows = int(js("document.querySelectorAll('.history-row').length") or 0)
+            if history_rows < 1:
+                raise AssertionError("history page rendered without rows")
+            click('.history-row .property-button')
+            wait_for("!document.querySelector('.history-page') && !!document.querySelector('.view-bar')", 90)
+            history_open_result = {
+                "rows": history_rows,
+                "ui_opened": True,
+            }
+
+            # 6. Rebuild context observations from the workbench.
+            rebuild_started = time.perf_counter()
+            session_before_rebuild = header_snapshot()["case_session_id"]
+            click('.module-actions .save-result-button')
+            wait_for("document.querySelector('.save-toast')?.textContent.includes('重新构建')", 90)
+            rebuilt_header = header_snapshot()
+            rebuild_ms = round((time.perf_counter() - rebuild_started) * 1000, 3)
+            if rebuilt_header["case_session_id"] == session_before_rebuild:
+                raise AssertionError("rebuild did not replace the session")
+            rebuild_result = {
+                "notice_shown": True,
+                "session_replaced": True,
+                "elapsed_ms": rebuild_ms,
+            }
+
+            # 7. Export the Markdown acceptance report.
+            export_started = time.perf_counter()
+            click('.module-actions .save-result-button:nth-of-type(2)')
+            wait_for("document.querySelector('.save-toast')?.textContent.includes('报告已导出')", 60)
+            export_ms = round((time.perf_counter() - export_started) * 1000, 3)
+            if not report_save_path.exists():
+                raise AssertionError("exported report file missing")
+            export_result = {
+                "notice_shown": True,
+                "file_exists": True,
+                "file_size": report_save_path.stat().st_size,
+                "elapsed_ms": export_ms,
+            }
+
             raw_errors = js("JSON.stringify(window.__bankflowQaErrors || [])")
             frontend_errors = json.loads(raw_errors) if isinstance(raw_errors, str) else list(raw_errors or [])
             outcome.update({
@@ -295,6 +373,11 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "cancel": cancel_result,
                 "failure_recovery": failure_result,
                 "success_flow": success_result,
+                "manual_context": manual_context_result,
+                "recent_cases": recent_result,
+                "history_open": history_open_result,
+                "context_rebuild": rebuild_result,
+                "report_export": export_result,
                 "preflight_layout": preflight_layout,
                 "list_footer_layout": list_footer_layout,
                 "frontend_errors": frontend_errors,

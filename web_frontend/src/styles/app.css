@@ -1,4 +1,4 @@
-.work-area { grid-template-rows: 40px auto auto 40px minmax(0, 1fr); }
+.work-area { grid-template-rows: 40px auto auto auto minmax(0, 1fr); overflow-y: auto; }
 .empty-workspace { grid-row: 2 / 6; }
 .workspace-switch { cursor: default; }
 .sidebar-row:disabled { border: 0; }
@@ -16,7 +16,7 @@
 .secondary-button:hover:not(:disabled) { color: var(--text-primary); background: var(--hover); }
 .secondary-button:disabled { opacity: .45; }
 .secondary-button svg { width: 15px; }
-.workflow-page { grid-row: 2 / 6; display: flex; min-height: 0; flex-direction: column; padding: 30px 36px 24px; overflow: hidden; background: var(--surface); }
+.workflow-page { grid-row: 2 / 6; display: flex; min-height: 0; flex-direction: column; padding: 30px 36px 24px; overflow: auto; background: var(--surface); }
 .workflow-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; padding-bottom: 22px; border-bottom: 1px solid var(--border-subtle); }
 .workflow-header > div > span { color: var(--accent); font-size: 12px; font-weight: 600; }
 .workflow-header h1 { margin: 6px 0 4px; font-size: 22px; font-weight: 600; }
@@ -54,7 +54,8 @@
 .save-toast { top: 92px; color: var(--success); }
 .source-review-alert { padding: 0; color: var(--warning); background: transparent; font-size: inherit; }
 .source-review-alert:hover { text-decoration: underline; }
-.filter-controls { min-width: 0; overflow-x: auto; }
+.filter-bar { flex-wrap: wrap; row-gap: 6px; min-height: 40px; padding: 6px 18px; }
+.filter-controls { min-width: 0; flex-wrap: wrap; overflow-x: visible; }
 .filter-bar select, .filter-bar input { height: 28px; min-width: 108px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-control); outline: none; color: var(--text-secondary); background: var(--surface); font-size: 12px; }
 .filter-bar input[type="search"] { min-width: 130px; }
 .filter-bar input:focus, .filter-bar select:focus { color: var(--text-primary); border-color: var(--focus); }
@@ -62,6 +63,9 @@
 .list-header span:nth-child(4), .list-header span:nth-child(6) { text-align: right; }
 .list-state { display: grid; min-height: 240px; place-content: center; justify-items: center; gap: 10px; color: var(--text-muted); font-size: 13px; }
 .list-state svg { width: 22px; color: var(--accent); }
+.list-region { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.issue-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.page-footer { flex: 0 0 auto; position: static; }
 .inspector-bar > div { display: flex; align-items: center; }
 .inspector-bar > div > button { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 5px; color: var(--text-muted); background: transparent; }
 .inspector-bar > div > button:hover:not(:disabled) { color: var(--text-primary); background: var(--hover); }

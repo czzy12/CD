@@ -1,6 +1,6 @@
 # PDF流水项目当前状态
 
-更新时间：2026-08-03
+更新时间：2026-08-06
 
 ## 当前仓库
 
@@ -13,7 +13,7 @@ D:\Investigator PDF\CD-bankflow-refactor
 当前分支：
 
 ```text
-work/2026-07-18-bankflow-verification
+work/deepseek-12b2-followup
 ```
 
 远端跟踪：
@@ -25,10 +25,10 @@ origin/work/2026-07-18-bankflow-verification
 已提交的当前实现：
 
 ```text
-以 `git log -1 --oneline` 实际结果为准
+24a9d96 feat: 完成 12B-1/12B-2 工作台成果落地
 ```
 
-WebView2验证切片功能提交为`28a70e4`；2026-08-03已按用户授权将此前未推送节点及该切片提交同步到远端同名分支。12B-1基础审核工作台正式源码迁移当前为本地未提交状态，下一入口为用户验收后决定是否进入12B-2。
+`work/2026-07-18-bankflow-verification` 与备份分支 `backup/codex-24a9d96` 均指向同一 `24a9d96`；远端同名分支仍为 `2c6c246`，本地领先 1、落后 0，尚未 push。12B-1/12B-2 已随 `24a9d96` 本地提交；2026-08-06 已补充 12B-2 完整分析流程接入报告并完成真实 WebView2 窗口实测（协作取消与失败恢复，旧案件均保留）。正式工作台未打包；最终用户界面确认与 push 待用户决定。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
 
@@ -39,6 +39,7 @@ WebView2验证切片功能提交为`28a70e4`；2026-08-03已按用户授权将�
 
 最近重要变更：
 
+- 2026-08-06/07：12B-2 完整分析流程接入报告已补充；真实 WebView2 窗口实测通过协作取消（MVP-input 14 个来源中完成 2 个后取消，旧案件保持不变）、任务级失败恢复（旧案件保持不变）与完整分析成功自动进入工作台（20006 笔、9 个模块）。修复前端“分析完成未自动进入工作台”竞态（`chg-20260806-02`）、测试入口 bat 编码问题（`chg-20260806-01`）并完成工作台 UI 修正（滚轮翻页、原始字段分隔符过滤、筛选行换行、底部显示完整，`chg-20260806-03`、`chg-20260807-01`）；新增 `tools/run_12b2_flow_qa.py` 与 `运行12B2完整流程实测.bat` 作为可运行测试入口；未打包、未提交、未推送。详见 `docs/Web_GUI_12B2_完整分析流程接入报告.md`。
 - 2026-08-03：WebView2基础审核工作台完成正式源码迁移（本地未提交）。新增独立正式入口和启动器，技术切片与旧Qt入口保持不变；Python增加ModuleRegistry、统一分页/筛选、来源复核DTO、会话ID/revision和过期请求隔离，React拆分为app/bridge/components/styles并保持V5 Linear视觉。两个批准schema 1.16结果完成025→129→025进程内验收，来源复核、至少两个可用模块、transaction_id证据、切案清理、主题、阻网及125%/150%缩放通过；未调用AI/外部API、未重算业务、未打包、未提交、未推送。详见`chg-20260803-02`。
 - 2026-08-03：独立Web/WebView2真实结果切片及来源复核链路完成。Worker来源状态进入schema 1.16 `source_files[]`，CaseSession只向React返回轻量DTO；case-025显示11来源、其中1来源需复核，025→129→025切案无提示、选中项或Inspector残留。源码WebView2、334项全量测试、TypeScript和生产构建通过。影响限于独立切片，正式GUI尚未迁移；下一步为工作台正式迁移。详见`chg-20260803-01`。
 - 2026-08-01：用户确认GUI步骤10至12按当前交互收口并授权提交及同步Obsidian。默认列表仍遵循步骤10的脱敏边界；用户主动点击“展开完整证据”后直接显示未脱敏原始字段，不增加共享屏幕二次确认或额外脱敏。150ms卡片悬停与220ms页面切换速度经用户确认暂按现状保留。功能和验证基线仍为`chg-20260731-02`；本次只补充确认、提交和续接记录，未修改业务规则，不推送。详见`chg-20260801-01`。

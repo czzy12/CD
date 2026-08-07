@@ -68,7 +68,9 @@ class KnowledgeReviewService:
             "new_alias",
         }:
             raise ValueError(f"unknown candidate type: {candidate.candidate_type}")
-        self.repository.add_candidate(candidate)
+        added = self.repository.add_candidate(candidate)
+        if not added:
+            return None
         return candidate
 
     def list_pending(self) -> list[KnowledgeCandidate]:

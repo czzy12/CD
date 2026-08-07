@@ -60,6 +60,9 @@ class IndustryTaxonomy:
     def node(self, industry_id: str) -> IndustryNode | None:
         return self._nodes.get(industry_id)
 
+    def nodes(self) -> list[IndustryNode]:
+        return list(self._nodes.values())
+
     def resolve_id(self, value: str) -> str:
         direct = self._nodes.get(value)
         if direct is not None:

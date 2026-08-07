@@ -2,6 +2,15 @@
 
 from . import versioning
 from .ai_fallback import DeepSeekKnowledgeAdapter, KnowledgeAIError
+from .ai_validation import (
+    build_validation_items,
+    call_with_retry,
+    run_concept_validation,
+    run_relation_validation,
+    safe_validation_fields,
+    split_guarded,
+    write_validation_package,
+)
 from .industry_taxonomy import IndustryTaxonomy
 from .models import (
     AIUsageStats,
@@ -25,6 +34,7 @@ from .resolver import (
 )
 from .review import KnowledgeReviewService
 from .semantic_concepts import SemanticConceptKB
+from .privacy import build_privacy_preflight, guard_item
 from .shadow import (
     MISMATCH_TYPES,
     classify_mismatch,
@@ -59,13 +69,22 @@ __all__ = [
     "SemanticResolution",
     "SemanticResolver",
     "SemanticSignature",
+    "build_privacy_preflight",
+    "build_validation_items",
     "cap_strength",
+    "call_with_retry",
     "classify_mismatch",
     "compare_legacy_cache",
     "extended_shadow_metrics",
+    "guard_item",
     "load_legacy_signature_entries",
     "mismatch_reason",
     "render_shadow_markdown",
+    "run_concept_validation",
+    "run_relation_validation",
+    "safe_validation_fields",
+    "split_guarded",
     "validate_knowledge_base",
     "versioning",
+    "write_validation_package",
 ]

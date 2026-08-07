@@ -121,6 +121,10 @@ class DeepSeekKnowledgeAdapter:
         self.prompt_semantic_concept_version = PROMPT_SEMANTIC_CONCEPT_VERSION
         self.prompt_industry_relation_version = PROMPT_INDUSTRY_RELATION_VERSION
 
+    @property
+    def model(self) -> str:
+        return str(self._settings.model)
+
     def _check_authorized(self) -> None:
         if not (
             self._settings.enabled

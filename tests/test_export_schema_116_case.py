@@ -75,7 +75,7 @@ class ExportSchema116CaseTests(unittest.TestCase):
                 summary = export_case(case_dir, output)
 
             payload = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(payload["schema_version"], "1.16")
+            self.assertEqual(payload["schema_version"], "1.17")
             self.assertEqual(payload["module"], "bankflow")
             self.assertEqual(summary["transaction_count"], 3)
             self.assertEqual(len(summary["checked_transaction_ids"]), 3)

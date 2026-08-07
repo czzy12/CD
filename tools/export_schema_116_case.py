@@ -189,7 +189,7 @@ def export_case(case_dir: Path, output: Path) -> dict[str, object]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="使用正式流水核查处理链导出 schema 1.16 客户结果（AI 与网络关闭）"
+        description="使用正式流水核查处理链导出 schema 1.17 客户结果（AI 与网络关闭）"
     )
     parser.add_argument("--case-dir", required=True, type=Path, help="客户资料目录")
     parser.add_argument("--output", required=True, type=Path, help="目标 JSON 路径")

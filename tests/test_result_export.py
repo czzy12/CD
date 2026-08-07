@@ -83,7 +83,7 @@ class ResultExportTests(unittest.TestCase):
         result = build_bankflow_result(transactions)
         exported = result["result"]["original_transactions"][0]
 
-        self.assertEqual(result["schema_version"], "1.16")
+        self.assertEqual(result["schema_version"], "1.17")
         self.assertEqual(result["module"], "bankflow")
         self.assertEqual(result["analysis_source"], "original_transactions")
         self.assertEqual(result["statement_metadata"]["account_name"], "张三")
@@ -546,7 +546,7 @@ class ResultExportTests(unittest.TestCase):
             for item in result["result"]["observations"]
         }
 
-        self.assertEqual(result["schema_version"], "1.16")
+        self.assertEqual(result["schema_version"], "1.17")
         self.assertIn("controlled_keyword_candidates", observations)
         self.assertIn(
             "sensitive_transaction_context_candidates",

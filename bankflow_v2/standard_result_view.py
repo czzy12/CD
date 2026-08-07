@@ -17,7 +17,8 @@ from .case_context import (
 from .models import Transaction
 
 
-SUPPORTED_SCHEMA_VERSION = "1.16"
+SUPPORTED_SCHEMA_VERSIONS = ("1.16", "1.17")
+SUPPORTED_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[-1]
 
 
 class StandardResultError(ValueError):
@@ -32,10 +33,11 @@ def validate_standard_result(result: object) -> dict[str, object]:
     if not isinstance(result, dict):
         raise StandardResultError("invalid_result_root", "标准结果根节点必须是对象。")
     version = str(result.get("schema_version", ""))
-    if version != SUPPORTED_SCHEMA_VERSION:
+    if version not in SUPPORTED_SCHEMA_VERSIONS:
         raise StandardResultError(
             "unsupported_schema_version",
-            f"当前GUI只支持schema {SUPPORTED_SCHEMA_VERSION}，文件版本为{version or '未知'}。",
+            f"当前GUI只支持schema {'/'.join(SUPPORTED_SCHEMA_VERSIONS)}，"
+            f"文件版本为{version or '未知'}。",
         )
     result_body = result.get("result")
     if not isinstance(result_body, dict):

@@ -119,7 +119,10 @@ class WorkbenchModuleTests(unittest.TestCase):
         evidence = api.get_evidence("tx:purchase", self.session_id)
         self.assertTrue(modules["ok"])
         self.assertEqual(state["data"]["api_version"], "1")
-        self.assertEqual(state["data"]["schema_versions_supported"], ["1.16"])
+        self.assertEqual(
+            state["data"]["schema_versions_supported"],
+            ["1.16", "1.17"],
+        )
         self.assertEqual(state["data"]["renderer"], "edgechromium")
         self.assertEqual(state["data"]["case_session_id"], self.session_id)
         self.assertNotIn("ai", " ".join(state["data"]["capabilities"]).lower())

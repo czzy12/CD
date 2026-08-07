@@ -39,14 +39,14 @@ def transaction(transaction_id: str = "tx:gui:1") -> Transaction:
 
 
 class StandardResultViewTests(unittest.TestCase):
-    def test_validates_and_summarizes_schema_116(self):
+    def test_validates_and_summarizes_schema_117(self):
         result = build_bankflow_result([transaction()], ai_config={})
 
         validated = validate_standard_result(result)
         summary = result_summary(validated, "测试案例")
 
         self.assertEqual(summary["case_name"], "测试案例")
-        self.assertEqual(summary["schema_version"], "1.16")
+        self.assertEqual(summary["schema_version"], "1.17")
         self.assertEqual(summary["source_count"], 1)
         self.assertEqual(summary["transaction_count"], 1)
         self.assertTrue(summary["evidence_complete"])
@@ -79,7 +79,14 @@ class StandardResultViewTests(unittest.TestCase):
 
             loaded = load_standard_result(path)
 
-        self.assertEqual(loaded["schema_version"], "1.16")
+        self.assertEqual(loaded["schema_version"], "1.17")
+
+    def test_schema_116_result_still_accepted(self):
+        result = build_bankflow_result([transaction()], ai_config={})
+        result["schema_version"] = "1.16"
+        result.pop("diagnostics", None)
+        validated = validate_standard_result(result)
+        self.assertEqual(validated["schema_version"], "1.16")
 
     def test_restores_transactions_for_scoped_context_rebuild(self):
         source = transaction()

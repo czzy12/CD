@@ -47,7 +47,9 @@ class AppStateDTO:
     mode: str = "local"
     api_version: str = "1"
     frontend_version: str = "0.2.0"
-    schema_versions_supported: list[str] = field(default_factory=lambda: ["1.16"])
+    schema_versions_supported: list[str] = field(
+        default_factory=lambda: ["1.16", "1.17"]
+    )
     renderer: str = "edgechromium"
     capabilities: list[str] = field(default_factory=lambda: [
         "load_standard_result", "review_modules", "paged_items",

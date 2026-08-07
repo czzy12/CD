@@ -320,7 +320,7 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIs(workspace._result, result)
         self.assertIn("测试案例 | 2026-01-02—2026-01-02", workspace.header.title.text())
         self.assertIn("1个来源 | 1笔", workspace.header.title.text())
-        self.assertEqual(workspace.header.facts.text(), "已完成 · 证据完整 · schema 1.16")
+        self.assertEqual(workspace.header.facts.text(), "已完成 · 证据完整 · schema 1.17")
         self.assertEqual(workspace.sensitive_table.model.total_count(), 1)
         self.assertEqual(workspace.progress.value(), 100)
         self.assertEqual(workspace.load_result_button.text(), "导入标准结果")
@@ -407,7 +407,7 @@ class GuiVerificationTests(unittest.TestCase):
         )
         self.assertIn("韩鹏飞 | 2026-01-02—2026-01-02", dashboard.header.title.text())
         self.assertIn("1个来源 | 1笔", dashboard.header.title.text())
-        self.assertEqual(dashboard.header.facts.text(), "已完成 · 证据完整 · schema 1.16")
+        self.assertEqual(dashboard.header.facts.text(), "已完成 · 证据完整 · schema 1.17")
         self.assertTrue(dashboard.header.subtitle.isHidden())
         self.assertTrue(dashboard.header_meta.isHidden())
         self.assertEqual(dashboard.key_metrics_panel._columns, 3)
@@ -580,7 +580,7 @@ class GuiVerificationTests(unittest.TestCase):
 
         self.assertIn("测试案例 | 2026-01-02—2026-01-02", dashboard.header.title.text())
         self.assertIn("1个来源 | 1笔", dashboard.header.title.text())
-        self.assertEqual(dashboard.header.facts.text(), "已完成 · 证据完整 · schema 1.16")
+        self.assertEqual(dashboard.header.facts.text(), "已完成 · 证据完整 · schema 1.17")
         self.assertTrue(dashboard.header_meta.isHidden())
         self.assertEqual(dashboard.completed_badge.text(), "已完成")
         self.assertEqual(dashboard.findChildren(QProgressBar), [])
@@ -1735,7 +1735,7 @@ class GuiVerificationTests(unittest.TestCase):
             self.assertIsNone(window.worker)
             self.assertEqual(
                 window.workspace._result["schema_version"],
-                "1.16",
+                "1.17",
             )
             self.assertEqual(
                 window.workspace.header.title.text().split(" | ", 1)[0],

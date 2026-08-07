@@ -45,10 +45,10 @@ class WebResultAdapterTests(unittest.TestCase):
         self.session = CaseSession()
         self.session.bind(fixture_result(), "契约测试fixture")
 
-    def test_schema_116_fixture_loads_and_purchase_summary_reads_existing_observation(self):
+    def test_schema_117_fixture_loads_and_purchase_summary_reads_existing_observation(self):
         header = self.session.adapter().case_header()
         summary = self.session.adapter().purchase_summary()
-        self.assertEqual(header.schema_version, "1.16")
+        self.assertEqual(header.schema_version, "1.17")
         self.assertEqual(summary.direct_count, 1)
         self.assertGreaterEqual(summary.prior_income_count, 1)
         self.assertIn("不表示资金来源", summary.boundary_note)

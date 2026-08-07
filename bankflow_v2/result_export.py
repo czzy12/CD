@@ -12,6 +12,10 @@ from decimal import Decimal
 from pathlib import Path
 
 from .ai_business_observation import build_ai_business_observation
+from .knowledge.schema_117 import (
+    SCHEMA_117_OBSERVATION_TYPE,
+    empty_resolutions_observation,
+)
 from .deepseek_adapter import load_deepseek_runtime
 from .models import Transaction, get_statement_metadata
 from .mvp_fund_observations import (
@@ -26,7 +30,8 @@ from .mvp_report import (
 from .summary import Summary, sort_transactions, summarize
 
 
-SCHEMA_VERSION = "1.16"
+SCHEMA_VERSION = "1.17"
+SCHEMA_VERSION_LEGACY = "1.16"
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -1767,6 +1772,7 @@ def build_bankflow_result(
     ai_config: dict[str, object] | None = None,
     ai_evaluator: Callable[[dict[str, object]], object] | None = None,
     source_diagnostics: list[Mapping[str, object]] | None = None,
+    include_knowledge_shadow: bool = True,
 ) -> dict[str, object]:
     """Build a verification result without applying adjustment or analysis logic."""
     if ai_config is None and ai_evaluator is None:
@@ -1814,6 +1820,12 @@ def build_bankflow_result(
             observations,
         )
     )
+    knowledge_diagnostics: dict[str, object] = {}
+    if include_knowledge_shadow:
+        knowledge_observation, knowledge_diagnostics = (
+            empty_resolutions_observation(migration_status="not_parsed")
+        )
+        observations.append(knowledge_observation)
     facts = _facts(original_transactions, summary)
     indicators = _indicators(original_transactions)
     evidence = _evidence_output(
@@ -1824,7 +1836,7 @@ def build_bankflow_result(
         review_items,
     )
 
-    return {
+    result = {
         "schema_version": SCHEMA_VERSION,
         "module": "bankflow",
         "analysis_source": "original_transactions",
@@ -1866,6 +1878,44 @@ def build_bankflow_result(
             "微信支付扣款关联候选仅在唯一银行卡尾号、已确认银行账户、同日同额、文字渠道和唯一商户内容同时满足时输出；不表示本人账户互转。",
         ],
     }
+    if knowledge_diagnostics:
+        result["diagnostics"] = knowledge_diagnostics
+    return result
+
+
+def migrate_schema_116_to_117(
+    result: dict[str, object],
+) -> dict[str, object]:
+    """Migrate a schema 1.16 result to 1.17 without fabricating knowledge history."""
+    from copy import deepcopy
+
+    payload = deepcopy(result)
+    version = str(payload.get("schema_version", ""))
+    if version == SCHEMA_VERSION:
+        return payload
+    if version != SCHEMA_VERSION_LEGACY:
+        raise ValueError(
+            f"migration only supports {SCHEMA_VERSION_LEGACY} -> {SCHEMA_VERSION}, "
+            f"found {version or 'unknown'}"
+        )
+    payload["schema_version"] = SCHEMA_VERSION
+    result_body = payload.get("result")
+    if not isinstance(result_body, dict):
+        raise ValueError("标准结果缺少 result 对象")
+    observations = result_body.get("observations")
+    if not isinstance(observations, list):
+        raise ValueError("标准结果缺少 observations 列表")
+    if not any(
+        isinstance(item, dict)
+        and item.get("observation_type") == SCHEMA_117_OBSERVATION_TYPE
+        for item in observations
+    ):
+        observation, diagnostics = empty_resolutions_observation(
+            migration_status="not_parsed"
+        )
+        observations.append(observation)
+        payload["diagnostics"] = diagnostics
+    return payload
 
 
 def rebuild_business_context_result(

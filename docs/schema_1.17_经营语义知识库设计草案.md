@@ -1,72 +1,27 @@
-# schema 1.17 设计草案：经营语义知识库（business_semantics）
+# schema 1.17 正式设计：business_semantics_resolutions（方案 B）
 
-状态：设计草案，仅讨论，未实施。
+状态：正式设计（接近可实施），尚未实施。
 更新：2026-08-07
 
-## 一、是否已具备升级必要（结论）
+## 一、设计原则
 
-已具备启动设计的必要，理由如下：
+1. schema 1.17 ≠ knowledge_v1 接管生产：正式业务 resolver 仍是 legacy_v11，knowledge_v1 保持 shadow。
+2. schema_version 与 knowledge_version 解耦：允许 `schema_version=1.17` + `knowledge_version=knowledge_v1.x`，
+   知识库独立迭代。
+3. 只承载长期、可审计、跨会话信息；可推导展示名只作历史快照，不作为逻辑判断依据。
+4. pending AI candidate 不得成为正式 resolution；rejected 不得进入 resolution。
+5. 旧 1.16 案件不伪造历史 knowledge resolution。
 
-1. 经营语义知识库已进入人工验收阶段，approved 知识将成为正式业务结果的一部分，
-   审核人员需要看到“概念/行业/关系来源/知识库版本”，而不是只有 `medium/weak`；
-2. “为什么这笔被判为 medium”需要可审计答案：`concept = logistics`、
-   `industry = building_material_trade`、`relation = medium`、
-   `source = approved_knowledge`、`knowledge_version = business-semantic-kb-v1`，
-   仅保存强度无法回答；
-3. 工作台后续需要展示知识来源、AI 候选、人工确认状态、行业归一化结果，
-   这些信息必须跨程序保存，不能只存在于运行时内存或 shadow 报告；
-4. shadow 第二轮仍有 121 条差异与 40 条强度上调需要逐条追溯，
-   正式切换后必须有持久化的 provenance 字段支持复核。
+## 二、放置位置：方案 B（独立观察）
 
-升级前提（不满足不实施）：knowledge_v1 shadow 验收继续收敛、冲突候选裁决完成、
-字段放置位置经用户确认、migration 与兼容测试通过。
+新增 `result.observations[]` 类型 `business_semantics_resolutions`，与
+`ai_business_relevance_candidates` 并存：
 
-## 二、候选字段
+- legacy 候选：继续由 `ai_business_relevance_candidates` 承载（生产判断来源）；
+- knowledge shadow：由 `business_semantics_resolutions` 承载（长期审计与展示）；
+- 两者互不覆盖；GUI 未适配 1.17 时忽略新观察不崩溃。
 
-建议新增顶层 `business_semantics` 元数据（或挂接观察层，见第三节）：
-
-```json
-{
-  "business_semantics": {
-    "semantic_concept_id": "logistics",
-    "semantic_concept_name": "物流运输",
-    "industry_id": "internal.building_material_trade",
-    "industry_name": "建材批发贸易（内部细分）",
-    "relevance": "medium",
-    "resolution_source": "knowledge_base",
-    "knowledge_version": "business-semantic-kb-v1",
-    "review_status": "approved"
-  }
-}
-```
-
-字段语义：
-
-| 字段 | 说明 |
-| --- | --- |
-| semantic_concept_id | 稳定英文 slug，跨客户复用 |
-| semantic_concept_name | 中文概念名 |
-| industry_id | 归一化行业 ID（官方或内部细分） |
-| industry_name | 行业名（展示用） |
-| relevance | 仍只允许 strong/medium/weak/none/undetermined |
-| resolution_source | deterministic / knowledge_base / cache / ai_candidate / undetermined |
-| knowledge_version | 追溯知识库版本（business-semantic-kb-v1） |
-| review_status | approved / candidate / rejected / deprecated |
-
-不新增业务强度枚举；不改变 schema 1.16 既有字段含义。
-
-## 三、放置位置（三选一，需用户确认）
-
-### 方案 A：挂接现有经营候选条目（最小侵入）
-
-在 `ai_business_relevance_candidates` 的每个候选条目上追加 `business_semantics` 对象。
-
-- 优点：与既有观察同生命周期，GUI 改动最小；1.16 消费者忽略新字段即可。
-- 缺点：候选条目与知识层一一绑定，批量结构里字段重复。
-
-### 方案 B：新增独立观察类型（推荐）
-
-新增 `result.observations[]` 类型 `business_semantics_resolutions`：
+## 三、最终字段定义
 
 ```json
 {
@@ -74,59 +29,202 @@
   "value": {
     "knowledge_version": "business-semantic-kb-v1",
     "taxonomy_version": "gb-t-4754-2017-core-v1",
+    "semantic_kb_version": "semantic-concepts-v1",
+    "relation_kb_version": "industry-relations-v1",
+    "resolver_version": "knowledge-v1-resolver-1",
     "resolutions": [
       {
-        "transaction_id": "tx:...",
-        "semantic_concept_id": "logistics",
+        "resolution_id": "res-000001",
+        "transaction_ref": "tx:...",
+        "semantic_signature_ref": "sig-...",
+
+        "concept_id": "logistics",
+        "concept_name_snapshot": "物流运输",
+        "concept_resolution_source": "exact_alias",
+
         "industry_id": "internal.building_material_trade",
+        "industry_name_snapshot": "建材批发贸易（内部细分）",
+
+        "relation_id": "rel-9f3c2a1b",
+        "relation_resolution_source": "exact_relation",
+
         "relevance": "medium",
-        "resolution_source": "knowledge_base",
+
+        "inherited": false,
+        "inherited_from_industry_id": "",
+
         "review_status": "approved"
       }
     ]
+  },
+  "parameters": {
+    "shadow": true,
+    "production_resolver": "legacy_v11"
   },
   "evidence_transaction_ids": ["tx:..."]
 }
 ```
 
-- 优点：与 legacy 候选解耦，知识层可独立升级/降级；审计与报告引用清晰。
-- 缺点：新观察类型需要工作台模块或适配器支持。
+### 必填 / 可选
 
-### 方案 C：顶层只读 diagnostics
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| resolution_id | 必填 | 稳定 ID：`res-` + 序号 |
+| transaction_ref / semantic_signature_ref | 必填其一 | 定位到原交易或语义签名 |
+| concept_id | 条件必填 | unresolved 时为空 |
+| concept_name_snapshot | 可选 | 历史展示快照，不作为逻辑依据 |
+| concept_resolution_source | 必填 | 见枚举 |
+| industry_id | 条件必填 | unresolved 时为空 |
+| industry_name_snapshot | 可选 | 历史展示快照 |
+| relation_id | 条件必填 | 关系存在时必填 |
+| relation_resolution_source | 必填 | 见枚举 |
+| relevance | 必填 | 五值契约 |
+| inherited / inherited_from_industry_id | 必填 | 继承标记独立保存 |
+| review_status | 必填 | approved / candidate / rejected / deprecated |
 
-在标准结果顶层新增 `diagnostics.knowledge_v1`，只记录版本与运行统计，不逐笔展开。
+### 枚举（以现有实现为准）
 
-- 优点：最保守，不进入业务观察。
-- 缺点：无法回答“为什么这笔是 medium”的逐笔审计。
+`concept_resolution_source`：
 
-推荐：方案 B（独立观察），过渡期同时保留方案 A 的只读映射供 GUI 展示。
+- `exact_alias`（整值别名精确命中，对应实现 knowledge_base + confidence=high）
+- `knowledge_base`（关键词/归一化别名命中）
+- `semantic_cache`（已验收语义缓存）
+- `ai_candidate`（仅授权 fallback，review_status 必须为 candidate）
+- `unresolved`（本地未覆盖）
 
-## 四、migration 计划
+`relation_resolution_source`：
+
+- `exact_relation`（本行业 approved 精确关系）
+- `specialty_relation`（专项概念关系）
+- `inherited_relation`（父行业保守继承）
+- `generic_business_relation`（通用经营锚点）
+- `relation_cache`
+- `ai_candidate`
+- `unresolved`
+
+### relation_id 审计方式
+
+- `relation_id = sha256(industry_id + ":" + concept_id + ":" + relation_rules_version)[:16]`；
+- 保存 relation_id 与 knowledge_version 即可重建判断：按 industry×concept 查对应版本 canonical；
+- 不保存整份 Relation JSON（避免冗余大对象）。
+
+## 四、生命周期与 Candidate 边界
 
 ```text
-1. schema 版本常量 SCHEMA_VERSION 1.16 → 1.17；
-2. build_bankflow_result 增加 knowledge_v1 解析结果输出（shadow 开关默认仍 legacy）；
-3. 写 migration 脚本：1.16 JSON → 1.17 时只追加 business_semantics 观察，
-   不修改 original_transactions / facts / indicators / evidence；
-4. 兼容测试：1.16 读取器读 1.17 必须忽略新字段不报错；
-   1.17 读取器读 1.16 必须降级为“无知识层元数据”；
-5. GUI 切换：工作台新增只读展示，切换前用户确认。
+canonical / approved  -> 可形成正式 resolution（review_status=approved）
+pending candidate     -> resolution 只能引用为 unresolved 或 candidate_ref，不得作为正式 relevance
+rejected              -> 不进入正式 resolution
 ```
 
-禁止边做边改：不因临时需要往 1.16 塞 concept_id / knowledge_version 等字段。
+`review_status` 在 resolution 中只允许 approved；AI candidate 如需展示，通过
+`candidate_ref` 引用审核队列，不写入正式字段值。
 
-## 五、测试计划
+## 五、父行业继承审计
+
+- 独立保存 `inherited=true` 与 `inherited_from_industry_id`；
+- 不把继承信息只藏在 `relation_resolution_source=inherited_relation`；
+- 继承不得自动升级 relevance（现有 resolver 已保证）。
+
+## 六、legacy_shadow 与 diagnostics 分离
+
+- 正式 resolution 只保存长期字段（concept/industry/relation/source/version/review_status）；
+- legacy comparison（legacy_relevance / agreement）不进正式 schema，放入运行 diagnostics；
+- 迁移期观察指标单独存 `outputs/` 报告，不污染长期业务 schema。
+
+## 七、1.16 → 1.17 Migration
+
+1. `SCHEMA_VERSION` 1.16 → 1.17；既有字段与结构不删除、不改义。
+2. `build_bankflow_result` 在 shadow 开关下追加 `business_semantics_resolutions` 观察；
+   生产 resolver 仍为 legacy_v11。
+3. 旧 1.16 案件：
+   - 读取兼容：新代码可读 1.16，无新观察时按 `resolutions=[]` 降级；
+   - 不伪造：旧案件没有 knowledge 解析记录时，不生成 concept_id / relation_id / review_status，
+     顶层 `migration_status="not_parsed"`。
+4. migration 脚本只追加，不回写历史交易；1.16 → 1.17 幂等。
+
+## 八、兼容策略（至少覆盖）
+
+1. schema 1.16 文件由新代码读取；
+2. schema 1.17 文件由新代码读取；
+3. legacy_v11 在 1.17 下保持原行为；
+4. knowledge_v1 可在 1.17 写 shadow resolution；
+5. GUI 未适配 1.17 时不得崩（未知 observation_type 忽略）；
+6. export/report 不因新字段改变旧结果；
+7. replay_only 行为保持；
+8. AI disabled 时可正常执行。
+
+## 九、示例 JSON（完整）
+
+```json
+{
+  "schema_version": "1.17",
+  "module": "bankflow",
+  "analysis_source": "original_transactions",
+  "result": {
+    "observations": [
+      {
+        "observation_type": "business_semantics_resolutions",
+        "value": {
+          "knowledge_version": "business-semantic-kb-v1",
+          "taxonomy_version": "gb-t-4754-2017-core-v1",
+          "resolutions": [
+            {
+              "resolution_id": "res-000001",
+              "transaction_ref": "tx:0001",
+              "concept_id": "logistics",
+              "concept_name_snapshot": "物流运输",
+              "concept_resolution_source": "exact_alias",
+              "industry_id": "internal.building_material_trade",
+              "industry_name_snapshot": "建材批发贸易（内部细分）",
+              "relation_id": "rel-9f3c2a1b",
+              "relation_resolution_source": "exact_relation",
+              "relevance": "medium",
+              "inherited": false,
+              "inherited_from_industry_id": "",
+              "review_status": "approved"
+            }
+          ]
+        },
+        "parameters": {
+          "shadow": true,
+          "production_resolver": "legacy_v11"
+        },
+        "evidence_transaction_ids": ["tx:0001"]
+      }
+    ]
+  }
+}
+```
+
+## 十、测试方案
 
 - schema 版本与结构契约测试；
-- 1.16 → 1.17 migration 幂等测试；
-- 1.16 / 1.17 双向兼容读取测试；
-- 知识层字段白名单与敏感数据测试（business_semantics 不携带客户身份）；
-- 与 legacy_v11 shadow 对比不回归测试；
-- 前端 TypeScript 类型契约（仅方案 B/C 新增 DTO 时）。
+- 1.16 → 1.17 migration 幂等；
+- 1.16 / 1.17 双向兼容读取；
+- legacy_v11 在 1.17 下行为不变；
+- knowledge_v1 shadow resolution 写入；
+- GUI 忽略新 observation_type 不崩；
+- export/report 旧结果不变；
+- replay_only / AI disabled 正常；
+- Gold Set 测试继续作为知识层指标。
 
-## 六、不做的内容
+## 十一、Rollout Plan
 
-- 不修改 schema 1.16 既有字段含义；
-- 不把 knowledge_v1 直接替换 legacy 生产主链（仍 shadow）；
-- 不新增风险/欺诈/准入结论；
-- 不把 AI candidate 写入正式 schema（只允许 approved，candidate 留在审核队列）。
+```text
+Commit 2（本阶段设计）  schema 1.17 contract + migration + compatibility tests
+Commit 3（后续实施）    knowledge_v1 shadow resolution 写入 1.17
+之后                    用户确认后 GUI 只读展示，再评估正式切换
+```
+
+不混提交；不改 GUI；不 push（除非授权）。
+
+## 十二、Gate C 结论
+
+完成 Gate A 后评估：
+
+- 100 条 mismatch Gold Set 已形成（63 条泛化条目，knowledge accuracy 99%）；
+- schema 字段可由现有 resolver 稳定生成（concept/relation source、inherited、version 均已实现）；
+- 不依赖未完成的 AI candidate（当前理论 fallback 40，均以 unresolved 呈现）；
+- 1.16 兼容方案明确；migration 不伪造历史结果。
+
+条件满足，**建议进入 schema 1.17 实施（Commit 2）**；实施时保持 legacy_v11 生产裁决权不变。

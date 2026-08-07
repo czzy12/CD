@@ -25,13 +25,15 @@ origin/work/2026-07-18-bankflow-verification
 已提交的当前实现：
 
 ```text
-HEAD 以 git log --oneline -1 为准；chg-20260807-14 起为经营语义知识库架构 v1 收口
+HEAD 以 git log --oneline -1 为准；chg-20260807-14 起为经营语义知识库架构 v1 收口；
+chg-19（C2.1 契约收口）与 chg-20（Gate D 真实 AI validation）为本轮本地新增提交
 ```
 
 当前分支为 `work/deepseek-12b2-followup`；`5fb4685`（chg-14）起经 Gate A、Foundation Remediation（chg-17）、
 Gate B.1/C1/C2（chg-18）与续接记录已全部推送至 `origin/work/2026-07-18-bankflow-verification`
 （远端 HEAD 以 `git rev-parse origin/work/2026-07-18-bankflow-verification` 为准）。
 `backup/codex-24a9d96` 仍指向 `24a9d96`。工作区唯一未跟踪文件为仓库根目录 `CD-bankflow-refactor.bundle`（保留原样）。
+本轮本地新增 `c773a3d`（C2.1）与 Gate D 代码/文档提交，均未 push。
 
 AI 经营关联验收链：2026-07-28 曾在检查点 `68e0ac8` 完成 v11 验收；当前代码在其后有 `6e149d6/7b08441` 经营上下文准入改动，旧缓存离线重放 286 项全部未命中，不能沿用。2026-08-07 已用当前代码完成整条验收链（`chg-20260807-05`）：development 50 离线重放、reserved 50 真实调用 + 离线重放、286 语义 / 1115 笔完整验收 + 离线重放 + 输入审计全部通过；产物在 `outputs/mvp-acceptance-2026-08-07/`（仓库外）。真实调用在验收进程内显式授权，产品 AI 默认关闭语义未改变。
 
@@ -45,6 +47,23 @@ Schema 1.17 状态（2026-08-07，`chg-20260807-18`）：Gate B.1 冻结 + Gate 
 legacy production result 在 1.16/1.17 下不变；production_resolver 仍为 legacy_v11，knowledge_v1 仍为 shadow。
 Python 全量 462 项通过（2 SKIP）；统一回归 71/0/20/1；compileall 与 git diff --check 通过；未 push。
 
+C2.1 契约收口状态（2026-08-07，`chg-20260807-19`）：unresolved 最小 resolution 正式落位
+（`migration_status=not_parsed + resolutions=[]` 表示从未运行；`parsed + review_status=unresolved`
+表示已运行但本地无法确定；支持 Concept unresolved 与 Concept resolved + Relation unresolved）；
+96 mismatch 全量分类 = knowledge_undetermined 40 + strength_escalation 36 + strength_downgrade 20
+（此前“剩余 20 条”即 downgrade）+ 其余 0，无 unexplained 桶；relation_id 冻结为
+Canonical Relation Snapshot Identity（长期逻辑键为 industry_id + concept_id，relevance/review_status
+变化产生新 ID）；Python 全量 472 项、统一回归 71/0/20/1 通过；已本地 commit（c773a3d），未 push。
+
+Gate D 真实 AI Fallback Validation 状态（2026-08-07，`chg-20260807-20`）：新增 privacy preflight、
+PII guard、`tools/run_knowledge_ai_validation.py`（--dry-run / --confirm-real-data）与
+`tools/knowledge/freeze_unseen_manifest.py`；真实调用 3 次全部成功（57 条可发送：
+40 主集 + 20 unseen - 1 重叠 - 2 privacy blocked），产生 57 个 concept 候选（55 existing + 2 new
+property_management）与 2 个 relation 候选，全部 pending；0 失败/0 重试/0 敏感外发/
+0 自动 approve；approved cache 0 写入；审核包在
+`D:\Investigator PDF\outputs\knowledge-v1\ai-validation-20260807\`（仓库外）；
+Python 全量 487 项、统一回归 71/0/20/1 通过；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -56,6 +75,15 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-07：Gate D 完成（`chg-20260807-20`）：第一次真实 AI Fallback Validation。
+  privacy preflight + PII guard；57 条可发送（2 条 product_description 长数字被银行卡模式保守拦截）；
+  3 次调用全部 ok；57 concept 候选（55 existing / 2 new 通用概念）+ 2 relation 候选，全部 pending；
+  0 失败 / 0 重试 / 0 敏感外发 / 0 自动 approve；approved cache 0 写入；
+  Python 全量 487 项、统一回归 71/0/20/1 通过；已本地 commit，未 push。
+- 2026-08-07：C2.1 契约收口完成（`chg-20260807-19`）：unresolved 持久化（never-parsed 与
+  parsed-unresolved 可区分）、96 mismatch 全量分类（40+36+20，无 unexplained）、
+  relation_id = Canonical Relation Snapshot Identity 冻结；Python 全量 472 项、统一回归 71/0/20/1 通过；
+  已本地 commit（c773a3d），未 push。
 - 2026-08-07：Gate B.1 + C1 + C2 完成（`chg-20260807-18`）：schema 1.17 契约冻结并修订
   （deterministic resolution_id、relation_id 内容哈希、migration_status 落位、resolver source 直出、
   review_status/candidate_ref、per-entry profile）；326 legacy replay 与 Gold Set 重跑通过；

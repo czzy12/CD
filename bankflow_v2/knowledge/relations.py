@@ -81,6 +81,7 @@ class RelationKB:
                 concept_id=concept_id,
                 relevance=exact.relevance,
                 relation_source="approved_exact",
+                relation_resolution_source="exact_relation",
                 knowledge_version=knowledge_version,
                 reason=exact.reason_template,
             )
@@ -92,6 +93,7 @@ class RelationKB:
                     concept_id=concept_id,
                     relevance=cap_strength(generic.relevance, "medium"),
                     relation_source="specialty",
+                    relation_resolution_source="specialty_relation",
                     knowledge_version=knowledge_version,
                     reason="行业画像明确列为专项经营概念，采用通用业务关系并保守封顶为 medium",
                 )
@@ -105,6 +107,7 @@ class RelationKB:
                     concept_id=concept_id,
                     relevance=inherited.relevance,
                     relation_source="inherited",
+                    relation_resolution_source="inherited_relation",
                     knowledge_version=knowledge_version,
                     reason=(
                         f"继承父行业关系：{parent_id} × {concept_id} "
@@ -118,6 +121,7 @@ class RelationKB:
                 concept_id=concept_id,
                 relevance=generic.relevance,
                 relation_source="generic_business",
+                relation_resolution_source="generic_business_relation",
                 knowledge_version=knowledge_version,
                 reason=generic.reason_template,
             )

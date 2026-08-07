@@ -183,6 +183,7 @@ class SemanticResolver:
                     concept_name=concept.name_zh,
                     confidence="high",
                     source="knowledge_base",
+                    concept_resolution_source="exact_alias",
                     reason=f"别名精确命中：{alias.alias_text}",
                     knowledge_version=self._version.semantic_kb_version,
                     matched_alias=alias.alias_text,
@@ -202,6 +203,7 @@ class SemanticResolver:
                     concept_name=concept.name_zh if concept else str(cached["concept_id"]),
                     confidence="medium",
                     source="cache",
+                    concept_resolution_source="semantic_cache",
                     reason="已验收语义缓存命中",
                     knowledge_version=str(cached.get("knowledge_version") or ""),
                 )
@@ -221,6 +223,7 @@ class SemanticResolver:
                     concept_name=concept.name_zh,
                     confidence="medium",
                     source="knowledge_base",
+                    concept_resolution_source="knowledge_base",
                     reason=f"通用经营语义关键词命中：{term}",
                     knowledge_version=self._version.semantic_kb_version,
                     matched_alias=term,
@@ -233,6 +236,7 @@ class SemanticResolver:
             concept_name="",
             confidence="none",
             source="undetermined",
+            concept_resolution_source="unresolved",
             reason="本地知识库与缓存均未覆盖",
             knowledge_version=self._version.semantic_kb_version,
         )
@@ -276,6 +280,7 @@ class IndustryRelationResolver:
                     concept_id=concept_id,
                     relevance=str(cached["relevance"]),
                     relation_source=str(cached["relation_source"]),
+                    relation_resolution_source="relation_cache",
                     knowledge_version=str(cached.get("knowledge_version") or ""),
                     reason="已验收行业关系缓存命中",
                 )
@@ -315,6 +320,7 @@ class IndustryRelationResolver:
             concept_id=concept_id,
             relevance="undetermined",
             relation_source="undetermined",
+            relation_resolution_source="unresolved",
             knowledge_version=self._version.relation_kb_version,
             reason="本行业、父行业与通用业务关系均未覆盖",
         )
@@ -444,6 +450,7 @@ class KnowledgeRuntime:
                     concept_id=best.concept_id,
                     relevance=relevance,
                     relation_source=best.relation_source,
+                    relation_resolution_source=best.relation_resolution_source,
                     knowledge_version=best.knowledge_version,
                     reason=best.reason + f"（本地硬护栏封顶为 {maximum}）",
                     review_required=best.review_required,

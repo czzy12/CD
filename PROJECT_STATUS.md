@@ -34,6 +34,14 @@ AI 经营关联验收链：2026-07-28 曾在检查点 `68e0ac8` 完成 v11 验�
 
 Foundation 状态（2026-08-07，`chg-20260807-17`）：Foundation Remediation 已完成，结论 GREEN（G1-G8 全部满足）。华夏 6 列回归恢复（57 笔）、对公 19 文件 4,316 笔 raw evidence 补齐、negative income/expense 与 double nonzero 全库 0、skipped/unparsed 具备 source diagnostics 可观测性、metadata 缺失显式 unavailable、无新 Critical/High regression、transaction_id 稳定性验证通过（4,316 笔 ID 因 raw evidence 修复变化但无已发布引用，其余 77,316 笔不变）、核心 downstream 测试全部通过。全量回归：81,746 笔（CD_assets 61,740 + MVP-input 20,006）、172 同 sha256 旧基线对比 0 regression。剩余 MEDIUM/LOW 发现（abc/generic raw_fields partial、兴业水印、45 笔 0 金额、ccb_corp 0530 unexplained 等）不阻塞 GREEN，单独记录。
 
+Schema 1.17 状态（2026-08-07，`chg-20260807-18`）：Gate B.1 冻结 + Gate C1 契约修订 + Gate C2 shadow writer 修订完成。
+`business_semantics_resolutions` 使用 deterministic resolution_id、内容可审计 relation_id（relevance 变化即变化）、
+`value.migration_status` 正式落位（parsed / not_parsed）、concept/relation resolution source 由 resolver 直接输出、
+`review_status ∈ {approved, unresolved, candidate}` + 可选 `candidate_ref`、per-entry industry profile 支持；
+326 legacy replay（per-entry）：agreement 70.55%、mismatch 96、undetermined 40、escalation 36、life_positive 0、AI fallback 40；
+legacy production result 在 1.16/1.17 下不变；production_resolver 仍为 legacy_v11，knowledge_v1 仍为 shadow。
+Python 全量 462 项通过（2 SKIP）；统一回归 71/0/20/1；compileall 与 git diff --check 通过；未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -45,6 +53,11 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-07：Gate B.1 + C1 + C2 完成（`chg-20260807-18`）：schema 1.17 契约冻结并修订
+  （deterministic resolution_id、relation_id 内容哈希、migration_status 落位、resolver source 直出、
+  review_status/candidate_ref、per-entry profile）；326 legacy replay 与 Gold Set 重跑通过；
+  legacy production result 保持不变；production_resolver=legacy_v11、knowledge_v1=shadow；
+  Python 全量 462 项通过；已本地 commit（B1/C1/C2），未 push。
 - 2026-08-07：Foundation Remediation 完成（`chg-20260807-17`）：华夏 6/9 列版式自适应（6 列 57 笔恢复）、
   对公 19 文件 4,316 笔 raw evidence 补齐、icbc_corp 负值方向契约修复（全库 negative=0）、
   source diagnostics（skipped/unparsed 可观测）、metadata 显式 unavailable；

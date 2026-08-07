@@ -93,6 +93,73 @@ class PiiGuardTests(unittest.TestCase):
         )
         self.assertTrue(result.allowed)
 
+    def test_typed_business_field_allows_luhn_invalid_business_identifier(self):
+        from bankflow_v2.knowledge.privacy import _luhn_ok
+
+        identifier = "1234567890123456"
+        self.assertFalse(_luhn_ok(identifier))
+        for field_name in ("product_description", "merchant_category"):
+            with self.subTest(field=field_name):
+                result = guard_item(
+                    {field_name: "某便利店收款流水 " + identifier}
+                )
+                self.assertTrue(result.allowed)
+
+    def test_luhn_valid_card_still_blocked_in_typed_field(self):
+        card = "4111111111111111"
+        self.assertTrue(
+            guard_item({"product_description": "某门店收款 " + card}).blocked_fields
+        )
+        self.assertTrue(
+            guard_item({"product_description": card}).blocked_fields
+        )
+
+    def test_card_hint_blocks_typed_field_even_when_luhn_fails(self):
+        result = guard_item(
+            {"product_description": "银行卡1234567890123456"}
+        )
+        self.assertFalse(result.allowed)
+        self.assertIn("bank_card", result.reasons)
+
+    def test_free_form_fields_keep_strict_card_block(self):
+        for field_name in ("remark", "summary", "purpose"):
+            result = guard_item(
+                {field_name: "某门店收款 1234567890123456"}
+            )
+            self.assertFalse(result.allowed)
+
+    def test_classify_bank_card_block(self):
+        from bankflow_v2.knowledge.privacy import classify_bank_card_block
+
+        self.assertEqual(
+            classify_bank_card_block(
+                "product_description",
+                "某门店收款 4111111111111111",
+            ),
+            "true_positive",
+        )
+        self.assertEqual(
+            classify_bank_card_block(
+                "product_description",
+                "某便利店收款流水 1234567890123456",
+            ),
+            "false_positive",
+        )
+        self.assertEqual(
+            classify_bank_card_block(
+                "remark",
+                "某门店收款 1234567890123456",
+            ),
+            "ambiguous",
+        )
+        self.assertEqual(
+            classify_bank_card_block(
+                "product_description",
+                "1234567890123456",
+            ),
+            "ambiguous",
+        )
+
 
 class PrivacyPreflightTests(unittest.TestCase):
     def test_preflight_has_required_keys_and_no_raw_values(self):

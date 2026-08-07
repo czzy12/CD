@@ -13,11 +13,17 @@ from .ai_fallback import AI_FIELD_WHITELIST
 
 
 _ID_CARD_RE = re.compile(r"\b\d{17}[\dXx]\b")
-_BANK_CARD_RE = re.compile(r"\b(?:\d[ -]?){13,19}\b")
+_BANK_CARD_RE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
 _PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _WINDOWS_PATH_RE = re.compile(
     r"[A-Za-z]:[\\/][^\s\"']+|\\\\[^\\\s]+\\[^\s\"']+"
 )
+_CARD_HINT_RE = re.compile(
+    r"卡号|银行卡|信用卡|借记卡|储蓄卡|账号|账户|卡有效期|卡效期|cvv|pan",
+    re.IGNORECASE,
+)
+_NON_DIGIT_CONTEXT_RE = re.compile(r"[^\d\s\-]")
+_TYPED_BUSINESS_FIELDS = frozenset({"product_description", "merchant_category"})
 _IDENTITY_KEYS = frozenset(
     {
         "id_card",
@@ -99,7 +105,7 @@ def guard_item(fields: Mapping[str, object]) -> GuardResult:
             blocked_fields.append(key_s)
             reasons.append("phone")
             continue
-        if _BANK_CARD_RE.search(value):
+        if _cardish_blocked(key_s, value):
             blocked_fields.append(key_s)
             reasons.append("bank_card")
             continue
@@ -112,6 +118,69 @@ def guard_item(fields: Mapping[str, object]) -> GuardResult:
         blocked_fields=tuple(dict.fromkeys(blocked_fields)),
         reasons=tuple(dict.fromkeys(reasons)),
     )
+
+
+def _luhn_ok(value: str) -> bool:
+    """Luhn check for a digit string (valid Chinese bank cards pass)."""
+    total = 0
+    for index, char in enumerate(reversed(value)):
+        digit = ord(char) - 48
+        if index % 2 == 1:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        total += digit
+    return total % 10 == 0
+
+
+def _cardish_blocked(field_key: str, value: str) -> bool:
+    """Conservative bank-card detection.
+
+    Default: any 13-19 digit run blocks. A narrow typed-field exception exists
+    only when ALL of the following hold, so a real (Luhn-valid) card number can
+    never pass:
+    - field is a typed business field (product_description / merchant_category);
+    - the run FAILS the Luhn check;
+    - the value has no card/account hint words;
+    - the value contains real non-digit business context (not a bare number).
+    """
+    for match in _BANK_CARD_RE.finditer(value):
+        digits = re.sub(r"[^0-9]", "", match.group())
+        if _luhn_ok(digits):
+            return True
+        if (
+            field_key in _TYPED_BUSINESS_FIELDS
+            and not _CARD_HINT_RE.search(value)
+            and len(_NON_DIGIT_CONTEXT_RE.findall(value)) >= 2
+        ):
+            continue
+        return True
+    return False
+
+
+def classify_bank_card_block(field_key: str, value: str) -> str:
+    """Classify a bank_card guard outcome for privacy audit.
+
+    Returns one of:
+    - true_positive: a Luhn-valid 13-19 digit run exists (real card number);
+    - false_positive: every run would be exempted by the typed-field exception
+      (typed business field + Luhn-invalid + embedded non-digit context);
+    - ambiguous: blocked for any other reason (conservative manual review).
+    """
+    found = False
+    for match in _BANK_CARD_RE.finditer(value):
+        found = True
+        digits = re.sub(r"[^0-9]", "", match.group())
+        if _luhn_ok(digits):
+            return "true_positive"
+        if (
+            field_key in _TYPED_BUSINESS_FIELDS
+            and not _CARD_HINT_RE.search(value)
+            and len(_NON_DIGIT_CONTEXT_RE.findall(value)) >= 2
+        ):
+            continue
+        return "ambiguous"
+    return "false_positive" if found else "ambiguous"
 
 
 def build_privacy_preflight(

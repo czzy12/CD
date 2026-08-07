@@ -25,10 +25,10 @@ origin/work/2026-07-18-bankflow-verification
 已提交的当前实现：
 
 ```text
-04b205f docs: record AI acceptance restart, key persistence and handoff
+HEAD 以 git log --oneline -1 为准；chg-20260807-14 起为经营语义知识库架构 v1 收口
 ```
 
-当前分支为 `work/deepseek-12b2-followup`；`work/2026-07-18-bankflow-verification` 已快进到 `3b241e0` 并与远端一致（`origin/work/2026-07-18-bankflow-verification`），`backup/codex-24a9d96` 仍指向 `24a9d96`。工作区唯一未跟踪文件为仓库根目录 `CD-bankflow-refactor.bundle`（保留原样）。12B-1/12B-2 工作台及后续修复已提交到 `24a9d96 → 1bfdb8d → 45891bb → 04b205f`；`04b205f` 之后收口提交 `chg-20260807-05/06/07/08/09/10/11/12/13` 及执行定位记录，已推送至 `origin/work/2026-07-18-bankflow-verification`。
+当前分支为 `work/deepseek-12b2-followup`；`work/2026-07-18-bankflow-verification` 已快进到 `29063cb` 并与远端一致（`origin/work/2026-07-18-bankflow-verification`），`backup/codex-24a9d96` 仍指向 `24a9d96`。工作区唯一未跟踪文件为仓库根目录 `CD-bankflow-refactor.bundle`（保留原样）。12B-1/12B-2 工作台及后续修复已提交到 `24a9d96 → 1bfdb8d → 45891bb → 04b205f`；`04b205f` 之后收口提交 `chg-20260807-05/06/07/08/09/10/11/12/13` 及执行定位记录，已推送至 `origin/work/2026-07-18-bankflow-verification`。经营语义知识库架构 v1（`chg-20260807-14`）已本地提交，未 push。
 
 AI 经营关联验收链：2026-07-28 曾在检查点 `68e0ac8` 完成 v11 验收；当前代码在其后有 `6e149d6/7b08441` 经营上下文准入改动，旧缓存离线重放 286 项全部未命中，不能沿用。2026-08-07 已用当前代码完成整条验收链（`chg-20260807-05`）：development 50 离线重放、reserved 50 真实调用 + 离线重放、286 语义 / 1115 笔完整验收 + 离线重放 + 输入审计全部通过；产物在 `outputs/mvp-acceptance-2026-08-07/`（仓库外）。真实调用在验收进程内显式授权，产品 AI 默认关闭语义未改变。
 
@@ -43,6 +43,10 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-07：经营语义知识库架构 v1 独立阶段完成（`chg-20260807-14`）：四层知识库、双轨缓存、
+  AI 双任务契约、候选审核、validator、legacy shadow 对比与迁移工具；真实 326 条缓存离线 shadow
+  一致率 35.89% → 人工验收扩充后 62.88%；170 条候选复核后 158 拒绝 / 12 冲突 pending；
+  schema 1.17 设计草案已出（未实施）；Python 全量 421 项通过；已本地 commit，未 push。
 - 2026-08-07：AI 验收对齐方案待确认（行业桶共享缓存 + 新客户增量联网开关），确认前不改造缓存键；详见 `docs/续接_2026-08-07_新窗口.md` 顶部“当前执行定位”。
 - 2026-08-07：设置页支持预检阶段句柄读写/清空经营上下文，并新增同名案件工作区回退（`chg-20260807-13`），修复韩鹏飞“当前案件没有关联目录”提示；Python 383、前端 27、真实 QA 通过；已本地提交，未 push。
 - 2026-08-07：下定购车模块“此前收入”显示改为“下定前收入”（`chg-20260807-12`，仅展示层文案）；Python 381 项通过；已本地提交，未 push。

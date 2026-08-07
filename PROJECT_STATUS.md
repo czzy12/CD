@@ -28,7 +28,10 @@ origin/work/2026-07-18-bankflow-verification
 HEAD 以 git log --oneline -1 为准；chg-20260807-14 起为经营语义知识库架构 v1 收口
 ```
 
-当前分支为 `work/deepseek-12b2-followup`；`work/2026-07-18-bankflow-verification` 已快进到 `29063cb` 并与远端一致（`origin/work/2026-07-18-bankflow-verification`），`backup/codex-24a9d96` 仍指向 `24a9d96`。工作区唯一未跟踪文件为仓库根目录 `CD-bankflow-refactor.bundle`（保留原样）。12B-1/12B-2 工作台及后续修复已提交到 `24a9d96 → 1bfdb8d → 45891bb → 04b205f`；`04b205f` 之后收口提交 `chg-20260807-05/06/07/08/09/10/11/12/13` 及执行定位记录，已推送至 `origin/work/2026-07-18-bankflow-verification`。经营语义知识库架构 v1（`chg-20260807-14`）已本地提交，未 push。
+当前分支为 `work/deepseek-12b2-followup`；`5fb4685`（chg-14）起经 Gate A、Foundation Remediation（chg-17）、
+Gate B.1/C1/C2（chg-18）与续接记录已全部推送至 `origin/work/2026-07-18-bankflow-verification`
+（远端 HEAD 以 `git rev-parse origin/work/2026-07-18-bankflow-verification` 为准）。
+`backup/codex-24a9d96` 仍指向 `24a9d96`。工作区唯一未跟踪文件为仓库根目录 `CD-bankflow-refactor.bundle`（保留原样）。
 
 AI 经营关联验收链：2026-07-28 曾在检查点 `68e0ac8` 完成 v11 验收；当前代码在其后有 `6e149d6/7b08441` 经营上下文准入改动，旧缓存离线重放 286 项全部未命中，不能沿用。2026-08-07 已用当前代码完成整条验收链（`chg-20260807-05`）：development 50 离线重放、reserved 50 真实调用 + 离线重放、286 语义 / 1115 笔完整验收 + 离线重放 + 输入审计全部通过；产物在 `outputs/mvp-acceptance-2026-08-07/`（仓库外）。真实调用在验收进程内显式授权，产品 AI 默认关闭语义未改变。
 

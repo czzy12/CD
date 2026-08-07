@@ -175,20 +175,24 @@ test("adapter maps recent-case and context methods to the Python whitelist", asy
   await bridge.listRecentCases();
   await bridge.openRecentCase("record-a");
   await bridge.removeRecentCase("record-a");
+  await bridge.reanalyzeRecentCase("record-a");
   await bridge.getManualCaseContext("case-a");
   await bridge.saveManualCaseContext("case-a", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" });
   await bridge.getCurrentManualCaseContext();
   await bridge.saveCurrentManualCaseContext({ company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" });
+  await bridge.clearCurrentManualCaseContext();
   await bridge.rebuildContextObservations();
   await bridge.exportReport();
   assert.deepEqual(calls, [
     ["list_recent_cases"],
     ["open_recent_case", "record-a"],
     ["remove_recent_case", "record-a"],
+    ["reanalyze_recent_case", "record-a"],
     ["get_manual_case_context", "case-a"],
     ["save_manual_case_context", "case-a", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" }],
     ["get_current_manual_case_context"],
     ["save_current_manual_case_context", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" }],
+    ["clear_current_manual_case_context"],
     ["rebuild_context_observations"],
     ["export_report"],
   ]);
@@ -202,6 +206,11 @@ test("settings page exposes current-case business context", () => {
   assert.match(source, /人工经营上下文（可编辑）/);
   assert.match(source, /重新构建上下文观察后会应用到当前案件/);
   assert.doesNotMatch(source, /确认状态/);
+  assert.match(source, /重新分析/);
+  assert.match(source, /清空经营上下文/);
+  assert.match(source, /source-badge/);
+  assert.match(source, /仅展示/);
+  assert.match(source, /formatAmount/);
 });
 
 test("history page and context controls are wired in the UI", () => {

@@ -314,6 +314,7 @@ class ModuleDisplayContentTests(unittest.TestCase):
         self.assertEqual(question.category, "交易结构")
         self.assertEqual(question.direction, "支出")
         self.assertEqual(question.amount, "10000.00")
+        self.assertEqual(question.matched_text, "涉及 1 笔证据")
         self.assertIsNone(question.interpretation)
         self.assertEqual(
             question.secondary_text,
@@ -331,6 +332,92 @@ class ModuleDisplayContentTests(unittest.TestCase):
         self.assertTrue(
             any(line.startswith("raw_text：") for line in evidence.full_original_fields)
         )
+
+    def test_business_rows_mark_source_kind_and_anchor_hits(self):
+        from tests.test_web_result_adapter import fixture_result
+
+        result = fixture_result()
+        observation = observation_by_type(
+            result,
+            "ai_business_relevance_candidates",
+        )
+        if not observation:
+            observation = {
+                "observation_type": "ai_business_relevance_candidates",
+                "value": {},
+            }
+            result["result"]["observations"].append(observation)
+        observation["value"]["available"] = True
+        observation["value"]["deterministic_candidates"] = [{
+            "transaction_id": "tx:purchase",
+            "classification": "directly_related",
+            "reason": "申报单位词精确命中",
+            "matched_anchors": ["测试汽车公司", "某行业词"],
+        }]
+        observation["value"]["ai_candidates"] = [{
+            "transaction_id": "tx:prior",
+            "classification": "possibly_related",
+            "reason": "行业语义弱提示",
+        }]
+        adapter = BusinessModuleAdapter(result, "case")
+        deterministic = next(
+            item for item in adapter.items if item.source_kind == "deterministic"
+        )
+        ai = next(item for item in adapter.items if item.source_kind == "ai")
+        self.assertEqual(deterministic.matched_text, "命中：测试汽车公司、某行业词")
+        self.assertEqual(deterministic.source_kind, "deterministic")
+        self.assertEqual(ai.source_kind, "ai")
+        self.assertEqual(ai.matched_text, "可能相关")
+        supported = {definition.key for definition in adapter.descriptor().supported_filters}
+        self.assertIn("source_kind", supported)
+        filtered = adapter.list_items(
+            "session",
+            1,
+            50,
+            {"source_kind": "ai"},
+            "default",
+        )
+        self.assertEqual(filtered.total, 1)
+        self.assertEqual(filtered.items[0].source_kind, "ai")
+
+    def test_declaration_display_only_items_get_explicit_label(self):
+        result = {
+            "schema_version": "1.16",
+            "module": "bankflow",
+            "result": {
+                "observations": [
+                    {
+                        "observation_type": "declaration_flow_cross_checks",
+                        "value": {
+                            "items": [],
+                            "display_only_items": [{
+                                "check_type": "work_location",
+                                "declared_values": ["某市某区某路 1 号"],
+                                "handling": "system_information_display_only",
+                                "reason": "仅展示系统资料，不与流水匹配或生成不一致结论。",
+                            }],
+                        },
+                    }
+                ],
+                "facts": [],
+                "indicators": [],
+                "evidence": {
+                    "transaction_index": {},
+                    "references": [],
+                    "coverage": {},
+                    "integrity": {},
+                },
+            },
+            "manual_review": {"required": True, "items": []},
+            "source_files": [],
+            "warnings": [],
+            "notes": [],
+            "created_at": "",
+        }
+        item = DeclarationCompareModuleAdapter(result, "case").items[0]
+        self.assertEqual(item.category, "工作地点")
+        self.assertEqual(item.review_status, "display_only")
+        self.assertIn("仅展示系统资料", item.secondary_text or "")
 
 
 if __name__ == "__main__":

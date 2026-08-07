@@ -64,8 +64,10 @@ class WebView2ApiTests(unittest.TestCase):
             "start_case_analysis", "get_analysis_status", "cancel_analysis",
             "dismiss_analysis_task", "save_current_standard_result",
             "list_recent_cases", "open_recent_case", "remove_recent_case",
+            "reanalyze_recent_case",
             "get_manual_case_context", "save_manual_case_context",
             "get_current_manual_case_context", "save_current_manual_case_context",
+            "clear_current_manual_case_context",
             "rebuild_context_observations", "export_report",
         })
 
@@ -110,6 +112,113 @@ class WebView2ApiTests(unittest.TestCase):
                 self.api._current_case_dir = None
                 if workspace.exists():
                     shutil.rmtree(workspace)
+
+    def test_clear_current_manual_case_context_empties_confirmation(self):
+        from bankflow_web.case_workspace import case_workspace_dir
+
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            workspace = case_workspace_dir(case_dir)
+            try:
+                self.api._current_case_dir = case_dir
+                saved = self.api.save_current_manual_case_context({
+                    "company_name": "测试单位",
+                    "confirmed_primary_business": "建材批发",
+                    "confirmed_products_or_services": "护栏",
+                    "confirmation_note": "人工补充",
+                })
+                self.assertTrue(saved["ok"])
+                cleared = self.api.clear_current_manual_case_context()
+                self.assertTrue(cleared["ok"])
+                reloaded = self.api.get_current_manual_case_context()
+                self.assertTrue(reloaded["ok"])
+                self.assertEqual(reloaded["data"]["confirmed_primary_business"], "")
+                self.assertEqual(reloaded["data"]["confirmed_products_or_services"], "")
+                self.assertEqual(reloaded["data"]["confirmation_note"], "")
+            finally:
+                self.api._current_case_dir = None
+                if workspace.exists():
+                    shutil.rmtree(workspace)
+
+    def test_reanalyze_recent_case_returns_opaque_handle_or_stable_error(self):
+        from bankflow_web.case_workspace import recent_cases_path
+        from recent_cases import RecentCaseStore
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = RecentCaseStore(root / "recent.json")
+            api = WebView2Api(recent_store=store)
+            unknown = api.reanalyze_recent_case("missing")
+            self.assertEqual(unknown["error"]["code"], "RECENT_CASE_NOT_FOUND")
+
+            result_only = root / "result.json"
+            result_only.write_text("{}", encoding="utf-8")
+            record = store.upsert(
+                {"case_name": "仅结果"},
+                result_path=result_only,
+            )
+            no_dir = api.reanalyze_recent_case(str(record["record_id"]))
+            self.assertEqual(
+                no_dir["error"]["code"],
+                "RECENT_CASE_DIRECTORY_UNAVAILABLE",
+            )
+
+            case_dir = root / "case"
+            case_dir.mkdir()
+            (case_dir / "flow.pdf").write_bytes(b"%PDF-1.4 fixture")
+            record = store.upsert(
+                {"case_name": "可重分析"},
+                case_dir=case_dir,
+            )
+            selection = api.reanalyze_recent_case(str(record["record_id"]))
+            self.assertTrue(selection["ok"])
+            self.assertEqual(selection["data"]["case_display_name"], "case")
+            handle = selection["data"]["case_handle"]
+            self.assertTrue(handle)
+            inspected = api.inspect_case_directory(handle)
+            self.assertTrue(inspected["ok"])
+            encoded = json.dumps(selection, ensure_ascii=False)
+            self.assertNotIn(str(case_dir), encoded)
+
+    def test_start_case_analysis_uses_offline_ai_replay_when_runtime_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case_dir = root / "case"
+            case_dir.mkdir()
+            (case_dir / "flow.pdf").write_bytes(b"%PDF-1.4 fixture")
+            api = WebView2Api()
+            selection = api._case_directories.register(case_dir)
+            api.inspect_case_directory(selection.case_handle)
+            captured = {}
+
+            class RecordingTasks:
+                def start(self, *_args, **_kwargs):
+                    captured.update(_kwargs)
+                    return {"analysis_task_id": "task-a", "state": "running"}
+
+            api._tasks = RecordingTasks()
+            runtime_calls = []
+
+            def fake_runtime(*args, **kwargs):
+                runtime_calls.append(kwargs)
+                return {"enabled": True}, lambda _payload: {"results": []}
+
+            with patch(
+                "bankflow_webview2.api.load_deepseek_runtime",
+                side_effect=fake_runtime,
+            ):
+                api.start_case_analysis(selection.case_handle)
+            self.assertEqual(runtime_calls, [{"replay_only": True}])
+            self.assertFalse(captured["allow_external_network"])
+            self.assertIsNotNone(captured["ai_evaluator"])
+            captured.clear()
+            with patch(
+                "bankflow_webview2.api.load_deepseek_runtime",
+                return_value=({"enabled": False}, None),
+            ):
+                api.start_case_analysis(selection.case_handle)
+            self.assertFalse(captured["allow_external_network"])
+            self.assertIsNone(captured["ai_evaluator"])
 
     def test_state_summary_page_and_evidence_reuse_existing_session(self):
         state = self.api.get_app_state()

@@ -29,7 +29,7 @@ export type ModuleAvailability = "available" | "empty" | "not_implemented" | "un
 export type ModuleDescriptorDTO = { module_id: string; title: string; icon: string; availability: ModuleAvailability; display_kind: "transaction_list" | "summary" | "disabled"; total_count: number; review_count: number; status: string; description: string; supported_filters: FilterDefinitionDTO[]; evidence_supported: boolean };
 export type ModuleRegistryDTO = { case_session_id: string; modules: ModuleDescriptorDTO[] };
 export type ModuleSummaryDTO = { module_id: string; title: string; total_count: number; review_count: number; status: string; description: string; boundary_note: string; category_counts: Record<string, number>; source_count: number; case_session_id: string };
-export type ReviewItemDTO = { item_id: string; transaction_id: string | null; date: string | null; direction: string | null; amount: string | null; primary_text: string; secondary_text: string | null; counterparty: string | null; matched_text: string | null; interpretation: string | null; category: string | null; review_status: string | null; source_name: string | null; evidence_available: boolean };
+export type ReviewItemDTO = { item_id: string; transaction_id: string | null; date: string | null; direction: string | null; amount: string | null; primary_text: string; secondary_text: string | null; counterparty: string | null; matched_text: string | null; interpretation: string | null; category: string | null; review_status: string | null; source_name: string | null; evidence_available: boolean; source_kind: string | null };
 export type PagedModuleItemsDTO = { module_id: string; case_session_id: string; page: number; page_size: number; total: number; total_pages: number; items: ReviewItemDTO[]; available_filters: FilterDefinitionDTO[]; meta: { query_elapsed_ms?: number; sort?: string } };
 export type EvidenceDetailDTO = { transaction_id: string; transaction_id_short: string; date: string; direction: string; amount: string; counterparty: string; summary: string; purpose: string; source_name: string; page_no: number; row_no: number; evidence_locator: string; reference_reason: string; integrity_status: string; masked_original_fields: string[]; full_original_fields: string[]; case_session_id: string };
 export type CaseSelectionDTO = { case_handle: string; case_display_name: string };
@@ -67,10 +67,12 @@ export interface DesktopBridge {
   listRecentCases(): Promise<ApiEnvelope<RecentCasesDTO>>;
   openRecentCase(recordId: string): Promise<ApiEnvelope<CaseHeaderDTO>>;
   removeRecentCase(recordId: string): Promise<ApiEnvelope<{ removed: boolean }>>;
+  reanalyzeRecentCase(recordId: string): Promise<ApiEnvelope<CaseSelectionDTO>>;
   getManualCaseContext(caseHandle: string): Promise<ApiEnvelope<ManualContextDTO>>;
   saveManualCaseContext(caseHandle: string, fields: ManualContextInput): Promise<ApiEnvelope<ManualContextSaveDTO>>;
   getCurrentManualCaseContext(): Promise<ApiEnvelope<ManualContextDTO>>;
   saveCurrentManualCaseContext(fields: ManualContextInput): Promise<ApiEnvelope<ManualContextSaveDTO>>;
+  clearCurrentManualCaseContext(): Promise<ApiEnvelope<ManualContextSaveDTO>>;
   rebuildContextObservations(): Promise<ApiEnvelope<CaseHeaderDTO>>;
   exportReport(): Promise<ApiEnvelope<ExportReportDTO>>;
 }

@@ -22,6 +22,11 @@ $env:BANKFLOW_AI_RETENTION_CONFIRMED = "true"
 $env:BANKFLOW_AI_ALLOW_BUSINESS_NAMES = "true"
 $env:BANKFLOW_AI_TIMEOUT_SECONDS = [string]$config.timeout_seconds
 $env:BANKFLOW_AI_BATCH_SIZE = [string]$config.batch_size
+$cacheDir = Join-Path $env:LOCALAPPDATA "BankFlowReview\ai-response-cache"
+if (-not (Test-Path -LiteralPath $cacheDir)) {
+    New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+}
+$env:BANKFLOW_AI_CACHE_DIR = $cacheDir
 
 $secure = $null
 $credential = $null
@@ -30,3 +35,4 @@ Write-Host "Loaded AI runtime config from $configPath"
 Write-Host "Model: $env:BANKFLOW_AI_MODEL"
 Write-Host "Base URL: $env:BANKFLOW_AI_BASE_URL"
 Write-Host "API Key: configured (value hidden)"
+Write-Host "Cache dir: $env:BANKFLOW_AI_CACHE_DIR"

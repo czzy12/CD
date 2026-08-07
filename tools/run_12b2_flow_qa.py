@@ -356,7 +356,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                   return true;
                 })()
             """)
-            click('.settings-page .property-button')
+            js("Array.from(document.querySelectorAll('.settings-page .property-button')).find((b) => b.textContent.includes('保存经营上下文'))?.click(); true")
             wait_for("document.querySelector('.settings-page .context-notice')?.textContent.includes('经营上下文已保存')", 60)
             settings_saved = api.get_current_manual_case_context()
             if (

@@ -130,7 +130,7 @@ class AnalysisService:
             transactions,
             metadata=get_statement_metadata(transactions),
             case_context=case_context or {},
-            ai_config=ai_config or {},
+            ai_config=ai_config,
             ai_evaluator=ai_evaluator,
             source_diagnostics=[{
                 "source_file": source.path.name,

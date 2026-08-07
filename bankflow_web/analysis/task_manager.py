@@ -51,6 +51,9 @@ class _Task:
     result_build_ms: float | None = None
     result_bind_ms: float | None = None
     diagnostic_id: str | None = None
+    ai_config: dict[str, object] | None = None
+    ai_evaluator: Callable | None = None
+    allow_external_network: bool = False
 
 
 class AnalysisTaskManager:
@@ -72,6 +75,10 @@ class AnalysisTaskManager:
         paths: list[Path],
         case_context: dict[str, object],
         source_refs: dict[Path, str] | None = None,
+        *,
+        ai_config: dict[str, object] | None = None,
+        ai_evaluator: Callable | None = None,
+        allow_external_network: bool = False,
     ) -> AnalysisStatusDTO:
         if not paths:
             raise ApplicationError("NO_SUPPORTED_SOURCES")
@@ -79,6 +86,9 @@ class AnalysisTaskManager:
             if self._task is not None and self._task.state in ACTIVE_STATES:
                 raise ApplicationError("ANALYSIS_ALREADY_RUNNING")
             task = _Task(uuid.uuid4().hex, case_display_name, list(paths), dict(case_context))
+            task.ai_config = ai_config
+            task.ai_evaluator = ai_evaluator
+            task.allow_external_network = allow_external_network
             refs = source_refs or {}
             task.sources = [AnalysisSourceStatusDTO(refs.get(path, uuid.uuid4().hex), path.name, "pdf" if path.suffix.lower() == ".pdf" else "excel", "pending", 0, "") for path in paths]
             self._task = task
@@ -127,6 +137,9 @@ class AnalysisTaskManager:
                 cancellation=task.cancellation,
                 progress=progress,
                 source_complete=source_complete,
+                ai_config=task.ai_config,
+                ai_evaluator=task.ai_evaluator,
+                allow_external_network=task.allow_external_network,
             )
             with self._lock:
                 if self._task is not task:

@@ -173,7 +173,7 @@ class AnalysisTaskManagerTests(unittest.TestCase):
 
 
 class AnalysisServiceTests(unittest.TestCase):
-    def test_ai_is_explicitly_disabled_and_source_failure_remains_review(self):
+    def test_ai_defaults_resolve_inside_builder_and_source_failure_remains_review(self):
         service = AnalysisService()
         service.extract_source = lambda _path: (_ for _ in ()).throw(RuntimeError("parse failed"))
         captured = {}
@@ -184,10 +184,39 @@ class AnalysisServiceTests(unittest.TestCase):
 
         with patch("bankflow_v2.result_export.build_bankflow_result", fake_build):
             outcome = service.run([Path("source.pdf")])
-        self.assertEqual(captured["ai_config"], {})
+        self.assertIsNone(captured["ai_config"])
         self.assertIsNone(captured["ai_evaluator"])
         self.assertEqual(outcome.source_results[0].status, "review")
         self.assertTrue(outcome.source_results[0].failed)
+
+    def test_task_manager_forwards_ai_runtime_and_network_permission(self):
+        captured = {}
+
+        class RecordingService:
+            def run(self, paths, *, cancellation, progress, source_complete, **_kwargs):
+                captured.update(_kwargs)
+                return AnalysisOutcome(
+                    [SourceOutcome(paths[0], "included", "", [], failed=False)],
+                    [],
+                    result(),
+                    1.0,
+                )
+
+        manager = AnalysisTaskManager(lambda *_args: ("s", 1, 1), service=RecordingService())
+        manager.start(
+            "case",
+            [Path("one.xlsx")],
+            {},
+            ai_config={"enabled": True},
+            ai_evaluator=lambda _payload: {"results": []},
+            allow_external_network=True,
+        )
+        deadline = time.perf_counter() + 5.0
+        while manager.has_active_task() and time.perf_counter() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(captured["ai_config"], {"enabled": True})
+        self.assertIsNotNone(captured["ai_evaluator"])
+        self.assertTrue(captured["allow_external_network"])
 
     def test_cancel_before_first_source_never_builds_result(self):
         token = CancellationToken()

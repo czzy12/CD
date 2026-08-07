@@ -217,6 +217,7 @@ class ReviewItemDTO:
     review_status: str | None
     source_name: str | None
     evidence_available: bool
+    source_kind: str | None = None
 
 
 @dataclass(frozen=True)

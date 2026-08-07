@@ -28,6 +28,7 @@ from bankflow_web.contracts import (
 )
 from bankflow_web.analysis.source_discovery import CaseDirectoryRegistry
 from bankflow_web.analysis.task_manager import AnalysisTaskManager
+from bankflow_v2.deepseek_adapter import load_deepseek_runtime
 from bankflow_v2.mvp_report import render_mvp_markdown
 from bankflow_v2.result_export import rebuild_business_context_result, write_bankflow_json
 from bankflow_v2.standard_result_view import (
@@ -208,7 +209,16 @@ class WebView2Api:
             self._current_case_dir = selection.path
             paths = [source.path for source in selection.sources]
             refs = {source.path: source.source_ref for source in selection.sources}
-            return self._tasks.start(selection.path.name or "未命名案件", paths, case_context, refs)
+            ai_config, ai_evaluator = load_deepseek_runtime(replay_only=True)
+            return self._tasks.start(
+                selection.path.name or "未命名案件",
+                paths,
+                case_context,
+                refs,
+                ai_config=ai_config,
+                ai_evaluator=ai_evaluator,
+                allow_external_network=False,
+            )
 
         return self._bridge.invoke(start)
 
@@ -281,6 +291,30 @@ class WebView2Api:
 
         return self._bridge.invoke(remove)
 
+    def reanalyze_recent_case(self, record_id: str) -> dict[str, object]:
+        def reanalyze() -> object:
+            if not isinstance(record_id, str) or not record_id:
+                raise ApplicationError("INVALID_ARGUMENT")
+            record = next(
+                (
+                    item
+                    for item in self._recent_store.load()
+                    if str(item.get("record_id") or "") == record_id
+                ),
+                None,
+            )
+            if record is None:
+                raise ApplicationError("RECENT_CASE_NOT_FOUND")
+            case_dir = Path(str(record.get("case_dir") or ""))
+            if not str(record.get("case_dir") or "") or not case_dir.is_dir():
+                raise ApplicationError(
+                    "RECENT_CASE_DIRECTORY_UNAVAILABLE",
+                    "该历史记录没有可重新分析的案件目录。",
+                )
+            return self._case_directories.register(case_dir)
+
+        return self._bridge.invoke(reanalyze)
+
     def get_manual_case_context(self, case_handle: str) -> dict[str, object]:
         def query() -> object:
             selection = self._case_directories.get(case_handle)
@@ -323,6 +357,17 @@ class WebView2Api:
             return self._save_manual_context(self._current_case_dir, fields)
 
         return self._bridge.invoke(save)
+
+    def clear_current_manual_case_context(self) -> dict[str, object]:
+        def clear() -> object:
+            if self._current_case_dir is None:
+                raise ApplicationError(
+                    "CURRENT_CASE_CONTEXT_UNAVAILABLE",
+                    "当前案件没有关联目录，无法清空经营上下文。",
+                )
+            return self._save_manual_context(self._current_case_dir, {})
+
+        return self._bridge.invoke(clear)
 
     def _manual_context_dto(self, case_dir: Path) -> ManualContextDTO:
         record = load_workspace_manual_context(case_dir)

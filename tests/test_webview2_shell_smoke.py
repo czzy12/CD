@@ -22,8 +22,11 @@ class WebView2ShellSmokeTests(unittest.TestCase):
         formal = (ROOT / "gui_webview2_app.py").read_text(encoding="utf-8")
         spike = (ROOT / "gui_webview2_spike_app.py").read_text(encoding="utf-8")
         starter = (ROOT / "启动WebView2流水核查工作台.bat").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "tools" / "start_webview2_workbench.ps1").read_text(encoding="utf-8")
         self.assertIn('title="流水核查工作台"', formal)
-        self.assertIn("gui_webview2_app.py", starter)
+        self.assertIn("start_webview2_workbench.ps1", starter)
+        self.assertIn("gui_webview2_app.py", bootstrap)
+        self.assertIn("load_deepseek_ai.ps1", bootstrap)
         self.assertIn("WebView2 integration spike", spike)
         self.assertNotEqual(formal, spike)
 

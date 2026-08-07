@@ -123,6 +123,7 @@ def _common_item(
     matched_text: str | None,
     interpretation: str | None,
     review_status: str | None,
+    source_kind: str | None = None,
 ) -> ReviewItemDTO:
     context = _mapping(record.get("transaction_context"))
     fields = _transaction_fields(record)
@@ -153,6 +154,7 @@ def _common_item(
         review_status=review_status,
         source_name=source_name,
         evidence_available=bool(transaction_id),
+        source_kind=source_kind,
     )
 
 
@@ -168,6 +170,23 @@ def _filters(items: list[ReviewItemDTO]) -> list[FilterDefinitionDTO]:
         FilterDefinitionDTO("source", "来源", "select", _options(items, "source_name")),
         FilterDefinitionDTO("keyword", "关键词", "text"),
     ]
+    if any(item.source_kind for item in items):
+        source_kind_options = []
+        if any(item.source_kind == "deterministic" for item in items):
+            source_kind_options.append(
+                FilterOptionDTO("deterministic", "确定性")
+            )
+        if any(item.source_kind == "ai" for item in items):
+            source_kind_options.append(FilterOptionDTO("ai", "AI"))
+        definitions.insert(
+            1,
+            FilterDefinitionDTO(
+                "source_kind",
+                "来源类型",
+                "select",
+                source_kind_options,
+            ),
+        )
     if any(item.date for item in items):
         definitions.extend([
             FilterDefinitionDTO("date_from", "开始日期", "date"),
@@ -246,7 +265,12 @@ class ModuleAdapter:
         if any(key not in supported for key, value in filters.items() if value not in (None, "")):
             raise ApplicationError("INVALID_ARGUMENT")
         selected = list(self.items)
-        for key, field in (("status", "review_status"), ("category", "category"), ("source", "source_name")):
+        for key, field in (
+            ("status", "review_status"),
+            ("source_kind", "source_kind"),
+            ("category", "category"),
+            ("source", "source_name"),
+        ):
             value = str(filters.get(key) or "")
             if value:
                 selected = [item for item in selected if getattr(item, field) == value]
@@ -360,7 +384,6 @@ class DeclarationCompareModuleAdapter(ModuleAdapter):
     def build_items(self) -> list[ReviewItemDTO]:
         observation = observation_by_type(self.result, "declaration_flow_cross_checks")
         value = _mapping(observation.get("value"))
-        items = [item for key in ("items", "display_only_items") for item in _list(value.get(key)) if isinstance(item, Mapping)]
         check_labels = {
             "work_unit": "工作单位",
             "declared_industry": "申报行业",
@@ -379,42 +402,58 @@ class DeclarationCompareModuleAdapter(ModuleAdapter):
             "display_only": "仅展示",
         }
         rows: list[ReviewItemDTO] = []
-        for item in items:
-            ids = [str(value) for value in _list(item.get("evidence_transaction_ids")) if value]
-            transaction_id = ids[0] if ids else None
-            check_type = str(item.get("check_type") or "申报对照")
-            status = str(item.get("status") or "unavailable")
-            reason = str(item.get("reason") or "")
-            status_label = status_labels.get(status, status)
-            declared = "、".join(
-                str(value)
-                for value in _list(item.get("declared_values"))
-                if str(value)
-            )
-            rows.append(ReviewItemDTO(
-                item_id=f"declaration-{check_type}-{len(rows)}",
-                transaction_id=transaction_id,
-                date=None,
-                direction=None,
-                amount=None,
-                primary_text=redact_sensitive_text(
-                    declared or check_labels.get(check_type, check_type)
-                ),
-                secondary_text=redact_sensitive_text(
-                    reason if reason else status_label
-                ),
-                counterparty=None,
-                matched_text=None,
-                interpretation=None,
-                category=check_labels.get(check_type, check_type),
-                review_status=(
-                    "direct"
-                    if status in {"direct_match", "candidate_match", "display_only"}
-                    else "review"
-                ),
-                source_name=None,
-                evidence_available=bool(transaction_id),
-            ))
+        for key in ("items", "display_only_items"):
+            for item in _list(value.get(key)):
+                if not isinstance(item, Mapping):
+                    continue
+                ids = [
+                    str(value)
+                    for value in _list(item.get("evidence_transaction_ids"))
+                    if value
+                ]
+                transaction_id = ids[0] if ids else None
+                check_type = str(item.get("check_type") or "申报对照")
+                status = str(item.get("status") or "unavailable")
+                reason = str(item.get("reason") or "")
+                status_label = status_labels.get(status, status)
+                display_only = (
+                    key == "display_only_items"
+                    or str(item.get("handling"))
+                    == "system_information_display_only"
+                )
+                declared = "、".join(
+                    str(value)
+                    for value in _list(item.get("declared_values"))
+                    if str(value)
+                )
+                rows.append(ReviewItemDTO(
+                    item_id=f"declaration-{check_type}-{len(rows)}",
+                    transaction_id=transaction_id,
+                    date=None,
+                    direction=None,
+                    amount=None,
+                    primary_text=redact_sensitive_text(
+                        declared or check_labels.get(check_type, check_type)
+                    ),
+                    secondary_text=redact_sensitive_text(
+                        reason if reason else status_label
+                    ),
+                    counterparty=None,
+                    matched_text=None,
+                    interpretation=None,
+                    category=check_labels.get(check_type, check_type),
+                    review_status=(
+                        "display_only"
+                        if display_only
+                        else (
+                            "direct"
+                            if status in {"direct_match", "candidate_match"}
+                            else "review"
+                        )
+                    ),
+                    source_name=None,
+                    evidence_available=bool(transaction_id),
+                ))
         return rows
 
 
@@ -437,6 +476,7 @@ class BusinessModuleAdapter(ModuleAdapter):
         }
         rows: list[ReviewItemDTO] = []
         for source_key, source_label in (("deterministic_candidates", "确定性候选"), ("ai_candidates", "既有 AI 观察")):
+            source_kind = "deterministic" if source_key == "deterministic_candidates" else "ai"
             for candidate in _list(value.get(source_key)):
                 if not isinstance(candidate, Mapping):
                     continue
@@ -450,13 +490,23 @@ class BusinessModuleAdapter(ModuleAdapter):
                 interpretation = f"{source_label}：{classification_cn}"
                 if reason:
                     interpretation = f"{interpretation}；{reason}"
+                matched_text = classification_cn
+                if source_kind == "deterministic":
+                    anchors = [
+                        str(anchor)
+                        for anchor in _list(candidate.get("matched_anchors"))
+                        if str(anchor)
+                    ]
+                    if anchors:
+                        matched_text = f"命中：{'、'.join(anchors)}"
                 rows.append(_common_item(
                     _with_transaction_context(candidate, lookup),
                     item_id=transaction_id or f"business-{len(rows)}",
                     transaction_id=transaction_id, category=classification_cn,
-                    matched_text=classification_cn,
+                    matched_text=matched_text,
                     interpretation=interpretation,
                     review_status="review",
+                    source_kind=source_kind,
                 ))
         if not bool(value.get("available")) and not rows:
             self.forced_availability = "unavailable"
@@ -516,7 +566,9 @@ class ManualReviewModuleAdapter(ModuleAdapter):
                     question.get("trigger_reason") or ""
                 ),
                 counterparty=None,
-                matched_text=None,
+                matched_text=(
+                    f"涉及 {len(ids)} 笔证据" if ids else None
+                ),
                 interpretation=None,
                 category=attention_labels.get(
                     str(question.get("attention_category") or ""),

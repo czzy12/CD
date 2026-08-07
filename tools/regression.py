@@ -25,6 +25,7 @@ class RegressionResult:
     name: str
     detail: str
     failures: list[str]
+    missing: bool = False
 
 
 def _assets_root() -> str:
@@ -100,7 +101,13 @@ def run_case(case: dict[str, Any], allow_missing: bool = False) -> RegressionRes
     pdf_path = _expand_path(str(case["path"]))
     if not pdf_path.exists():
         status = "SKIP" if allow_missing else "FAIL"
-        return RegressionResult(status, name, f"missing file: {pdf_path}", [] if allow_missing else [str(pdf_path)])
+        return RegressionResult(
+            status,
+            name,
+            f"missing file: {pdf_path}",
+            [] if allow_missing else [str(pdf_path)],
+            missing=allow_missing,
+        )
 
     bank = case.get("bank")
     if not bank or bank == "auto":
@@ -169,6 +176,7 @@ def main() -> int:
 
     failed = 0
     skipped = 0
+    missing = 0
     for case in selected:
         result = run_case(case, allow_missing=args.allow_missing)
         print(f"{result.status}: {result.name} ({result.detail})")
@@ -177,10 +185,16 @@ def main() -> int:
         if result.status == "FAIL":
             failed += 1
         elif result.status == "SKIP":
-            skipped += 1
+            if result.missing:
+                missing += 1
+            else:
+                skipped += 1
 
-    passed = len(selected) - failed - skipped
-    print(f"SUMMARY: pass={passed}, fail={failed}, skip={skipped}, total={len(selected)}")
+    passed = len(selected) - failed - skipped - missing
+    print(
+        f"SUMMARY: pass={passed}, fail={failed}, missing={missing}, "
+        f"skip={skipped}, total={len(selected)}"
+    )
     return 1 if failed else 0
 
 

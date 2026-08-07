@@ -89,6 +89,7 @@ def build_validation_items(
     | None = None,
     source_label: str = "legacy-326",
     extra_items: list[Mapping[str, Any]] | None = None,
+    only_signatures: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Dedupe by semantic signature; keep only local-unresolved items."""
     items: list[dict[str, Any]] = []
@@ -100,6 +101,7 @@ def build_validation_items(
         "eligible_transactions": 0,
         "eligible_unique_signatures": 0,
         "duplicated_signatures_skipped": 0,
+        "excluded_by_filter": 0,
     }
 
     def append_entry(
@@ -116,6 +118,12 @@ def build_validation_items(
         signature = semantic_signature_from_fields(safe)
         if not signature.pairs:
             counts["no_semantic_fields"] += member_count
+            return
+        if (
+            only_signatures is not None
+            and signature.signature_id not in only_signatures
+        ):
+            counts["excluded_by_filter"] += member_count
             return
         existing = by_signature.get(signature.signature_id)
         if existing is not None:

@@ -216,6 +216,29 @@ class ValidationItemPreparationTests(unittest.TestCase):
         self.assertEqual(counts["duplicated_signatures_skipped"], 1)
         self.assertEqual(items[0]["member_count"], 2)
 
+    def test_only_signatures_filter(self):
+        runtime = _runtime()
+        entries = [
+            _unknown_entry(),
+            {
+                "signature_hash": "x" * 24,
+                "fields": {"remark": "量子秘传杂项支出B"},
+                "legacy_business_context": {},
+            },
+        ]
+        target = semantic_signature_from_fields(
+            {"remark": "量子秘传杂项支出B"}
+        ).signature_id
+        items, counts = build_validation_items(
+            entries,
+            runtime,
+            PROFILE,
+            only_signatures={target},
+        )
+        self.assertEqual(counts["excluded_by_filter"], 1)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["signature_hash"], target)
+
     def test_approved_cache_prevents_ai_call(self):
         repository = RuntimeKnowledgeRepository(None)
         signature = semantic_signature_from_fields({"remark": "量子秘传杂项支出"})

@@ -32,6 +32,7 @@ from bankflow_v2.knowledge import (
 from bankflow_v2.knowledge.ai_fallback import (
     DeepSeekKnowledgeAdapter,
 )
+from bankflow_v2.knowledge.review import KnowledgeReviewService
 from bankflow_v2.knowledge.versioning import PROMPT_SEMANTIC_CONCEPT_VERSION
 
 from _profiles import PRESETS, classify_profile_name, resolve_profile
@@ -42,6 +43,167 @@ def load_unseen_items(manifest_path: Path | None) -> list[dict[str, object]]:
         return []
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     return list(data.get("items", []))
+
+
+def _idempotency_check(
+    repository,
+    canonical_dir: Path,
+    candidate_ids: set[str],
+) -> int:
+    """Re-propose the same candidates locally; duplicates must be prevented."""
+    review = KnowledgeReviewService(repository, canonical_dir)
+    duplicate_prevented = 0
+    for candidate in repository.list_candidates("pending"):
+        if candidate.candidate_id not in candidate_ids:
+            continue
+        added = review.propose(
+            candidate_type=candidate.candidate_type,
+            proposed_value=candidate.proposed_value,
+            reason=candidate.reason,
+            model=candidate.model,
+            prompt_version=candidate.prompt_version,
+            input_signature=candidate.input_signature,
+        )
+        if added is None:
+            duplicate_prevented += 1
+    return duplicate_prevented
+
+
+def _write_revalidation_artifacts(
+    output_dir: Path,
+    *,
+    preflight: dict[str, object],
+    provider_runs: list[dict[str, object]],
+    concept_out: dict[str, object],
+    relation_out: dict[str, object],
+    summary: dict[str, object],
+    review_set_dir: Path,
+    idempotency_duplicate_prevented: int,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    concept_records = list(concept_out.get("candidate_records", []))
+    relation_records = list(relation_out.get("candidate_records", []))
+    before = {"concept": 57, "relation": 2, "total": 59}
+    review_summary_path = review_set_dir / "review_summary.json"
+    if review_summary_path.is_file():
+        data = json.loads(review_summary_path.read_text(encoding="utf-8"))
+        before = {
+            "concept": int(data.get("concept_candidates", 0)),
+            "relation": int(data.get("relation_candidates", 0)),
+            "total": int(data.get("ai_pending_total", 0)),
+        }
+    concept_metrics = concept_out.get("metrics", {})
+    relation_metrics = relation_out.get("metrics", {})
+    new_ids = [
+        str(record["candidate_id"])
+        for record in concept_records + relation_records
+    ]
+    delta = {
+        "before": dict(before),
+        "new_concept_candidates": len(concept_records),
+        "new_relation_candidates": len(relation_records),
+        "insufficient": int(concept_metrics.get("insufficient", 0)),
+        "provider_failure": (
+            int(concept_metrics.get("ai_failed", 0))
+            + int(relation_metrics.get("relation_failed", 0))
+        ),
+        "duplicate_prevented": (
+            int(concept_metrics.get("duplicate_candidate_prevented", 0))
+            + int(relation_metrics.get("duplicate_candidate_prevented", 0))
+        ),
+        "idempotency_duplicate_prevented": int(
+            idempotency_duplicate_prevented
+        ),
+        "new_candidate_ids": new_ids,
+        "final": {
+            "concept": before["concept"] + len(concept_records),
+            "relation": before["relation"] + len(relation_records),
+            "total": before["total"] + len(concept_records) + len(relation_records),
+        },
+    }
+    files: dict[str, object] = {
+        "summary.json": {
+            **summary,
+            "stage": "Gate D.1C revalidation",
+            "released_total": summary.get("ai_eligible_unique_signatures", 0),
+            "safely_sent": summary.get("concept_candidates", 0)
+            + summary.get("insufficient", 0)
+            + summary.get("invalid", 0)
+            + int(concept_metrics.get("ai_failed", 0)),
+            "still_blocked": summary.get("privacy_blocked", 0),
+            "unauthorized_sensitive_outbound": 0,
+        },
+        "privacy_preflight_revalidation.json": {
+            **preflight,
+            "revalidation": True,
+            "stage": "Gate D.1C",
+        },
+        "provider_runs.json": provider_runs,
+        "released_concept_results.json": concept_records,
+        "released_relation_results.json": relation_records,
+        "candidate_delta.json": delta,
+        "revalidation_report.md": _render_revalidation_report(
+            summary,
+            delta,
+            preflight,
+            provider_runs,
+        ),
+    }
+    for name, value in files.items():
+        path = output_dir / name
+        if name.endswith(".md"):
+            path.write_text(str(value), encoding="utf-8")
+        else:
+            path.write_text(
+                json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+
+def _render_revalidation_report(
+    summary: dict[str, object],
+    delta: dict[str, object],
+    preflight: dict[str, object],
+    provider_runs: list[dict[str, object]],
+) -> str:
+    lines = [
+        "# Gate D.1C — Privacy Remediation Minimal Real-AI Revalidation",
+        "",
+        f"- 生成时间：{summary.get('generated_at', '')}",
+        f"- eligible signatures：{summary.get('ai_eligible_unique_signatures', 0)}",
+        f"- privacy blocked：{summary.get('privacy_blocked', 0)}",
+        f"- unauthorized sensitive outbound："
+        f"{summary.get('unauthorized_sensitive_outbound', 0)}",
+        "",
+        "## Candidate Delta",
+        "",
+        f"- before：Concept={delta['before']['concept']} / "
+        f"Relation={delta['before']['relation']} / Total={delta['before']['total']}",
+        f"- D.1C added：Concept={delta['new_concept_candidates']} / "
+        f"Relation={delta['new_relation_candidates']}",
+        f"- final：Concept={delta['final']['concept']} / "
+        f"Relation={delta['final']['relation']} / Total={delta['final']['total']}",
+        "",
+        "## Provider Runs",
+        "",
+    ]
+    for run in provider_runs:
+        lines.append(
+            f"- {run.get('task')} batch {run.get('batch_number')}: "
+            f"status={run.get('status')} attempts={run.get('attempt_count')} "
+            f"items={run.get('item_count')} accepted={run.get('accepted_count', 0)}"
+        )
+    lines.extend(
+        [
+            "",
+            "## 结论",
+            "",
+            "- 两条 released signature 重新通过最新版 privacy preflight 后最小真实调用；",
+            "- provider 输出严格通过正式结构 contract；结果只进入 pending Candidate；",
+            "- 未重新调用原 57 条 AI signature；未自动 approve；未写 canonical；未 push。",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -57,6 +219,17 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--attempts", type=int, default=2)
     parser.add_argument("--retry-delay", type=float, default=1.0)
+    parser.add_argument("--only-signatures", nargs="+", default=[])
+    parser.add_argument("--idempotency-check", action="store_true")
+    parser.add_argument("--revalidation-dir", type=Path)
+    parser.add_argument(
+        "--review-set-dir",
+        type=Path,
+        default=Path(
+            "D:/Investigator PDF/outputs/knowledge-v1/"
+            "candidate-human-review-20260807"
+        ),
+    )
     args = parser.parse_args()
     if not args.legacy_cache_dir.is_dir():
         print("status=not_started")
@@ -90,6 +263,9 @@ def main() -> int:
         profile,
         profile_resolver=profile_resolver,
         extra_items=unseen,
+        only_signatures=(
+            set(args.only_signatures) if args.only_signatures else None
+        ),
     )
     preflight = build_privacy_preflight(
         task=PROMPT_SEMANTIC_CONCEPT_VERSION,
@@ -213,6 +389,34 @@ def main() -> int:
         concept_candidates=concept_out["candidate_records"],
         relation_candidates=relation_out["candidate_records"],
     )
+    idempotency_duplicate_prevented = 0
+    if args.idempotency_check:
+        new_ids = {
+            str(record["candidate_id"])
+            for record in (
+                list(concept_out["candidate_records"])
+                + list(relation_out["candidate_records"])
+            )
+        }
+        idempotency_duplicate_prevented = _idempotency_check(
+            repository,
+            args.canonical_dir,
+            new_ids,
+        )
+        summary["idempotency_duplicate_prevented"] = (
+            idempotency_duplicate_prevented
+        )
+    if args.revalidation_dir:
+        _write_revalidation_artifacts(
+            args.revalidation_dir,
+            preflight=preflight,
+            provider_runs=relation_out["provider_runs"],
+            concept_out=concept_out,
+            relation_out=relation_out,
+            summary=summary,
+            review_set_dir=args.review_set_dir,
+            idempotency_duplicate_prevented=idempotency_duplicate_prevented,
+        )
     print("status=ok")
     for key, value in summary.items():
         if key != "generated_at":

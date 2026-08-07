@@ -305,7 +305,7 @@ class PurchaseModuleAdapter(ModuleAdapter):
     module_id = "purchase"
     title = "下定与购车"
     icon = "car-front"
-    description = "展示标准结果中已有的下定、购车与此前收入候选。"
+    description = "展示标准结果中已有的下定、购车与下定前收入候选。"
     boundary_note = PURCHASE_BOUNDARY_NOTE
 
     def build_items(self) -> list[ReviewItemDTO]:

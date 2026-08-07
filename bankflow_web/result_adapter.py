@@ -30,7 +30,7 @@ from .contracts import (
 )
 
 
-PURCHASE_BOUNDARY_NOTE = "此前收入只作时间并列，不表示资金来源。"
+PURCHASE_BOUNDARY_NOTE = "下定前收入只作时间并列，不表示资金来源。"
 TERM_CATEGORIES = {
     "下定": "下定",
     "问界": "下定",
@@ -141,19 +141,19 @@ def _prior_income_item(prior: Mapping[str, object], purchase: Mapping[str, objec
         counterparty = summary
     matched_text: str | None = None
     if summary and counterparty and summary.strip() != counterparty.strip():
-        matched_text = f"此前收入；{summary}"
-    elif counterparty and counterparty != "此前收入":
-        matched_text = "此前收入"
+        matched_text = f"下定前收入；{summary}"
+    elif counterparty and counterparty != "下定前收入":
+        matched_text = "下定前收入"
     return TransactionListItemDTO(
         transaction_id=str(prior.get("transaction_id") or ""),
         date=str(prior.get("transaction_time") or context.get("transaction_time") or "")[:19],
         direction="收入",
         amount=str(prior.get("income") or prior.get("amount") or "0.00"),
-        counterparty=counterparty or "此前收入",
+        counterparty=counterparty or "下定前收入",
         matched_text=matched_text,
         interpretation=PURCHASE_BOUNDARY_NOTE,
         source_name=source,
-        category="此前收入",
+        category="下定前收入",
         review_status="review",
     )
 
@@ -231,7 +231,7 @@ class PurchaseResultAdapter:
 
     def purchase_summary(self) -> PurchaseSummaryDTO:
         direct = [item for item in self._items if item.review_status == "direct"]
-        prior = [item for item in self._items if item.category == "此前收入"]
+        prior = [item for item in self._items if item.category == "下定前收入"]
         categories: dict[str, int] = {}
         for item in direct:
             categories[item.category] = categories.get(item.category, 0) + 1
@@ -258,7 +258,7 @@ class PurchaseResultAdapter:
         elif raw_filter == "deposit":
             items = [item for item in items if item.category == "订金/定金"]
         elif raw_filter == "prior_income":
-            items = [item for item in items if item.category == "此前收入"]
+            items = [item for item in items if item.category == "下定前收入"]
         elif raw_filter == "review":
             items = [item for item in items if item.review_status == "review"]
         start = (page - 1) * page_size

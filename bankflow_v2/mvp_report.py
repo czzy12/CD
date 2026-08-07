@@ -1249,7 +1249,7 @@ def render_mvp_markdown(
                 else f"- 下定/购车相关流水：0 笔；{purchase_reason}。"
             ),
             "",
-            "| 下定相关时间 | 来源 | 方向 | 金额 | 命中字段及原文 | 命中词 | 此前收入候选 | 证据 |",
+            "| 下定相关时间 | 来源 | 方向 | 金额 | 命中字段及原文 | 命中词 | 下定前收入候选 | 证据 |",
             "| --- | --- | --- | ---: | --- | --- | --- | --- |",
         ]
     )
@@ -1275,9 +1275,9 @@ def render_mvp_markdown(
             + (" 大额" if income.get("large_income") else "")
             for income in candidate.get("prior_income_candidates", [])
         ) or (
-            "当前为收入记录，不作此前收入并列"
+            "当前为收入记录，不作下定前收入并列"
             if candidate.get("direction") == "income"
-            else "未发现满足当前规则的此前收入"
+            else "未发现满足当前规则的下定前收入"
         )
         amount = (
             candidate.get("income")

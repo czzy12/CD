@@ -259,7 +259,7 @@ class ModuleDisplayContentTests(unittest.TestCase):
 
         purchase_rows = PurchaseModuleAdapter(result, "case").items
         prior = next(row for row in purchase_rows if row.item_id == "tx:prior")
-        self.assertEqual(prior.matched_text, "此前收入")
+        self.assertEqual(prior.matched_text, "下定前收入")
         self.assertEqual(prior.primary_text, "工资收入")
 
     def test_business_rows_fill_context_from_original_transactions(self):

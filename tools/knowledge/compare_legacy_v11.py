@@ -13,10 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bankflow_v2.knowledge import (
     KnowledgeRuntime,
     compare_legacy_cache,
+    extended_shadow_metrics,
     render_shadow_markdown,
 )
 
-from _profiles import resolve_profile
+from _profiles import PRESETS, classify_profile_name, resolve_profile
 
 
 def main() -> int:
@@ -38,6 +39,11 @@ def main() -> int:
         ),
     )
     parser.add_argument("--profile-json", type=Path)
+    parser.add_argument(
+        "--per-entry-profile",
+        action="store_true",
+        help="按 legacy 业务上下文为每条签名使用对应行业画像",
+    )
     args = parser.parse_args()
     if not args.legacy_cache_dir.is_dir():
         print("status=not_started")
@@ -48,12 +54,25 @@ def main() -> int:
         str(args.profile_json) if args.profile_json else None,
     )
     runtime = KnowledgeRuntime.load(args.canonical_dir, cache_root=args.cache_root)
+    profile_resolver = None
+    if args.per_entry_profile:
+        def profile_resolver(business_context):
+            name = classify_profile_name(business_context)
+            return PRESETS.get(name)
     report = compare_legacy_cache(
         args.legacy_cache_dir,
         runtime,
         profile,
         cache_root=args.cache_root,
+        profile_resolver=profile_resolver,
     )
+    metrics = extended_shadow_metrics(
+        args.legacy_cache_dir,
+        runtime,
+        profile,
+        profile_resolver=profile_resolver,
+    )
+    report["extended_metrics"] = metrics
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -72,6 +91,16 @@ def main() -> int:
     print(f"new_undetermined={report['new_undetermined_count']}")
     print(f"strength_escalations={report['strength_escalation_count']}")
     print(f"life_positive={report['life_positive_count']}")
+    for key in (
+        "unknown_concept_count",
+        "unknown_relation_count",
+        "concept_ai_fallback_theoretical",
+        "relation_ai_fallback_theoretical",
+        "total_ai_fallback_theoretical",
+        "parent_inheritance_hits",
+        "exact_alias_hits",
+    ):
+        print(f"{key}={metrics.get(key)}")
     print(f"output={args.output_json}")
     return 0
 

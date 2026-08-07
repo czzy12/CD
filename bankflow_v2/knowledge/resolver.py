@@ -19,6 +19,7 @@ from .models import (
     SemanticResolution,
 )
 from .normalization import semantic_signature_from_fields
+from .normalization import normalize_semantic_text
 from .relations import RelationKB, cap_strength
 from .repository import RuntimeKnowledgeRepository
 from .semantic_concepts import SemanticConceptKB
@@ -38,17 +39,70 @@ _DIRECT_FIELD_PRIORITY = (
     "merchant_category",
 )
 _NAME_FIELD_PRIORITY = ("counterparty_name", "merchant_name")
+_CEMENT_BLOCKERS = ("过滤棉", "过滤器", "水龙头", "泥沙", "净水")
+_NAME_ONLY_CAP_WEAK_CONCEPTS = frozenset(
+    {
+        "goods",
+        "service",
+        "input",
+        "settlement",
+        "generic",
+        "life",
+        "generic_trade",
+        "generic_technology",
+        "generic_industry",
+        "generic_engineering",
+        "material_fee_generic",
+        "procurement_fee_generic",
+        "consulting_fee_generic",
+        "retail",
+        "wholesale",
+        "consulting",
+        "food",
+        "alcohol",
+        "tobacco",
+        "supermarket",
+        "convenience_store",
+        "clothing",
+        "agricultural_products",
+        "car_sales",
+        "ecommerce",
+        "cleaning_service",
+        "education_service",
+        "travel",
+        "financial_service",
+        "government_public_service",
+        "charity",
+        "entertainment",
+        "personal_care",
+        "hotel",
+        "parking",
+        "real_estate",
+    }
+)
 
 
-def _constraints_for_fields(
+def _knowledge_usable_fields(
     fields: Mapping[str, object],
-) -> dict[str, object]:
+) -> dict[str, str]:
+    """Usable fields after knowledge-layer normalization (single-char noise dropped)."""
     analysis = analyze_ai_semantic_fields(
         {str(name): str(value) for name, value in fields.items()}
     )
     usable = analysis.get("usable_fields", {})
     if not isinstance(usable, Mapping):
-        usable = {}
+        return {}
+    return {
+        str(name): str(value)
+        for name, value in usable.items()
+        if normalize_semantic_text(str(value)) != ""
+    }
+
+
+def _constraints_for_fields(
+    fields: Mapping[str, object],
+) -> dict[str, object]:
+    usable = _knowledge_usable_fields(fields)
     return build_classification_constraints(
         {str(name): str(value) for name, value in usable.items()}
     )
@@ -67,6 +121,12 @@ def _best_relevance(
             best = resolution
             best_rank = rank
     return best
+
+
+def _capped_maximum(maximum: str, cap: str) -> str:
+    if _STRENGTH_RANK.get(cap, -1) < _STRENGTH_RANK.get(maximum, 9):
+        return cap
+    return maximum
 
 
 class SemanticResolver:
@@ -110,6 +170,11 @@ class SemanticResolver:
             matched = self._concepts.resolve_alias(str(field_value or ""))
             if matched is not None:
                 concept, alias = matched
+                if concept.concept_id == "cement" and any(
+                    blocker in str(field_value or "")
+                    for blocker in _CEMENT_BLOCKERS
+                ):
+                    continue
                 if stats is not None:
                     stats.semantic_kb_hits += 1
                     stats.legacy_alias_hits += 1
@@ -145,6 +210,10 @@ class SemanticResolver:
             matched_keyword = self._concepts.concept_by_keywords(field_value)
             if matched_keyword is not None:
                 concept, term = matched_keyword
+                if concept.concept_id == "cement" and any(
+                    blocker in field_value for blocker in _CEMENT_BLOCKERS
+                ):
+                    continue
                 if stats is not None:
                     stats.semantic_kb_hits += 1
                 return SemanticResolution(
@@ -345,10 +414,31 @@ class KnowledgeRuntime:
         ]
         constraints = _constraints_for_fields(fields)
         maximum = str(constraints.get("maximum_allowed_strength", "strong"))
+        usable = _knowledge_usable_fields(fields)
+        name_only = (
+            isinstance(usable, Mapping)
+            and bool(usable)
+            and all(
+                str(name) in {"counterparty_name", "merchant_name"}
+                for name in usable
+            )
+        )
+        if (
+            name_only
+            and profile is not None
+            and semantic.concept_id
+            and semantic.concept_id in _NAME_ONLY_CAP_WEAK_CONCEPTS
+            and semantic.concept_id not in profile.specialty_concept_ids
+        ):
+            maximum = _capped_maximum(maximum, "weak")
         best = _best_relevance(resolutions)
         if best is not None:
             relevance = cap_strength(best.relevance, maximum)
             if relevance != best.relevance:
+                directly_allowed = (
+                    bool(constraints.get("directly_related_allowed"))
+                    and maximum == "strong"
+                )
                 best = RelationResolution(
                     industry_id=best.industry_id,
                     concept_id=best.concept_id,
@@ -359,9 +449,7 @@ class KnowledgeRuntime:
                     review_required=best.review_required,
                     ai_used=best.ai_used,
                     applied_maximum_strength=maximum,
-                    directly_related_allowed=bool(
-                        constraints.get("directly_related_allowed")
-                    ),
+                    directly_related_allowed=directly_allowed,
                 )
         classification = (
             "directly_related"

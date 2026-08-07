@@ -11,6 +11,25 @@ from .models import SemanticAlias, SemanticConcept
 from .normalization import compact_text, text_contains_any
 
 
+GENERIC_CONCEPT_IDS = frozenset(
+    {
+        "generic",
+        "goods",
+        "service",
+        "input",
+        "settlement",
+        "life",
+        "generic_trade",
+        "generic_technology",
+        "generic_industry",
+        "generic_engineering",
+        "material_fee_generic",
+        "procurement_fee_generic",
+        "consulting_fee_generic",
+    }
+)
+
+
 def load_concept_keywords(
     concepts: Iterable[SemanticConcept] | None = None,
 ) -> dict[str, tuple[str, ...]]:
@@ -99,7 +118,7 @@ class SemanticConceptKB:
                         and compact_text(alias.alias_text) == compact
                     ):
                         return concept, alias
-        best: tuple[int, SemanticConcept, SemanticAlias] | None = None
+        best: tuple[bool, int, SemanticConcept, SemanticAlias] | None = None
         for alias in self._aliases.values():
             if alias.status != "active":
                 continue
@@ -110,28 +129,36 @@ class SemanticConceptKB:
                 concept = self._concepts.get(alias.concept_id)
                 if concept is None:
                     continue
-                if best is None or len(term) > best[0]:
-                    best = (len(term), concept, alias)
+                specific = concept.concept_id not in GENERIC_CONCEPT_IDS
+                if best is None or (
+                    specific,
+                    len(term),
+                ) > (best[0], best[1]):
+                    best = (specific, len(term), concept, alias)
         if best is not None:
-            return best[1], best[2]
+            return best[2], best[3]
         return None
 
     def concept_by_keywords(
         self,
         value: str,
     ) -> tuple[SemanticConcept, str] | None:
-        best: tuple[int, SemanticConcept, str] | None = None
+        best: tuple[bool, int, SemanticConcept, str] | None = None
         for concept in self._concepts.values():
             for term in (*concept.aliases, concept.name_zh, *concept.keywords):
                 if not term:
                     continue
                 if compact_text(term) in compact_text(value):
-                    if best is None or len(term) > best[0]:
-                        best = (len(term), concept, term)
+                    specific = concept.concept_id not in GENERIC_CONCEPT_IDS
+                    if best is None or (
+                        specific,
+                        len(term),
+                    ) > (best[0], best[1]):
+                        best = (specific, len(term), concept, term)
                     break
         if best is None:
             return None
-        return best[1], best[2]
+        return best[2], best[3]
 
     def parent_chain(
         self,

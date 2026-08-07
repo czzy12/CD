@@ -27,6 +27,7 @@ from .review import KnowledgeReviewService
 from .semantic_concepts import SemanticConceptKB
 from .shadow import (
     compare_legacy_cache,
+    extended_shadow_metrics,
     load_legacy_signature_entries,
     render_shadow_markdown,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "SemanticSignature",
     "cap_strength",
     "compare_legacy_cache",
+    "extended_shadow_metrics",
     "load_legacy_signature_entries",
     "render_shadow_markdown",
     "validate_knowledge_base",

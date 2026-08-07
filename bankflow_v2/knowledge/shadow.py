@@ -49,6 +49,9 @@ def load_legacy_signature_entries(
             fields = input_data.get("fields")
             if not isinstance(fields, Mapping):
                 continue
+            legacy_business_context = input_data.get("business_context", {})
+            if not isinstance(legacy_business_context, Mapping):
+                legacy_business_context = {}
             response_item = data.get("response_item")
             if not isinstance(response_item, Mapping):
                 response_item = {}
@@ -67,6 +70,16 @@ def load_legacy_signature_entries(
                     "legacy_semantic_judgement": str(
                         response_item.get("semantic_judgement", "")
                     ),
+                    "legacy_reason": str(response_item.get("reason", "")),
+                    "legacy_used_fields": [
+                        str(item)
+                        for item in response_item.get("used_fields", [])
+                    ],
+                    "legacy_business_context": {
+                        str(name): str(value)
+                        for name, value in legacy_business_context.items()
+                        if str(value).strip()
+                    },
                     "legacy_validation_failures": list(
                         data.get("validation_failures", [])
                     ),
@@ -81,6 +94,7 @@ def compare_legacy_cache(
     profile: IndustryProfile | None,
     *,
     cache_root: str | Path | None = None,
+    profile_resolver: object | None = None,
 ) -> dict[str, Any]:
     entries = load_legacy_signature_entries(legacy_cache_dir)
     stats = AIUsageStats()
@@ -88,17 +102,43 @@ def compare_legacy_cache(
     disagreements: list[dict[str, Any]] = []
     violations: list[dict[str, Any]] = []
     life_positive: list[dict[str, Any]] = []
+    per_profile: dict[str, dict[str, int]] = {}
     for entry in entries:
         fields = entry["fields"]
-        resolved = runtime.resolve_transaction_fields(fields, profile, stats=stats)
+        entry_profile = profile
+        profile_name = ""
+        if profile_resolver is not None:
+            resolved_profile = profile_resolver(entry["legacy_business_context"])
+            if resolved_profile is not None:
+                entry_profile = resolved_profile
+                profile_name = str(
+                    getattr(entry_profile, "profile_name", "")
+                )
+        resolved = runtime.resolve_transaction_fields(
+            fields,
+            entry_profile,
+            stats=stats,
+        )
         knowledge = resolved["final_relevance"]
         legacy = entry["legacy_semantic_judgement"]
+        profile_key = profile_name or "default"
+        bucket = per_profile.setdefault(
+            profile_key,
+            {
+                "total": 0,
+                "agreement": 0,
+                "mismatch": 0,
+                "undetermined": 0,
+            },
+        )
+        bucket["total"] += 1
         row = {
             "signature_hash": entry["signature_hash"],
             "model": entry["model"],
             "prompt_version": entry["prompt_version"],
             "legacy_semantic_judgement": legacy,
             "knowledge_relevance": knowledge,
+            "profile_name": profile_key,
             "concept_id": resolved["semantic"]["concept_id"],
             "concept_source": resolved["semantic"]["source"],
             "relation_source": (
@@ -111,6 +151,12 @@ def compare_legacy_cache(
             ),
         }
         rows.append(row)
+        if knowledge == "undetermined":
+            bucket["undetermined"] += 1
+        if legacy and legacy == knowledge:
+            bucket["agreement"] += 1
+        else:
+            bucket["mismatch"] += 1
         if not legacy:
             continue
         if legacy == knowledge:
@@ -189,6 +235,10 @@ def compare_legacy_cache(
         "relation_source_counts": dict(
             sorted(Counter(row["relation_source"] for row in rows).items())
         ),
+        "per_profile": {
+            name: dict(counts)
+            for name, counts in sorted(per_profile.items())
+        },
         "usage_stats": stats.to_dict(),
         "disagreements": disagreements,
         "violations": violations,
@@ -263,3 +313,65 @@ def render_shadow_markdown(report: Mapping[str, Any]) -> str:
     else:
         lines.append("无")
     return "\n".join(lines)
+
+
+def extended_shadow_metrics(
+    legacy_cache_dir: str | Path,
+    runtime: KnowledgeRuntime,
+    profile: IndustryProfile | None,
+    *,
+    profile_resolver: object | None = None,
+) -> dict[str, Any]:
+    """Third-round metrics: fallback needs and knowledge resolution coverage."""
+    entries = load_legacy_signature_entries(legacy_cache_dir)
+    stats = AIUsageStats()
+    unknown_concept = 0
+    unknown_relation = 0
+    inheritance_hits = 0
+    exact_alias_hits = 0
+    resolved_concept = 0
+    for entry in entries:
+        entry_profile = profile
+        if profile_resolver is not None:
+            resolved_profile = profile_resolver(entry["legacy_business_context"])
+            if resolved_profile is not None:
+                entry_profile = resolved_profile
+        resolved = runtime.resolve_transaction_fields(
+            entry["fields"],
+            entry_profile,
+            stats=stats,
+        )
+        semantic = resolved["semantic"]
+        if semantic["source"] == "undetermined" or not semantic["concept_id"]:
+            unknown_concept += 1
+            continue
+        resolved_concept += 1
+        if semantic.get("matched_alias"):
+            exact_alias_hits += 1
+        relations = resolved["relations"]
+        if not relations or all(
+            str(item.get("relevance", "")) == "undetermined"
+            for item in relations
+        ):
+            unknown_relation += 1
+        inheritance_hits += sum(
+            1
+            for item in relations
+            if item.get("relation_source") == "inherited"
+        )
+    return {
+        "total_entries": len(entries),
+        "unknown_concept_count": unknown_concept,
+        "unknown_relation_count": unknown_relation,
+        "resolved_concept_count": resolved_concept,
+        "concept_ai_fallback_theoretical": unknown_concept,
+        "relation_ai_fallback_theoretical": unknown_relation,
+        "total_ai_fallback_theoretical": unknown_concept + unknown_relation,
+        "parent_inheritance_hits": inheritance_hits,
+        "exact_alias_hits": exact_alias_hits,
+        "semantic_kb_hits": stats.semantic_kb_hits,
+        "semantic_cache_hits": stats.semantic_cache_hits,
+        "relation_kb_hits": stats.relation_kb_hits,
+        "relation_cache_hits": stats.relation_cache_hits,
+        "undetermined_total": stats.undetermined_count,
+    }

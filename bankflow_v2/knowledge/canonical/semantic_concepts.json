@@ -844,6 +844,30 @@
       "status": "active",
       "source": "curated_knowledge_v1",
       "knowledge_version": "business-semantic-kb-v1"
+    },
+    {
+      "concept_id": "mining",
+      "name_zh": "矿业",
+      "aliases": ["矿业", "矿业开发", "矿山"],
+      "keywords": ["矿业", "矿山", "矿产品"],
+      "parent_concept_id": "goods",
+      "description": "矿业开发、矿产品与矿山经营",
+      "examples_generic": ["矿业开发"],
+      "status": "active",
+      "source": "curated_knowledge_v1",
+      "knowledge_version": "business-semantic-kb-v1"
+    },
+    {
+      "concept_id": "real_estate",
+      "name_zh": "房地产",
+      "aliases": ["房地产开发", "房产开发", "房地产"],
+      "keywords": ["房地产开发", "房产开发", "房地产"],
+      "parent_concept_id": "service",
+      "description": "房地产开发与经营",
+      "examples_generic": ["房地产开发"],
+      "status": "active",
+      "source": "curated_knowledge_v1",
+      "knowledge_version": "business-semantic-kb-v1"
     }
   ]
 }

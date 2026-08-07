@@ -239,6 +239,24 @@
     { "alias_id": "alias:小说会员", "alias_text": "小说会员", "concept_id": "entertainment", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
     { "alias_id": "alias:按摩", "alias_text": "按摩", "concept_id": "personal_care", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
     { "alias_id": "alias:推拿", "alias_text": "推拿", "concept_id": "personal_care", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
-    { "alias_id": "alias:酒店", "alias_text": "酒店", "concept_id": "hotel", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" }
+    { "alias_id": "alias:酒店", "alias_text": "酒店", "concept_id": "hotel", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:交安设施", "alias_text": "交安设施", "concept_id": "construction", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:拦干", "alias_text": "拦干", "concept_id": "environmental_engineering_service", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:污染治理", "alias_text": "污染治理", "concept_id": "environmental_engineering_service", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:环保", "alias_text": "环保", "concept_id": "environmental_engineering_service", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:金属", "alias_text": "金属", "concept_id": "metal_products", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:建筑公司", "alias_text": "建筑公司", "concept_id": "construction", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:建筑有限公司", "alias_text": "建筑有限公司", "concept_id": "construction", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:文旅", "alias_text": "文旅", "concept_id": "travel", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:余利宝", "alias_text": "余利宝", "concept_id": "financial_service", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:网商银行", "alias_text": "网商银行", "concept_id": "financial_service", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:商家保证金", "alias_text": "商家保证金", "concept_id": "ecommerce", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:嘀嘀", "alias_text": "嘀嘀", "concept_id": "ride_hailing", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:房地产开发", "alias_text": "房地产开发", "concept_id": "real_estate", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:房产开发", "alias_text": "房产开发", "concept_id": "real_estate", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:资产开发", "alias_text": "资产开发", "concept_id": "real_estate", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:矿业", "alias_text": "矿业", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:矿业开发", "alias_text": "矿业开发", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:矿山", "alias_text": "矿山", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" }
   ]
 }

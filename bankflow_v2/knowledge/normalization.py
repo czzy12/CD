@@ -44,7 +44,10 @@ def normalize_semantic_text(value: str) -> str:
     cleaned = _ASCII_PREFIX_RE.sub("", cleaned)
     cleaned = _ASCII_SUFFIX_RE.sub("", cleaned)
     cleaned = _PUNCT_STRIP_RE.sub("", cleaned)
-    return cleaned.casefold()
+    cleaned = cleaned.casefold()
+    if len(cleaned) < 2:
+        return ""
+    return cleaned
 
 
 def semantic_signature_from_fields(

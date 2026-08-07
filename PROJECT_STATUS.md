@@ -43,6 +43,11 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-07：Gate A 完成（`chg-20260807-15`）：per-entry 行业画像修正后 100 条 mismatch
+  人工裁决，knowledge_v1 vs Gold Set accuracy 99%（63 条泛化 Gold 条目）；第三轮 shadow
+  agreement 69.33%、理论 AI fallback 40（语义 40 / 关系 0）；知识校准（具体概念优先、
+  名称弱关联封顶、水泥阻断、17 个通用别名 + 2 概念 + consulting 关系降级）；
+  Python 全量 425 项通过；已本地 commit，未 push。
 - 2026-08-07：经营语义知识库架构 v1 独立阶段完成（`chg-20260807-14`）：四层知识库、双轨缓存、
   AI 双任务契约、候选审核、validator、legacy shadow 对比与迁移工具；真实 326 条缓存离线 shadow
   一致率 35.89% → 人工验收扩充后 62.88%；170 条候选复核后 158 拒绝 / 12 冲突 pending；

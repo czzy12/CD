@@ -1,0 +1,1592 @@
+{
+  "gold_set_version": "gate-a-gold-v1",
+  "source": "mismatch-review-20260807",
+  "entries": [
+    {
+      "gold_id": "gold-mm-020",
+      "profile_name": "building_material",
+      "signature_hash": "05613eb32481f7202f7f4ee8",
+      "fields": {
+        "counterparty_name": "示例咨询服务有限公司"
+      },
+      "expected_concept_id": "consulting",
+      "expected_concept_name": "咨询服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-033",
+      "profile_name": "building_material",
+      "signature_hash": "0c10250eca0770afb550a983",
+      "fields": {
+        "counterparty_name": "示例咨询服务有限公司"
+      },
+      "expected_concept_id": "consulting",
+      "expected_concept_name": "咨询服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-038",
+      "profile_name": "alcohol_retail",
+      "signature_hash": "0eff73016b01d76485d3ce0e",
+      "fields": {
+        "counterparty_name": "示例房地产有限公司"
+      },
+      "expected_concept_id": "real_estate",
+      "expected_concept_name": "房地产",
+      "expected_industry_ids": [
+        "internal.alcohol_tobacco_retail"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "alias_missing",
+        "action_required": "add_generic_alias_asset_development",
+        "reviewer_note": "房地产开发/资产开发为通用行业词，已补 real_estate 别名"
+      }
+    },
+    {
+      "gold_id": "gold-mm-039",
+      "profile_name": "furniture_decoration",
+      "signature_hash": "0f0c290399762697efd05baf",
+      "fields": {
+        "counterparty_name": "示例零售有限公司"
+      },
+      "expected_concept_id": "retail",
+      "expected_concept_name": "零售",
+      "expected_industry_ids": [
+        "internal.furniture_appliance_sales",
+        "internal.decoration_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-053",
+      "profile_name": "alcohol_retail",
+      "signature_hash": "1b2cfd8bc16b88bbebce4230",
+      "fields": {
+        "counterparty_name": "示例食品有限公司"
+      },
+      "expected_concept_id": "food",
+      "expected_concept_name": "食品",
+      "expected_industry_ids": [
+        "internal.alcohol_tobacco_retail"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-060",
+      "profile_name": "building_material",
+      "signature_hash": "23c30d1766b8f88ec974542f",
+      "fields": {
+        "counterparty_name": "示例商超有限公司"
+      },
+      "expected_concept_id": "supermarket",
+      "expected_concept_name": "商超",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "none",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "undetermined",
+      "adjudication": {
+        "adjudicated_relevance": "none",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "other",
+        "action_required": "none",
+        "reviewer_note": "其他方向差异按 knowledge_v1 判定"
+      }
+    },
+    {
+      "gold_id": "gold-mm-063",
+      "profile_name": "building_material",
+      "signature_hash": "256d5c15927674efd911191b",
+      "fields": {
+        "counterparty_name": "示例物流运输有限公司"
+      },
+      "expected_concept_id": "logistics",
+      "expected_concept_name": "物流运输",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-071",
+      "profile_name": "building_material",
+      "signature_hash": "2d1f644180a723f68db5bd5a",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司",
+        "product_description": "示例泛化科技"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-074",
+      "profile_name": "building_material",
+      "signature_hash": "2e392cb1fd1457173511c2a4",
+      "fields": {
+        "counterparty_name": "示例水电有限公司"
+      },
+      "expected_concept_id": "utilities",
+      "expected_concept_name": "水电",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-078",
+      "profile_name": "building_material",
+      "signature_hash": "320d8d8de5bd44ab26ad2231",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-083",
+      "profile_name": "building_material",
+      "signature_hash": "34b4cdb72d58d5fc0ce40df4",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司",
+        "remark": "示例泛化科技"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-085",
+      "profile_name": "building_material",
+      "signature_hash": "367ea744ad6cf03a3ac8322b",
+      "fields": {
+        "counterparty_name": "示例货款有限公司",
+        "remark": "示例货款"
+      },
+      "expected_concept_id": "goods_payment",
+      "expected_concept_name": "货款",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "medium",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "neither",
+        "issue_type": "other",
+        "action_required": "none",
+        "reviewer_note": "退货款属退款，不应强相关；medium 更合理"
+      }
+    },
+    {
+      "gold_id": "gold-mm-091",
+      "profile_name": "building_material",
+      "signature_hash": "38a6bf9c4961009cfba6f18c",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司",
+        "remark": "示例泛化科技"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-099",
+      "profile_name": "building_material",
+      "signature_hash": "3e398b810f86e58506f62d63",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-107",
+      "profile_name": "building_material",
+      "signature_hash": "47e18cacd8b2eb2ad2c74138",
+      "fields": {
+        "remark": "示例银行费用"
+      },
+      "expected_concept_id": "bank_fee",
+      "expected_concept_name": "银行费用",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "none",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "none",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "银行/金融费用不属于经营语义，legacy strong 错误"
+      }
+    },
+    {
+      "gold_id": "gold-mm-109",
+      "profile_name": "building_material",
+      "signature_hash": "489093325336c076db289de7",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "medium",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-126",
+      "profile_name": "building_material",
+      "signature_hash": "556864539c5c0f36bd4f13e7",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-133",
+      "profile_name": "building_material",
+      "signature_hash": "5b029a4533f5199f50de89d7",
+      "fields": {
+        "counterparty_name": "示例配件有限公司"
+      },
+      "expected_concept_id": "parts",
+      "expected_concept_name": "配件",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-134",
+      "profile_name": "building_material",
+      "signature_hash": "5b380793bfad3ce7f5f6f2b7",
+      "fields": {
+        "counterparty_name": "示例燃油有限公司",
+        "product_description": "示例燃油"
+      },
+      "expected_concept_id": "fuel",
+      "expected_concept_name": "燃油",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-144",
+      "profile_name": "building_material",
+      "signature_hash": "62ee9f986eba9270febea4ba",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-146",
+      "profile_name": "building_material",
+      "signature_hash": "648b0968649f29f861908f74",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-154",
+      "profile_name": "building_material",
+      "signature_hash": "693d8a5953476c4fabd3efd1",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-157",
+      "profile_name": "building_material",
+      "signature_hash": "6ae6fe69901a3b9cc88224f8",
+      "fields": {
+        "remark": "示例金融服务"
+      },
+      "expected_concept_id": "financial_service",
+      "expected_concept_name": "金融服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "none",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "none",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "银行/金融费用不属于经营语义，legacy strong 错误"
+      }
+    },
+    {
+      "gold_id": "gold-mm-161",
+      "profile_name": "building_material",
+      "signature_hash": "7184d0de337160e55cb8c705",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-164",
+      "profile_name": "building_material",
+      "signature_hash": "75024fc725456739bbea5313",
+      "fields": {
+        "counterparty_name": "示例建筑材料有限公司"
+      },
+      "expected_concept_id": "building_material",
+      "expected_concept_name": "建筑材料",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-166",
+      "profile_name": "building_material",
+      "signature_hash": "75e4cf021e6456bbda65f2cc",
+      "fields": {
+        "remark": "示例咨询服务"
+      },
+      "expected_concept_id": "consulting",
+      "expected_concept_name": "咨询服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-170",
+      "profile_name": "building_material",
+      "signature_hash": "7de62911b48a2f8a5bf87ec2",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-172",
+      "profile_name": "building_material",
+      "signature_hash": "7fe53575b6d5c0190c7758ac",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司",
+        "remark": "示例泛化科技"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "去客户化后更保守但逻辑合理"
+      }
+    },
+    {
+      "gold_id": "gold-mm-192",
+      "profile_name": "building_material",
+      "signature_hash": "910813c7aa3a0ba40fa2b89c",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-195",
+      "profile_name": "building_material",
+      "signature_hash": "9242995ce161870e911483aa",
+      "fields": {
+        "counterparty_name": "示例物流运输有限公司"
+      },
+      "expected_concept_id": "logistics",
+      "expected_concept_name": "物流运输",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "weak",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-208",
+      "profile_name": "building_material",
+      "signature_hash": "9caeb49f046cb9aecf703b5f",
+      "fields": {
+        "counterparty_name": "示例物流运输有限公司"
+      },
+      "expected_concept_id": "logistics",
+      "expected_concept_name": "物流运输",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-220",
+      "profile_name": "building_material",
+      "signature_hash": "a4372a14567825049d104e59",
+      "fields": {
+        "remark": "示例电商"
+      },
+      "expected_concept_id": "ecommerce",
+      "expected_concept_name": "电商",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "去客户化后更保守但逻辑合理"
+      }
+    },
+    {
+      "gold_id": "gold-mm-222",
+      "profile_name": "building_material",
+      "signature_hash": "a687e8dd400186754db16ba6",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-230",
+      "profile_name": "building_material",
+      "signature_hash": "af89d283a9abf182a7d893c9",
+      "fields": {
+        "counterparty_name": "示例清洁服务有限公司"
+      },
+      "expected_concept_id": "cleaning_service",
+      "expected_concept_name": "清洁服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-232",
+      "profile_name": "building_material",
+      "signature_hash": "b02a27a3d12893a47553b18d",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-235",
+      "profile_name": "building_material",
+      "signature_hash": "b27f6153a16b3c67ebeb2782",
+      "fields": {
+        "product_description": "示例建筑材料"
+      },
+      "expected_concept_id": "building_material",
+      "expected_concept_name": "建筑材料",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "strong",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "medium",
+      "adjudication": {
+        "adjudicated_relevance": "strong",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "建材店为直接证据字段，strong 合理"
+      }
+    },
+    {
+      "gold_id": "gold-mm-236",
+      "profile_name": "building_material",
+      "signature_hash": "b4491d054ef5c3cb8a480947",
+      "fields": {
+        "counterparty_name": "示例汽车销售服务有限公司",
+        "product_description": "示例汽车销售服务"
+      },
+      "expected_concept_id": "car_sales",
+      "expected_concept_name": "汽车销售服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-241",
+      "profile_name": "building_material",
+      "signature_hash": "bc50a02bf6fed21c5d31beb7",
+      "fields": {
+        "counterparty_name": "示例设备有限公司"
+      },
+      "expected_concept_id": "equipment",
+      "expected_concept_name": "设备",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-246",
+      "profile_name": "building_material",
+      "signature_hash": "be2a27a7723f184a9b1de02c",
+      "fields": {
+        "counterparty_name": "示例教育服务有限公司"
+      },
+      "expected_concept_id": "education_service",
+      "expected_concept_name": "教育服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-248",
+      "profile_name": "building_material",
+      "signature_hash": "c2e4746e82269aae72cdd632",
+      "fields": {
+        "counterparty_name": "示例泛化科技有限公司"
+      },
+      "expected_concept_id": "generic_technology",
+      "expected_concept_name": "泛化科技",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-249",
+      "profile_name": "building_material",
+      "signature_hash": "c2e72eb5c0fd0c6b942ad888",
+      "fields": {
+        "counterparty_name": "示例电商有限公司",
+        "remark": "示例电商"
+      },
+      "expected_concept_id": "ecommerce",
+      "expected_concept_name": "电商",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "去客户化后更保守但逻辑合理"
+      }
+    },
+    {
+      "gold_id": "gold-mm-256",
+      "profile_name": "building_material",
+      "signature_hash": "cc186544fee56fa73a399429",
+      "fields": {
+        "product_description": "示例电商"
+      },
+      "expected_concept_id": "ecommerce",
+      "expected_concept_name": "电商",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-262",
+      "profile_name": "building_material",
+      "signature_hash": "d2ea8d89399db28f92ebbcc1",
+      "fields": {
+        "counterparty_name": "示例物流运输有限公司"
+      },
+      "expected_concept_id": "logistics",
+      "expected_concept_name": "物流运输",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-264",
+      "profile_name": "building_material",
+      "signature_hash": "d41fda8ef1e36a4599571e8a",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-268",
+      "profile_name": "building_material",
+      "signature_hash": "d80fd1f979a8d6b0899025db",
+      "fields": {
+        "counterparty_name": "示例服务有限公司",
+        "product_description": "示例服务"
+      },
+      "expected_concept_id": "service",
+      "expected_concept_name": "服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-273",
+      "profile_name": "building_material",
+      "signature_hash": "da64ed20be24a8564218c2b4",
+      "fields": {
+        "counterparty_name": "示例燃油有限公司"
+      },
+      "expected_concept_id": "fuel",
+      "expected_concept_name": "燃油",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-279",
+      "profile_name": "building_material",
+      "signature_hash": "dc70d44003549896eb0678f8",
+      "fields": {
+        "counterparty_name": "示例物流运输有限公司"
+      },
+      "expected_concept_id": "logistics",
+      "expected_concept_name": "物流运输",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-286",
+      "profile_name": "building_material",
+      "signature_hash": "df9755b136eda28259d65af9",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-290",
+      "profile_name": "building_material",
+      "signature_hash": "e3a7eb7c08dfcccaaf7ba3e5",
+      "fields": {
+        "counterparty_name": "示例咨询服务有限公司"
+      },
+      "expected_concept_id": "consulting",
+      "expected_concept_name": "咨询服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-295",
+      "profile_name": "building_material",
+      "signature_hash": "e72b156c600f1d1122e122d2",
+      "fields": {
+        "counterparty_name": "示例建筑施工有限公司"
+      },
+      "expected_concept_id": "construction",
+      "expected_concept_name": "建筑施工",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "交通建设公司对建材/环保客户 medium；‘豫’单字噪声已由归一化丢弃"
+      }
+    },
+    {
+      "gold_id": "gold-mm-305",
+      "profile_name": "building_material",
+      "signature_hash": "ef4e1381708e1323221af883",
+      "fields": {
+        "counterparty_name": "示例银行费用有限公司",
+        "remark": "示例银行费用"
+      },
+      "expected_concept_id": "bank_fee",
+      "expected_concept_name": "银行费用",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "none",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "none",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "银行/金融费用不属于经营语义，legacy strong 错误"
+      }
+    },
+    {
+      "gold_id": "gold-mm-307",
+      "profile_name": "building_material",
+      "signature_hash": "ef833317c755164f5be5bde4",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "medium",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-310",
+      "profile_name": "building_material",
+      "signature_hash": "f18d3afd6683cee2dcfffd9f",
+      "fields": {
+        "counterparty_name": "示例泛化贸易有限公司"
+      },
+      "expected_concept_id": "generic_trade",
+      "expected_concept_name": "泛化贸易",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-311",
+      "profile_name": "building_material",
+      "signature_hash": "f2eae65b294bdad30689e08c",
+      "fields": {
+        "counterparty_name": "示例设备有限公司"
+      },
+      "expected_concept_id": "equipment",
+      "expected_concept_name": "设备",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "medium",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "weak",
+      "adjudication": {
+        "adjudicated_relevance": "medium",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "经营配套概念，legacy 过于保守"
+      }
+    },
+    {
+      "gold_id": "gold-mm-315",
+      "profile_name": "building_material",
+      "signature_hash": "f5cd5873565d466cb7089698",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "strong",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-316",
+      "profile_name": "building_material",
+      "signature_hash": "f7a3ac0ddec4cd1c82f7b6d1",
+      "fields": {
+        "counterparty_name": "示例泛化材料费有限公司",
+        "remark": "示例泛化材料费"
+      },
+      "expected_concept_id": "material_fee_generic",
+      "expected_concept_name": "泛化材料费",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "medium",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "无具体产品对象的材料款只作弱提示"
+      }
+    },
+    {
+      "gold_id": "gold-mm-317",
+      "profile_name": "building_material",
+      "signature_hash": "f8c4ae58b86c2c44a2880892",
+      "fields": {
+        "counterparty_name": "示例汽车销售服务有限公司"
+      },
+      "expected_concept_id": "car_sales",
+      "expected_concept_name": "汽车销售服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-319",
+      "profile_name": "building_material",
+      "signature_hash": "fa48121a153af0b00a509e2d",
+      "fields": {
+        "counterparty_name": "示例汽车销售服务有限公司"
+      },
+      "expected_concept_id": "car_sales",
+      "expected_concept_name": "汽车销售服务",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-324",
+      "profile_name": "building_material",
+      "signature_hash": "fe4b7deb9cbd4f4dde0b2fd7",
+      "fields": {
+        "counterparty_name": "示例泛化实业有限公司"
+      },
+      "expected_concept_id": "generic_industry",
+      "expected_concept_name": "泛化实业",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "none",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "泛化服务/弱关联层级，weak 可接受"
+      }
+    },
+    {
+      "gold_id": "gold-mm-325",
+      "profile_name": "building_material",
+      "signature_hash": "feabc3e737a089c4588d661a",
+      "fields": {
+        "counterparty_name": "示例泛化贸易有限公司"
+      },
+      "expected_concept_id": "generic_trade",
+      "expected_concept_name": "泛化贸易",
+      "expected_industry_ids": [
+        "internal.building_material_trade",
+        "internal.environmental_engineering"
+      ],
+      "expected_relevance": "weak",
+      "expected_resolver_behavior": "resolve",
+      "inheritance_allowed": false,
+      "legacy_relevance": "medium",
+      "adjudication": {
+        "adjudicated_relevance": "weak",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "legacy_context_specific",
+        "action_required": "none",
+        "reviewer_note": "去客户化后更保守但逻辑合理"
+      }
+    },
+    {
+      "gold_id": "gold-transaction_noise",
+      "profile_name": "building_material",
+      "signature_hash": "",
+      "fields": {
+        "remark": "示例transaction_noise占位文本"
+      },
+      "expected_concept_id": "",
+      "expected_concept_name": "",
+      "expected_industry_ids": [],
+      "expected_relevance": "undetermined",
+      "expected_resolver_behavior": "undetermined",
+      "inheritance_allowed": false,
+      "legacy_relevance": "",
+      "adjudication": {
+        "adjudicated_relevance": "undetermined",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "transaction_noise",
+        "action_required": "none",
+        "reviewer_note": "Gold 代表条目：应保持 undetermined"
+      }
+    },
+    {
+      "gold_id": "gold-customer_specific_expression",
+      "profile_name": "building_material",
+      "signature_hash": "",
+      "fields": {
+        "remark": "示例customer_specific_expression占位文本"
+      },
+      "expected_concept_id": "",
+      "expected_concept_name": "",
+      "expected_industry_ids": [],
+      "expected_relevance": "undetermined",
+      "expected_resolver_behavior": "undetermined",
+      "inheritance_allowed": false,
+      "legacy_relevance": "",
+      "adjudication": {
+        "adjudicated_relevance": "undetermined",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "customer_specific_expression",
+        "action_required": "none",
+        "reviewer_note": "Gold 代表条目：应保持 undetermined"
+      }
+    },
+    {
+      "gold_id": "gold-insufficient_information",
+      "profile_name": "building_material",
+      "signature_hash": "",
+      "fields": {
+        "remark": "示例insufficient_information占位文本"
+      },
+      "expected_concept_id": "",
+      "expected_concept_name": "",
+      "expected_industry_ids": [],
+      "expected_relevance": "undetermined",
+      "expected_resolver_behavior": "undetermined",
+      "inheritance_allowed": false,
+      "legacy_relevance": "",
+      "adjudication": {
+        "adjudicated_relevance": "undetermined",
+        "preferred_system": "knowledge_v1",
+        "issue_type": "insufficient_information",
+        "action_required": "none",
+        "reviewer_note": "Gold 代表条目：应保持 undetermined"
+      }
+    }
+  ]
+}

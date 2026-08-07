@@ -206,6 +206,7 @@ class IndustryProfile:
     normalized_products_services: tuple[str, ...] = ()
     taxonomy_version: str = ""
     profile_version: str = "1"
+    profile_name: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -217,6 +218,7 @@ class IndustryProfile:
             ),
             "taxonomy_version": self.taxonomy_version,
             "profile_version": self.profile_version,
+            "profile_name": self.profile_name,
         }
 
 

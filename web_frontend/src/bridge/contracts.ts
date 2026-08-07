@@ -43,6 +43,7 @@ export type RecentCaseDTO = { record_id: string; case_name: string; updated_at: 
 export type RecentCasesDTO = { cases: RecentCaseDTO[]; corrupt_index: boolean };
 export type ManualContextDTO = { case_name: string; saved: boolean; has_file: boolean; company_name: string; declared_work_description: string; declared_work_status: string; work_units: string[]; work_locations: string[]; residence_locations: string[]; source_names: string[]; confirmed_primary_business: string; confirmed_products_or_services: string; confirmation_note: string; confirmation_status: string; enable_ai_business_analysis: boolean };
 export type ManualContextSaveDTO = { saved: boolean; case_name: string; confirmation_status: string };
+export type AiRuntimeStatusDTO = { runtime_loaded: boolean; replay_only: boolean; cache_file_count: number; model: string };
 export type ExportReportDTO = { saved: boolean; display_name: string };
 export type ManualContextInput = { company_name: string; confirmed_primary_business: string; confirmed_products_or_services: string; confirmation_note: string };
 
@@ -73,6 +74,7 @@ export interface DesktopBridge {
   getCurrentManualCaseContext(): Promise<ApiEnvelope<ManualContextDTO>>;
   saveCurrentManualCaseContext(fields: ManualContextInput): Promise<ApiEnvelope<ManualContextSaveDTO>>;
   clearCurrentManualCaseContext(): Promise<ApiEnvelope<ManualContextSaveDTO>>;
+  getAiRuntimeStatus(): Promise<ApiEnvelope<AiRuntimeStatusDTO>>;
   rebuildContextObservations(): Promise<ApiEnvelope<CaseHeaderDTO>>;
   exportReport(): Promise<ApiEnvelope<ExportReportDTO>>;
 }

@@ -187,6 +187,7 @@ def main() -> int:
         elif result.status == "SKIP":
             if result.missing:
                 missing += 1
+                print(f"MISSING: {result.name} -> {result.detail}")
             else:
                 skipped += 1
 

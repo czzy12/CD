@@ -366,6 +366,15 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
             ):
                 raise AssertionError("settings save roundtrip failed: " + json.dumps(settings_saved, ensure_ascii=False))
             settings_ms = round((time.perf_counter() - settings_started) * 1000, 3)
+            js("Array.from(document.querySelectorAll('.settings-page .property-button')).find((b) => b.textContent.includes('清空经营上下文'))?.click(); true")
+            wait_for("document.querySelector('.settings-page .context-notice')?.textContent.includes('经营上下文已清空')", 30)
+            settings_cleared = api.get_current_manual_case_context()
+            if (
+                not settings_cleared["ok"]
+                or settings_cleared["data"]["confirmed_primary_business"]
+                or settings_cleared["data"]["confirmed_products_or_services"]
+            ):
+                raise AssertionError("settings clear failed: " + json.dumps(settings_cleared, ensure_ascii=False))
             click('.settings-page .workflow-actions .secondary-button')
             wait_for("!document.querySelector('.settings-page')", 30)
             settings_result = {
@@ -373,6 +382,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "fields_rendered": settings_fields,
                 "save_notice_shown": True,
                 "roundtrip_ok": True,
+                "cleared_ok": True,
                 "elapsed_ms": settings_ms,
                 "ui_closed": True,
             }

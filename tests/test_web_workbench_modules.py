@@ -419,6 +419,42 @@ class ModuleDisplayContentTests(unittest.TestCase):
         self.assertEqual(item.review_status, "display_only")
         self.assertIn("仅展示系统资料", item.secondary_text or "")
 
+    def test_business_unavailable_reason_is_localized(self):
+        result = {
+            "schema_version": "1.16",
+            "module": "bankflow",
+            "result": {
+                "observations": [
+                    {
+                        "observation_type": "ai_business_relevance_candidates",
+                        "value": {
+                            "available": False,
+                            "reason": "business_context_confirmation_required",
+                            "deterministic_candidates": [],
+                            "ai_candidates": [],
+                        },
+                    }
+                ],
+                "facts": [],
+                "indicators": [],
+                "evidence": {
+                    "transaction_index": {},
+                    "references": [],
+                    "coverage": {},
+                    "integrity": {},
+                },
+            },
+            "manual_review": {"required": True, "items": []},
+            "source_files": [],
+            "warnings": [],
+            "notes": [],
+            "created_at": "",
+        }
+        adapter = BusinessModuleAdapter(result, "case")
+        self.assertEqual(adapter.availability, "unavailable")
+        self.assertIn("经营上下文不足", adapter.boundary_note)
+        self.assertIn("确定性候选可继续查看", adapter.boundary_note)
+
 
 if __name__ == "__main__":
     unittest.main()

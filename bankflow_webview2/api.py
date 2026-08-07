@@ -17,6 +17,7 @@ from bankflow_web.case_workspace import (
     standard_result_path,
 )
 from bankflow_web.contracts import (
+    AiRuntimeStatusDTO,
     AppStateDTO,
     ApplicationError,
     ExportReportDTO,
@@ -365,9 +366,61 @@ class WebView2Api:
                     "CURRENT_CASE_CONTEXT_UNAVAILABLE",
                     "当前案件没有关联目录，无法清空经营上下文。",
                 )
-            return self._save_manual_context(self._current_case_dir, {})
+            try:
+                base = build_case_context_from_directory(self._current_case_dir)
+            except OSError as exc:
+                raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
+            record = save_workspace_manual_context(
+                self._current_case_dir,
+                base,
+                {
+                    "confirmed_primary_business": "",
+                    "confirmed_products_or_services": "",
+                    "confirmation_note": "",
+                    "confirmation_status": "unconfirmed",
+                    "confirmed_by": "",
+                    "enable_ai_business_analysis": False,
+                },
+            )
+            return ManualContextSaveDTO(
+                saved=True,
+                case_name=self._current_case_dir.name or "未命名案件",
+                confirmation_status=str(
+                    record.get("confirmation_status") or "unconfirmed"
+                ),
+            )
 
         return self._bridge.invoke(clear)
+
+    def get_ai_runtime_status(self) -> dict[str, object]:
+        def query() -> object:
+            from bankflow_v2.deepseek_adapter import load_deepseek_settings
+
+            settings = load_deepseek_settings()
+            cache_dir = str(settings.cache_dir or "")
+            cache_file_count = 0
+            if cache_dir:
+                try:
+                    cache_file_count = sum(
+                        1
+                        for item in Path(cache_dir).rglob("*")
+                        if item.is_file()
+                    )
+                except OSError:
+                    cache_file_count = 0
+            return AiRuntimeStatusDTO(
+                runtime_loaded=bool(
+                    settings.api_key
+                    and settings.enabled
+                    and settings.data_authorized
+                    and settings.retention_policy_confirmed
+                ),
+                replay_only=True,
+                cache_file_count=cache_file_count,
+                model=str(settings.model),
+            )
+
+        return self._bridge.invoke(query)
 
     def _manual_context_dto(self, case_dir: Path) -> ManualContextDTO:
         record = load_workspace_manual_context(case_dir)

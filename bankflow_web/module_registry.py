@@ -467,6 +467,13 @@ class BusinessModuleAdapter(ModuleAdapter):
         observation = observation_by_type(self.result, "ai_business_relevance_candidates")
         value = _mapping(observation.get("value"))
         lookup = _transaction_lookup(self.result)
+        reason_labels = {
+            "business_context_confirmation_required": (
+                "经营上下文不足，需人工确认主要经营内容后重新构建上下文观察"
+            ),
+            "ai_data_authorization_missing": "AI 未授权（未加载运行时配置）",
+            "ai_response_invalid": "AI 验收缓存未覆盖本案件，暂无可复用 AI 结果",
+        }
         classification_labels = {
             "directly_related": "直接相关",
             "possibly_related": "可能相关",
@@ -510,6 +517,12 @@ class BusinessModuleAdapter(ModuleAdapter):
                 ))
         if not bool(value.get("available")) and not rows:
             self.forced_availability = "unavailable"
+            reason = str(value.get("reason") or "")
+            self.boundary_note = (
+                "AI 经营判断不可用："
+                + reason_labels.get(reason, reason or "当前不可用")
+                + "；确定性候选可继续查看。"
+            )
         return rows
 
 

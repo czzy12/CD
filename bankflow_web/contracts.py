@@ -124,6 +124,14 @@ class ManualContextSaveDTO:
 
 
 @dataclass(frozen=True)
+class AiRuntimeStatusDTO:
+    runtime_loaded: bool
+    replay_only: bool
+    cache_file_count: int
+    model: str
+
+
+@dataclass(frozen=True)
 class ExportReportDTO:
     saved: bool
     display_name: str

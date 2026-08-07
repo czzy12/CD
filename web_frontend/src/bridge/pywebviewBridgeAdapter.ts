@@ -1,5 +1,5 @@
 import type { AnalysisStatusDTO, ApiEnvelope, AppStateDTO, CaseHeaderDTO, CasePreflightDTO, CaseSelectionDTO, DesktopBridge, EvidenceDetailDTO, ModuleRegistryDTO, ModuleSummaryDTO, PagedModuleItemsDTO, SaveResultDTO, SourceReviewSummaryDTO } from "./contracts";
-import type { ExportReportDTO, ManualContextDTO, ManualContextInput, ManualContextSaveDTO, RecentCasesDTO } from "./contracts";
+import type { AiRuntimeStatusDTO, ExportReportDTO, ManualContextDTO, ManualContextInput, ManualContextSaveDTO, RecentCasesDTO } from "./contracts";
 
 type RawApi = Record<string, (...args: unknown[]) => Promise<unknown>>;
 declare global { interface Window { pywebview?: { api?: RawApi } } }
@@ -44,6 +44,7 @@ export class PyWebviewBridgeAdapter implements DesktopBridge {
   getCurrentManualCaseContext = () => this.call<ManualContextDTO>("get_current_manual_case_context");
   saveCurrentManualCaseContext = (fields: ManualContextInput) => this.call<ManualContextSaveDTO>("save_current_manual_case_context", fields);
   clearCurrentManualCaseContext = () => this.call<ManualContextSaveDTO>("clear_current_manual_case_context");
+  getAiRuntimeStatus = () => this.call<AiRuntimeStatusDTO>("get_ai_runtime_status");
   rebuildContextObservations = () => this.call<CaseHeaderDTO>("rebuild_context_observations");
   exportReport = () => this.call<ExportReportDTO>("export_report");
 }

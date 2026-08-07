@@ -68,6 +68,7 @@ class WebView2ApiTests(unittest.TestCase):
             "get_manual_case_context", "save_manual_case_context",
             "get_current_manual_case_context", "save_current_manual_case_context",
             "clear_current_manual_case_context",
+            "get_ai_runtime_status",
             "rebuild_context_observations", "export_report",
         })
 
@@ -135,6 +136,9 @@ class WebView2ApiTests(unittest.TestCase):
                 self.assertEqual(reloaded["data"]["confirmed_primary_business"], "")
                 self.assertEqual(reloaded["data"]["confirmed_products_or_services"], "")
                 self.assertEqual(reloaded["data"]["confirmation_note"], "")
+                self.assertEqual(reloaded["data"]["confirmation_status"], "unconfirmed")
+                rebuilt = self.api.rebuild_context_observations()
+                self.assertTrue(rebuilt["ok"])
             finally:
                 self.api._current_case_dir = None
                 if workspace.exists():
@@ -219,6 +223,35 @@ class WebView2ApiTests(unittest.TestCase):
                 api.start_case_analysis(selection.case_handle)
             self.assertFalse(captured["allow_external_network"])
             self.assertIsNone(captured["ai_evaluator"])
+
+    def test_ai_runtime_status_reports_offline_replay_and_cache_count(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "cache"
+            cache.mkdir()
+            (cache / "a.json").write_text("{}", encoding="utf-8")
+            (cache / "b.json").write_text("{}", encoding="utf-8")
+            fake_settings = SimpleNamespace(
+                api_key="test-key",
+                enabled=True,
+                data_authorized=True,
+                retention_policy_confirmed=True,
+                cache_dir=str(cache),
+                model="deepseek-v4-flash",
+            )
+            with patch(
+                "bankflow_v2.deepseek_adapter.load_deepseek_settings",
+                return_value=fake_settings,
+            ):
+                response = self.api.get_ai_runtime_status()
+            self.assertTrue(response["ok"])
+            self.assertTrue(response["data"]["runtime_loaded"])
+            self.assertTrue(response["data"]["replay_only"])
+            self.assertEqual(response["data"]["cache_file_count"], 2)
+            self.assertEqual(response["data"]["model"], "deepseek-v4-flash")
+            encoded = json.dumps(response, ensure_ascii=False)
+            self.assertNotIn(str(cache), encoded)
 
     def test_state_summary_page_and_evidence_reuse_existing_session(self):
         state = self.api.get_app_state()

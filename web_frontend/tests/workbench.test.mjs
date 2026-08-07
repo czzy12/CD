@@ -181,6 +181,7 @@ test("adapter maps recent-case and context methods to the Python whitelist", asy
   await bridge.getCurrentManualCaseContext();
   await bridge.saveCurrentManualCaseContext({ company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" });
   await bridge.clearCurrentManualCaseContext();
+  await bridge.getAiRuntimeStatus();
   await bridge.rebuildContextObservations();
   await bridge.exportReport();
   assert.deepEqual(calls, [
@@ -193,6 +194,7 @@ test("adapter maps recent-case and context methods to the Python whitelist", asy
     ["get_current_manual_case_context"],
     ["save_current_manual_case_context", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" }],
     ["clear_current_manual_case_context"],
+    ["get_ai_runtime_status"],
     ["rebuild_context_observations"],
     ["export_report"],
   ]);
@@ -211,6 +213,9 @@ test("settings page exposes current-case business context", () => {
   assert.match(source, /source-badge/);
   assert.match(source, /仅展示/);
   assert.match(source, /formatAmount/);
+  assert.match(source, /AI 经营判断状态/);
+  assert.match(source, /不可用/);
+  assert.match(source, /离线重放/);
 });
 
 test("history page and context controls are wired in the UI", () => {

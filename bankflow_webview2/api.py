@@ -284,77 +284,18 @@ class WebView2Api:
     def get_manual_case_context(self, case_handle: str) -> dict[str, object]:
         def query() -> object:
             selection = self._case_directories.get(case_handle)
-            record = load_workspace_manual_context(selection.path)
-            confirmation = business_confirmation_from_record(record)
-            if record:
-                value = record.get("original_extracted_information")
-                extracted = dict(value) if isinstance(value, dict) else {}
-                search = extracted.get("search_context")
-                search = dict(search) if isinstance(search, dict) else {}
-                business = extracted.get("business_context")
-                business = dict(business) if isinstance(business, dict) else {}
-                source_names = [
-                    str(source.get("source_ref") or "")
-                    for source in extracted.get("sources", [])
-                    if isinstance(source, dict) and source.get("source_ref")
-                ]
-            else:
-                try:
-                    base = build_case_context_from_directory(selection.path)
-                except OSError:
-                    base = {}
-                business = base.get("business_context")
-                business = dict(business) if isinstance(business, dict) else {}
-                search = base.get("search_context")
-                search = dict(search) if isinstance(search, dict) else {}
-                source_names = [
-                    str(source.get("source_ref") or "")
-                    for source in base.get("sources", [])
-                    if isinstance(source, dict) and source.get("source_ref")
-                ]
-            return ManualContextDTO(
-                case_name=selection.path.name or "未命名案件",
-                saved=bool(record),
-                has_file=bool(record),
-                company_name=str(
-                    business.get("company_name")
-                    or confirmation.get("company_name")
-                    or ""
-                ),
-                declared_work_description=str(
-                    business.get("declared_work_description") or ""
-                ),
-                declared_work_status=str(
-                    business.get("declared_work_status") or ""
-                ),
-                work_units=[
-                    str(value)
-                    for value in search.get("work_units", [])
-                    if str(value)
-                ],
-                work_locations=[
-                    str(value)
-                    for value in search.get("work_locations", [])
-                    if str(value)
-                ],
-                residence_locations=[
-                    str(value)
-                    for value in search.get("residence_locations", [])
-                    if str(value)
-                ],
-                source_names=source_names,
-                confirmed_primary_business=str(
-                    confirmation.get("confirmed_primary_business") or ""
-                ),
-                confirmed_products_or_services=str(
-                    confirmation.get("confirmed_products_or_services") or ""
-                ),
-                confirmation_note=str(confirmation.get("confirmation_note") or ""),
-                confirmation_status=str(
-                    confirmation.get("confirmation_status") or "unconfirmed"
-                ),
-                enable_ai_business_analysis=False,
-            )
+            return self._manual_context_dto(selection.path)
+
+        return self._bridge.invoke(query)
+
+    def get_current_manual_case_context(self) -> dict[str, object]:
+        def query() -> object:
+            if self._current_case_dir is None:
+                raise ApplicationError(
+                    "CURRENT_CASE_CONTEXT_UNAVAILABLE",
+                    "当前案件没有关联目录，无法读取经营上下文。",
+                )
+            return self._manual_context_dto(self._current_case_dir)
 
         return self._bridge.invoke(query)
 
@@ -364,42 +305,135 @@ class WebView2Api:
         fields: object | None = None,
     ) -> dict[str, object]:
         def save() -> object:
-            if not isinstance(fields, dict):
-                raise ApplicationError("INVALID_ARGUMENT")
             selection = self._case_directories.get(case_handle)
-            confirmation = {
-                "confirmed_primary_business": str(
-                    fields.get("confirmed_primary_business") or ""
-                ),
-                "confirmed_products_or_services": str(
-                    fields.get("confirmed_products_or_services") or ""
-                ),
-                "confirmation_note": str(fields.get("confirmation_note") or ""),
-                "confirmation_status": str(
-                    fields.get("confirmation_status") or "unconfirmed"
-                ),
-                "confirmed_by": str(fields.get("confirmed_by") or ""),
-                "enable_ai_business_analysis": False,
-            }
-            try:
-                base = build_case_context_from_directory(selection.path)
-            except OSError as exc:
-                raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
-            company_name = str(fields.get("company_name") or "")
-            if company_name:
-                business = base.get("business_context")
-                if isinstance(business, dict):
-                    updated = dict(business)
-                    updated["company_name"] = company_name
-                    base["business_context"] = updated
-            record = save_workspace_manual_context(selection.path, base, confirmation)
-            return ManualContextSaveDTO(
-                saved=True,
-                case_name=selection.path.name or "未命名案件",
-                confirmation_status=str(record.get("confirmation_status") or "unconfirmed"),
-            )
+            return self._save_manual_context(selection.path, fields)
 
         return self._bridge.invoke(save)
+
+    def save_current_manual_case_context(
+        self,
+        fields: object | None = None,
+    ) -> dict[str, object]:
+        def save() -> object:
+            if self._current_case_dir is None:
+                raise ApplicationError(
+                    "CURRENT_CASE_CONTEXT_UNAVAILABLE",
+                    "当前案件没有关联目录，无法保存经营上下文。",
+                )
+            return self._save_manual_context(self._current_case_dir, fields)
+
+        return self._bridge.invoke(save)
+
+    def _manual_context_dto(self, case_dir: Path) -> ManualContextDTO:
+        record = load_workspace_manual_context(case_dir)
+        confirmation = business_confirmation_from_record(record)
+        if record:
+            value = record.get("original_extracted_information")
+            extracted = dict(value) if isinstance(value, dict) else {}
+            search = extracted.get("search_context")
+            search = dict(search) if isinstance(search, dict) else {}
+            business = extracted.get("business_context")
+            business = dict(business) if isinstance(business, dict) else {}
+            source_names = [
+                str(source.get("source_ref") or "")
+                for source in extracted.get("sources", [])
+                if isinstance(source, dict) and source.get("source_ref")
+            ]
+        else:
+            try:
+                base = build_case_context_from_directory(case_dir)
+            except OSError:
+                base = {}
+            business = base.get("business_context")
+            business = dict(business) if isinstance(business, dict) else {}
+            search = base.get("search_context")
+            search = dict(search) if isinstance(search, dict) else {}
+            source_names = [
+                str(source.get("source_ref") or "")
+                for source in base.get("sources", [])
+                if isinstance(source, dict) and source.get("source_ref")
+            ]
+        return ManualContextDTO(
+            case_name=case_dir.name or "未命名案件",
+            saved=bool(record),
+            has_file=bool(record),
+            company_name=str(
+                business.get("company_name")
+                or confirmation.get("company_name")
+                or ""
+            ),
+            declared_work_description=str(
+                business.get("declared_work_description") or ""
+            ),
+            declared_work_status=str(
+                business.get("declared_work_status") or ""
+            ),
+            work_units=[
+                str(value)
+                for value in search.get("work_units", [])
+                if str(value)
+            ],
+            work_locations=[
+                str(value)
+                for value in search.get("work_locations", [])
+                if str(value)
+            ],
+            residence_locations=[
+                str(value)
+                for value in search.get("residence_locations", [])
+                if str(value)
+            ],
+            source_names=source_names,
+            confirmed_primary_business=str(
+                confirmation.get("confirmed_primary_business") or ""
+            ),
+            confirmed_products_or_services=str(
+                confirmation.get("confirmed_products_or_services") or ""
+            ),
+            confirmation_note=str(confirmation.get("confirmation_note") or ""),
+            confirmation_status=str(
+                confirmation.get("confirmation_status") or "unconfirmed"
+            ),
+            enable_ai_business_analysis=False,
+        )
+
+    def _save_manual_context(
+        self,
+        case_dir: Path,
+        fields: object | None,
+    ) -> ManualContextSaveDTO:
+        if not isinstance(fields, dict):
+            raise ApplicationError("INVALID_ARGUMENT")
+        confirmation = {
+            "confirmed_primary_business": str(
+                fields.get("confirmed_primary_business") or ""
+            ),
+            "confirmed_products_or_services": str(
+                fields.get("confirmed_products_or_services") or ""
+            ),
+            "confirmation_note": str(fields.get("confirmation_note") or ""),
+            # 使用者为审核人员本人，填写即视为已确认，不再要求单独确认动作。
+            "confirmation_status": "confirmed",
+            "confirmed_by": str(fields.get("confirmed_by") or ""),
+            "enable_ai_business_analysis": False,
+        }
+        try:
+            base = build_case_context_from_directory(case_dir)
+        except OSError as exc:
+            raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
+        company_name = str(fields.get("company_name") or "")
+        if company_name:
+            business = base.get("business_context")
+            if isinstance(business, dict):
+                updated = dict(business)
+                updated["company_name"] = company_name
+                base["business_context"] = updated
+        record = save_workspace_manual_context(case_dir, base, confirmation)
+        return ManualContextSaveDTO(
+            saved=True,
+            case_name=case_dir.name or "未命名案件",
+            confirmation_status=str(record.get("confirmation_status") or "unconfirmed"),
+        )
 
     def rebuild_context_observations(self) -> dict[str, object]:
         def rebuild() -> object:

@@ -244,18 +244,93 @@ class ModuleDisplayContentTests(unittest.TestCase):
 
         declaration = DeclarationCompareModuleAdapter(result, "case").items[0]
         self.assertEqual(declaration.primary_text, "某某公司")
-        self.assertEqual(declaration.matched_text, "可靠字段内未发现")
-        self.assertEqual(declaration.interpretation, "工作单位")
+        self.assertIsNone(declaration.matched_text)
+        self.assertIsNone(declaration.interpretation)
+        self.assertEqual(declaration.category, "工作单位")
+        self.assertIn("未发现对应文字依据", declaration.secondary_text or "")
 
         business = BusinessModuleAdapter(result, "case").items[0]
         self.assertEqual(business.matched_text, "可能相关")
+        self.assertEqual(business.category, "可能相关")
+        self.assertEqual(business.direction, "支出")
+        self.assertEqual(business.amount, "100.00")
         self.assertIn("某商户", business.primary_text)
         self.assertIn("确定性候选：可能相关", business.interpretation)
 
         purchase_rows = PurchaseModuleAdapter(result, "case").items
         prior = next(row for row in purchase_rows if row.item_id == "tx:prior")
-        self.assertIn("此前收入；工资收入", prior.matched_text)
+        self.assertEqual(prior.matched_text, "此前收入")
         self.assertEqual(prior.primary_text, "工资收入")
+
+    def test_business_rows_fill_context_from_original_transactions(self):
+        from tests.test_web_result_adapter import fixture_result
+
+        result = fixture_result()
+        observation = observation_by_type(
+            result,
+            "ai_business_relevance_candidates",
+        )
+        if not observation:
+            observation = {
+                "observation_type": "ai_business_relevance_candidates",
+                "value": {},
+            }
+            result["result"]["observations"].append(observation)
+        observation["value"]["available"] = True
+        observation["value"]["deterministic_candidates"] = [{
+            "transaction_id": "tx:purchase",
+            "classification": "directly_related",
+            "reason": "申报单位词精确命中",
+            "matched_anchors": ["测试汽车公司"],
+        }]
+        observation["value"]["ai_candidates"] = []
+        business = BusinessModuleAdapter(result, "case").items[0]
+        self.assertEqual(business.direction, "支出")
+        self.assertEqual(business.amount, "10000.00")
+        self.assertEqual(business.category, "直接相关")
+        self.assertIn("测试汽车公司", business.primary_text)
+
+    def test_manual_review_rows_use_chinese_categories_and_evidence_amount(self):
+        from tests.test_web_result_adapter import fixture_result
+
+        from bankflow_web.module_registry import ManualReviewModuleAdapter
+
+        result = fixture_result()
+        observation = observation_by_type(result, "manual_verification_questions")
+        if not observation:
+            observation = {
+                "observation_type": "manual_verification_questions",
+                "value": {},
+            }
+            result["result"]["observations"].append(observation)
+        observation["value"]["questions"] = [{
+            "question_id": "question:q1",
+            "question_text": "请确认该主要交易对手与客户的关系。",
+            "trigger_reason": "该对手在当前方向流水中的金额或占比较高。",
+            "attention_category": "transaction_structure_attention",
+            "evidence_transaction_ids": ["tx:purchase"],
+        }]
+        question = ManualReviewModuleAdapter(result, "case").items[0]
+        self.assertEqual(question.category, "交易结构")
+        self.assertEqual(question.direction, "支出")
+        self.assertEqual(question.amount, "10000.00")
+        self.assertIsNone(question.interpretation)
+        self.assertEqual(
+            question.secondary_text,
+            "该对手在当前方向流水中的金额或占比较高。",
+        )
+
+    def test_evidence_fields_no_longer_expose_raw_field_index_labels(self):
+        from tests.test_web_result_adapter import fixture_result
+
+        from bankflow_web.result_adapter import PurchaseResultAdapter
+
+        adapter = PurchaseResultAdapter(fixture_result(), "case")
+        evidence = adapter.evidence("tx:purchase")
+        self.assertNotIn("raw_fields[", " ".join(evidence.full_original_fields))
+        self.assertTrue(
+            any(line.startswith("raw_text：") for line in evidence.full_original_fields)
+        )
 
 
 if __name__ == "__main__":

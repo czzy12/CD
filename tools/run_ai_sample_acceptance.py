@@ -51,6 +51,11 @@ def main() -> int:
     parser.add_argument("output_path", type=Path)
     parser.add_argument("--sample-manifest", type=Path, required=True)
     parser.add_argument(
+        "--split",
+        choices=["development", "reserved_acceptance"],
+        default="development",
+    )
+    parser.add_argument(
         "--cache-dir",
         type=Path,
         default=Path("output/ai-response-cache"),
@@ -131,7 +136,7 @@ def main() -> int:
             case_context,
             manifest,
             allow_business_names=settings.allow_business_names,
-            split="development",
+            split=args.split,
         )
     except ValueError as exc:
         print("status=not_started")

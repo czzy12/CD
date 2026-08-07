@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -64,8 +65,51 @@ class WebView2ApiTests(unittest.TestCase):
             "dismiss_analysis_task", "save_current_standard_result",
             "list_recent_cases", "open_recent_case", "remove_recent_case",
             "get_manual_case_context", "save_manual_case_context",
+            "get_current_manual_case_context", "save_current_manual_case_context",
             "rebuild_context_observations", "export_report",
         })
+
+    def test_current_case_context_unavailable_without_directory(self):
+        read = self.api.get_current_manual_case_context()
+        self.assertEqual(read["error"]["code"], "CURRENT_CASE_CONTEXT_UNAVAILABLE")
+        save = self.api.save_current_manual_case_context(
+            {"company_name": "单位"}
+        )
+        self.assertEqual(save["error"]["code"], "CURRENT_CASE_CONTEXT_UNAVAILABLE")
+
+    def test_current_case_context_save_and_reload_roundtrip(self):
+        from bankflow_web.case_workspace import case_workspace_dir
+
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            workspace = case_workspace_dir(case_dir)
+            try:
+                dto = self.api.get_current_manual_case_context()
+                self.assertEqual(dto["error"]["code"], "CURRENT_CASE_CONTEXT_UNAVAILABLE")
+                self.api._current_case_dir = case_dir
+                dto = self.api.get_current_manual_case_context()
+                self.assertTrue(dto["ok"])
+                self.assertEqual(dto["data"]["case_name"], case_dir.name)
+                saved = self.api.save_current_manual_case_context({
+                    "company_name": "测试单位",
+                    "confirmed_primary_business": "建材批发",
+                    "confirmed_products_or_services": "护栏",
+                    "confirmation_note": "人工补充",
+                })
+                self.assertTrue(saved["ok"])
+                self.assertEqual(saved["data"]["confirmation_status"], "confirmed")
+                reloaded = self.api.get_current_manual_case_context()
+                self.assertTrue(reloaded["ok"])
+                self.assertEqual(reloaded["data"]["company_name"], "测试单位")
+                self.assertEqual(reloaded["data"]["confirmed_primary_business"], "建材批发")
+                self.assertEqual(reloaded["data"]["confirmed_products_or_services"], "护栏")
+                self.assertEqual(reloaded["data"]["confirmation_note"], "人工补充")
+                self.assertEqual(reloaded["data"]["confirmation_status"], "confirmed")
+                self.assertTrue(reloaded["data"]["has_file"])
+            finally:
+                self.api._current_case_dir = None
+                if workspace.exists():
+                    shutil.rmtree(workspace)
 
     def test_state_summary_page_and_evidence_reuse_existing_session(self):
         state = self.api.get_app_state()

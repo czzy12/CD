@@ -52,6 +52,11 @@ def main() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--business-confirmation", type=Path)
     parser.add_argument("--sample-manifest", type=Path)
+    parser.add_argument(
+        "--split",
+        choices=["development", "reserved_acceptance"],
+        default="development",
+    )
     args = parser.parse_args()
     if not args.case_dir.is_dir() or not args.cache_dir.is_dir():
         print("status=not_started")
@@ -100,7 +105,7 @@ def main() -> int:
                     context,
                     manifest,
                     allow_business_names=True,
-                    split="development",
+                    split=args.split,
                 )
             )
         except ValueError as exc:

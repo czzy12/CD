@@ -69,6 +69,17 @@ def _matched_text(record: Mapping[str, object]) -> str:
     return "、".join(sorted(set(terms))) or "现有购车候选"
 
 
+def _append_summary(matched: str, summary: object, terms: list[str]) -> str:
+    clean = str(summary or "").strip()
+    if not clean:
+        return matched
+    normalized = clean.rstrip("。.；;，, ")
+    for term in terms:
+        if normalized == str(term).strip() or clean == str(term).strip():
+            return matched
+    return f"{matched}；{clean}"
+
+
 def _category(record: Mapping[str, object]) -> str:
     terms = [str(value) for value in _list(record.get("matched_terms"))]
     categories = [TERM_CATEGORIES[value] for value in terms if value in TERM_CATEGORIES]
@@ -96,8 +107,7 @@ def _purchase_item(candidate: Mapping[str, object]) -> TransactionListItemDTO:
         or fields.get("remark")
         or ""
     )
-    if summary:
-        matched = f"{matched}；{summary}"
+    matched = _append_summary(matched, summary, _list(candidate.get("matched_terms")))
     return TransactionListItemDTO(
         transaction_id=str(candidate.get("purchase_transaction_id") or candidate.get("transaction_id") or ""),
         date=str(candidate.get("transaction_time") or context.get("transaction_time") or "")[:19],
@@ -125,18 +135,21 @@ def _prior_income_item(prior: Mapping[str, object], purchase: Mapping[str, objec
     counterparty = str(
         prior.get("counterparty_name")
         or fields.get("counterparty_name")
-        or summary
-        or "此前收入"
-    )
-    matched_text = "此前收入"
-    if summary:
-        matched_text = f"{matched_text}；{summary}"
+        or ""
+    ) or None
+    if not counterparty and summary:
+        counterparty = summary
+    matched_text: str | None = None
+    if summary and counterparty and summary.strip() != counterparty.strip():
+        matched_text = f"此前收入；{summary}"
+    elif counterparty and counterparty != "此前收入":
+        matched_text = "此前收入"
     return TransactionListItemDTO(
         transaction_id=str(prior.get("transaction_id") or ""),
         date=str(prior.get("transaction_time") or context.get("transaction_time") or "")[:19],
         direction="收入",
         amount=str(prior.get("income") or prior.get("amount") or "0.00"),
-        counterparty=counterparty,
+        counterparty=counterparty or "此前收入",
         matched_text=matched_text,
         interpretation=PURCHASE_BOUNDARY_NOTE,
         source_name=source,
@@ -280,9 +293,6 @@ class PurchaseResultAdapter:
         raw_values: list[str] = []
         if original.get("raw_text"):
             raw_values.append(f"raw_text：{original['raw_text']}")
-        for index, value in enumerate(_list(original.get("raw_fields"))):
-            if str(value).strip():
-                raw_values.append(f"raw_fields[{index}]：{value}")
         references = [value for value in _list(resolved.get("references")) if isinstance(value, Mapping)]
         statuses = sorted({str(value.get("status") or "") for value in references if value.get("status")})
         integrity = _mapping(resolved.get("integrity"))

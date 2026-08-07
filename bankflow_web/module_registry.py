@@ -51,6 +51,57 @@ def _transaction_fields(record: Mapping[str, object]) -> Mapping[str, object]:
     )
 
 
+def _original_transactions(result: Mapping[str, object]) -> list[object]:
+    body = _mapping(result.get("result"))
+    return _list(body.get("original_transactions"))
+
+
+def _transaction_lookup(result: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+    lookup: dict[str, Mapping[str, object]] = {}
+    for transaction in _original_transactions(result):
+        if isinstance(transaction, Mapping) and transaction.get("transaction_id"):
+            lookup[str(transaction["transaction_id"])] = transaction
+    return lookup
+
+
+def _context_from_transaction(
+    transaction: Mapping[str, object],
+) -> Mapping[str, object]:
+    income = str(transaction.get("income") or "0.00")
+    expense = str(transaction.get("expense") or "0.00")
+    direction = ""
+    if income not in {"", "0", "0.0", "0.00", "None"}:
+        direction = "income"
+    elif expense not in {"", "0", "0.0", "0.00", "None"}:
+        direction = "expense"
+    return {
+        "transaction_time": transaction.get("transaction_time"),
+        "direction": direction,
+        "income": income,
+        "expense": expense,
+        "source_file": transaction.get("source_file"),
+        "reliable_standard_fields": dict(
+            _mapping(transaction.get("standard_fields"))
+        ),
+    }
+
+
+def _with_transaction_context(
+    record: Mapping[str, object],
+    lookup: Mapping[str, Mapping[str, object]],
+) -> Mapping[str, object]:
+    enriched = dict(record)
+    transaction = lookup.get(str(record.get("transaction_id") or ""))
+    if transaction is None:
+        return enriched
+    context = _mapping(record.get("transaction_context"))
+    merged = dict(context)
+    for key, value in _context_from_transaction(transaction).items():
+        merged.setdefault(key, value)
+    enriched["transaction_context"] = merged
+    return enriched
+
+
 def _direction_amount(record: Mapping[str, object]) -> tuple[str | None, str | None]:
     context = _mapping(record.get("transaction_context"))
     direction = str(record.get("direction") or context.get("direction") or "")
@@ -314,6 +365,11 @@ class DeclarationCompareModuleAdapter(ModuleAdapter):
             "work_unit": "工作单位",
             "declared_industry": "申报行业",
             "purchase_deposit_expense": "下定相关支出",
+            "work_location": "工作地点",
+            "residence_location": "居住地点",
+            "vehicle_registration_location": "车辆上牌地点",
+            "dealer_name": "经销商",
+            "purchase_declaration": "下定描述",
         }
         status_labels = {
             "direct_match": "直接命中",
@@ -328,22 +384,36 @@ class DeclarationCompareModuleAdapter(ModuleAdapter):
             transaction_id = ids[0] if ids else None
             check_type = str(item.get("check_type") or "申报对照")
             status = str(item.get("status") or "unavailable")
+            reason = str(item.get("reason") or "")
+            status_label = status_labels.get(status, status)
             declared = "、".join(
                 str(value)
                 for value in _list(item.get("declared_values"))
                 if str(value)
             )
             rows.append(ReviewItemDTO(
-                f"declaration-{check_type}-{len(rows)}", transaction_id,
-                None, None, None,
-                redact_sensitive_text(declared or check_labels.get(check_type, check_type)),
-                redact_sensitive_text(str(item.get("reason") or "")),
-                None,
-                status_labels.get(status, status),
-                check_labels.get(check_type, check_type),
-                status_labels.get(status, status),
-                "direct" if status in {"direct_match", "candidate_match", "display_only"} else "review",
-                None, bool(transaction_id),
+                item_id=f"declaration-{check_type}-{len(rows)}",
+                transaction_id=transaction_id,
+                date=None,
+                direction=None,
+                amount=None,
+                primary_text=redact_sensitive_text(
+                    declared or check_labels.get(check_type, check_type)
+                ),
+                secondary_text=redact_sensitive_text(
+                    reason if reason else status_label
+                ),
+                counterparty=None,
+                matched_text=None,
+                interpretation=None,
+                category=check_labels.get(check_type, check_type),
+                review_status=(
+                    "direct"
+                    if status in {"direct_match", "candidate_match", "display_only"}
+                    else "review"
+                ),
+                source_name=None,
+                evidence_available=bool(transaction_id),
             ))
         return rows
 
@@ -357,6 +427,7 @@ class BusinessModuleAdapter(ModuleAdapter):
     def build_items(self) -> list[ReviewItemDTO]:
         observation = observation_by_type(self.result, "ai_business_relevance_candidates")
         value = _mapping(observation.get("value"))
+        lookup = _transaction_lookup(self.result)
         classification_labels = {
             "directly_related": "直接相关",
             "possibly_related": "可能相关",
@@ -380,8 +451,9 @@ class BusinessModuleAdapter(ModuleAdapter):
                 if reason:
                     interpretation = f"{interpretation}；{reason}"
                 rows.append(_common_item(
-                    candidate, item_id=transaction_id or f"business-{len(rows)}",
-                    transaction_id=transaction_id, category=source_label,
+                    _with_transaction_context(candidate, lookup),
+                    item_id=transaction_id or f"business-{len(rows)}",
+                    transaction_id=transaction_id, category=classification_cn,
                     matched_text=classification_cn,
                     interpretation=interpretation,
                     review_status="review",
@@ -400,19 +472,59 @@ class ManualReviewModuleAdapter(ModuleAdapter):
 
     def build_items(self) -> list[ReviewItemDTO]:
         rows: list[ReviewItemDTO] = []
+        lookup = _transaction_lookup(self.result)
+        attention_labels = {
+            "transaction_structure_attention": "交易结构",
+            "fund_flow_attention": "资金流向",
+            "text_context_attention": "文字背景",
+            "declaration_attention": "申报核实",
+        }
         for question in manual_verification_questions(self.result):
             if not isinstance(question, Mapping):
                 continue
             ids = [str(value) for value in _list(question.get("evidence_transaction_ids")) if value]
             transaction_id = ids[0] if ids else None
+            context = (
+                _context_from_transaction(lookup[transaction_id])
+                if transaction_id and transaction_id in lookup
+                else {}
+            )
+            direction = (
+                "收入"
+                if context.get("direction") == "income"
+                else "支出"
+                if context.get("direction") == "expense"
+                else None
+            )
+            amount = (
+                str(context.get("income"))
+                if direction == "收入"
+                else str(context.get("expense"))
+                if direction == "支出"
+                else None
+            )
             rows.append(ReviewItemDTO(
-                str(question.get("question_id") or f"question-{len(rows)}"),
-                transaction_id, None, None, None,
-                redact_sensitive_text(question.get("question_text") or "待人工核实"),
-                redact_sensitive_text(question.get("trigger_reason") or ""), None, None,
-                redact_sensitive_text(question.get("non_conclusion") or "仅供人工核实"),
-                str(question.get("attention_category") or "人工核实"), "review", None,
-                bool(transaction_id),
+                item_id=str(question.get("question_id") or f"question-{len(rows)}"),
+                transaction_id=transaction_id,
+                date=str(context.get("transaction_time") or "")[:19] or None,
+                direction=direction,
+                amount=amount,
+                primary_text=redact_sensitive_text(
+                    question.get("question_text") or "待人工核实"
+                ),
+                secondary_text=redact_sensitive_text(
+                    question.get("trigger_reason") or ""
+                ),
+                counterparty=None,
+                matched_text=None,
+                interpretation=None,
+                category=attention_labels.get(
+                    str(question.get("attention_category") or ""),
+                    "人工核实",
+                ),
+                review_status="review",
+                source_name=_basename(context.get("source_file")),
+                evidence_available=bool(transaction_id),
             ))
         return rows
 

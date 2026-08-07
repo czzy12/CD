@@ -187,7 +187,6 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "confirmed_primary_business": "建材销售",
                 "confirmed_products_or_services": "护栏、围栏",
                 "confirmation_note": "由完整流程实测写入",
-                "confirmation_status": "confirmed",
             })
             if not context_saved["ok"]:
                 raise AssertionError("manual context save failed: " + json.dumps(context_saved, ensure_ascii=False))
@@ -321,7 +320,64 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "workspace_result_saved": True,
             }
 
-            # 5. Recent cases: backend index + history page open flow.
+            # 5. Settings page: current-case business context view/edit.
+            settings_started = time.perf_counter()
+            click('.sidebar-bottom .sidebar-row')
+            wait_for("!!document.querySelector('.settings-page')", 30)
+            wait_for("!!Array.from(document.querySelectorAll('.settings-page .property-button')).find((b) => b.textContent.includes('保存经营上下文'))", 30)
+            settings_fields = json.loads(js("""
+                JSON.stringify((() => {
+                  const inputs = document.querySelectorAll('.settings-page .context-grid input');
+                  const textareas = document.querySelectorAll('.settings-page .context-grid textarea');
+                  const selects = document.querySelectorAll('.settings-page .context-grid select');
+                  const save = Array.from(document.querySelectorAll('.settings-page .property-button'))
+                    .find((b) => b.textContent.includes('保存经营上下文'));
+                  return {
+                    rendered: !!document.querySelector('.settings-page'),
+                    hasExtractSection: !!document.querySelector('.settings-page .extracted-context'),
+                    companyInput: inputs[0]?.value || '',
+                    primaryBusinessInput: inputs[1]?.value || '',
+                    noteTextarea: textareas[0]?.value || '',
+                    hasSaveButton: !!save,
+                  };
+                })())
+            """))
+            if not settings_fields.get("rendered") or not settings_fields.get("hasSaveButton"):
+                raise AssertionError("settings page did not render: " + json.dumps(settings_fields, ensure_ascii=False))
+            js("""
+                (() => {
+                  const inputs = document.querySelectorAll('.settings-page .context-grid input');
+                  const input = inputs[1];
+                  if (input) {
+                    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    setter.call(input, '建材批发与护栏工程');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                  return true;
+                })()
+            """)
+            click('.settings-page .property-button')
+            wait_for("document.querySelector('.settings-page .context-notice')?.textContent.includes('经营上下文已保存')", 60)
+            settings_saved = api.get_current_manual_case_context()
+            if (
+                not settings_saved["ok"]
+                or settings_saved["data"]["confirmed_primary_business"] != "建材批发与护栏工程"
+                or not settings_saved["data"]["has_file"]
+            ):
+                raise AssertionError("settings save roundtrip failed: " + json.dumps(settings_saved, ensure_ascii=False))
+            settings_ms = round((time.perf_counter() - settings_started) * 1000, 3)
+            click('.settings-page .workflow-actions .secondary-button')
+            wait_for("!document.querySelector('.settings-page')", 30)
+            settings_result = {
+                "ui_opened": True,
+                "fields_rendered": settings_fields,
+                "save_notice_shown": True,
+                "roundtrip_ok": True,
+                "elapsed_ms": settings_ms,
+                "ui_closed": True,
+            }
+
+            # 6. Recent cases: backend index + history page open flow.
             recent = api.list_recent_cases()
             if not recent["ok"] or not recent["data"]["cases"]:
                 raise AssertionError("recent cases index empty after success flow")
@@ -331,6 +387,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
             }
             click('button[aria-label="历史案件"]')
             wait_for("!!document.querySelector('.history-page')", 30)
+            wait_for("!document.querySelector('.history-page .loading-line')", 30)
             history_rows = int(js("document.querySelectorAll('.history-row').length") or 0)
             if history_rows < 1:
                 raise AssertionError("history page rendered without rows")
@@ -341,7 +398,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "ui_opened": True,
             }
 
-            # 6. Rebuild context observations from the workbench.
+            # 7. Rebuild context observations from the workbench.
             rebuild_started = time.perf_counter()
             session_before_rebuild = header_snapshot()["case_session_id"]
             click('.module-actions .save-result-button')
@@ -356,7 +413,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "elapsed_ms": rebuild_ms,
             }
 
-            # 7. Export the Markdown acceptance report.
+            # 8. Export the Markdown acceptance report.
             export_started = time.perf_counter()
             click('.module-actions .save-result-button:nth-of-type(2)')
             wait_for("document.querySelector('.save-toast')?.textContent.includes('报告已导出')", 60)
@@ -384,6 +441,7 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "history_open": history_open_result,
                 "context_rebuild": rebuild_result,
                 "report_export": export_result,
+                "settings_context": settings_result,
                 "preflight_layout": preflight_layout,
                 "list_footer_layout": list_footer_layout,
                 "frontend_errors": frontend_errors,

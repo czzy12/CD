@@ -30,6 +30,21 @@ RELATION_SOURCES = frozenset(
         "undetermined",
     }
 )
+CONCEPT_RESOLUTION_SOURCES = frozenset(
+    {"exact_alias", "knowledge_base", "semantic_cache", "ai_candidate", "unresolved"}
+)
+RELATION_RESOLUTION_SOURCES = frozenset(
+    {
+        "exact_relation",
+        "specialty_relation",
+        "inherited_relation",
+        "generic_business_relation",
+        "relation_cache",
+        "ai_candidate",
+        "unresolved",
+    }
+)
+SCHEMA_REVIEW_STATUS_VALUES = frozenset({"approved", "unresolved", "candidate"})
 
 
 def _utcnow() -> str:
@@ -244,6 +259,7 @@ class SemanticResolution:
     source: str
     reason: str
     knowledge_version: str
+    concept_resolution_source: str = ""
     ai_used: bool = False
     review_required: bool = False
     matched_alias: str = ""
@@ -256,6 +272,7 @@ class SemanticResolution:
             "source": self.source,
             "reason": self.reason,
             "knowledge_version": self.knowledge_version,
+            "concept_resolution_source": self.concept_resolution_source,
             "ai_used": self.ai_used,
             "review_required": self.review_required,
             "matched_alias": self.matched_alias,
@@ -269,6 +286,7 @@ class RelationResolution:
     relevance: str
     relation_source: str
     knowledge_version: str
+    relation_resolution_source: str = ""
     reason: str = ""
     review_required: bool = False
     ai_used: bool = False
@@ -282,6 +300,7 @@ class RelationResolution:
             "relevance": self.relevance,
             "relation_source": self.relation_source,
             "knowledge_version": self.knowledge_version,
+            "relation_resolution_source": self.relation_resolution_source,
             "reason": self.reason,
             "review_required": self.review_required,
             "ai_used": self.ai_used,

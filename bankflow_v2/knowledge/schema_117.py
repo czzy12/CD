@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -16,18 +17,77 @@ def _canonical_dir() -> Path:
     return Path(__file__).resolve().parent / "canonical"
 
 
-def _relation_id(
+def _relation_payload(
+    runtime: Any,
     industry_id: str,
     concept_id: str,
-    relation_kb_version: str,
+    final_relevance: str,
+) -> dict[str, Any]:
+    """Canonical payload of the judgement semantics for relation_id audit."""
+    relation = runtime.relations.approved(industry_id, concept_id)
+    return {
+        "industry_id": industry_id,
+        "concept_id": concept_id,
+        "relevance": final_relevance,
+        "confidence_tier": (
+            str(relation.confidence_tier) if relation is not None else ""
+        ),
+        "review_status": (
+            str(relation.review_status) if relation is not None else "approved"
+        ),
+        "relation_kb_version": str(runtime.version.relation_kb_version),
+    }
+
+
+def _relation_id(
+    runtime: Any,
+    industry_id: str,
+    concept_id: str,
+    final_relevance: str,
 ) -> str:
-    digest = hashlib.sha256(
-        f"{industry_id}:{concept_id}:{relation_kb_version}".encode("utf-8")
-    ).hexdigest()[:16]
+    payload = _relation_payload(
+        runtime,
+        industry_id,
+        concept_id,
+        final_relevance,
+    )
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    digest = hashlib.sha256(canonical).hexdigest()[:16]
     return f"rel-{digest}"
 
 
+def _resolution_id(
+    semantic_signature_ref: str,
+    industry_id: str,
+    concept_id: str,
+    relation_id: str,
+    resolver_version: str,
+    knowledge_version: str,
+) -> str:
+    """Deterministic, order-independent resolution identity."""
+    stable = "|".join(
+        [
+            semantic_signature_ref,
+            industry_id,
+            concept_id,
+            relation_id,
+            resolver_version,
+            knowledge_version,
+        ]
+    )
+    digest = hashlib.sha256(stable.encode("utf-8")).hexdigest()[:16]
+    return f"res-{digest}"
+
+
 def _concept_source(semantic: Mapping[str, Any]) -> str:
+    direct = str(semantic.get("concept_resolution_source", "") or "")
+    if direct:
+        return direct
     source = str(semantic.get("source", ""))
     reason = str(semantic.get("reason", ""))
     if source == "knowledge_base" and reason.startswith("别名精确命中"):
@@ -51,6 +111,13 @@ def _relation_source(value: str) -> str:
         "ai_candidate": "ai_candidate",
         "undetermined": "unresolved",
     }.get(value, "unresolved")
+
+
+def _relation_resolution_source(relation: Mapping[str, Any]) -> str:
+    direct = str(relation.get("relation_resolution_source", "") or "")
+    if direct:
+        return direct
+    return _relation_source(str(relation.get("relation_source", "")))
 
 
 def _inherited_from(
@@ -77,6 +144,7 @@ def empty_resolutions_observation(
             "semantic_kb_version": "",
             "relation_kb_version": "",
             "resolver_version": "",
+            "migration_status": migration_status,
             "resolutions": [],
         },
         "parameters": {
@@ -119,6 +187,7 @@ def build_business_semantics_resolutions(
     case_context: Mapping[str, object] | None,
     *,
     runtime: Any | None = None,
+    per_entry_profiles: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Write knowledge_v1 shadow resolutions into a schema 1.17 observation."""
     from ..ai_business_observation import AI_INPUT_FIELDS
@@ -152,7 +221,7 @@ def build_business_semantics_resolutions(
                 value = search_context.get(key)
                 if isinstance(value, list):
                     profile_input[key] = value
-    profile = build_industry_profile(profile_input, runtime.taxonomy)
+    default_profile = build_industry_profile(profile_input, runtime.taxonomy)
     grouped: dict[str, dict[str, Any]] = {}
     evidence_ids: list[str] = []
     for transaction in transactions:
@@ -165,10 +234,21 @@ def build_business_semantics_resolutions(
         if not signature.pairs:
             continue
         evidence_ids.append(transaction.transaction_id)
+        entry_profile = None
+        if per_entry_profiles:
+            entry_profile = per_entry_profiles.get(transaction.transaction_id)
+        profile = entry_profile if entry_profile is not None else default_profile
+        profile_name = (
+            str(getattr(profile, "profile_name", "") or "")
+            if profile is not None
+            else ""
+        )
+        bucket_key = f"{signature.signature_id}|{profile_name}"
         bucket = grouped.setdefault(
-            signature.signature_id,
+            bucket_key,
             {
                 "signature_id": signature.signature_id,
+                "profile_name": profile_name,
                 "fields": fields,
                 "transaction_ref": transaction.transaction_id,
                 "transaction_ids": [],
@@ -180,7 +260,15 @@ def build_business_semantics_resolutions(
     unknown_concept = 0
     unknown_relation = 0
     for bucket in grouped.values():
-        resolved = runtime.resolve_transaction_fields(bucket["fields"], profile)
+        bucket_profile = None
+        if per_entry_profiles and bucket["profile_name"]:
+            bucket_profile = per_entry_profiles.get(bucket["transaction_ref"])
+        if bucket_profile is None:
+            bucket_profile = default_profile
+        resolved = runtime.resolve_transaction_fields(
+            bucket["fields"],
+            bucket_profile,
+        )
         semantic = resolved["semantic"]
         if semantic["source"] == "undetermined" or not semantic["concept_id"]:
             unknown_concept += 1
@@ -204,9 +292,22 @@ def build_business_semantics_resolutions(
         industry_id = str(best.get("industry_id", ""))
         relation_source = str(best.get("relation_source", "undetermined"))
         inherited = relation_source == "inherited"
+        relation_id = _relation_id(
+            runtime,
+            industry_id,
+            concept_id,
+            final_relevance,
+        )
         resolutions.append(
             {
-                "resolution_id": f"res-{len(resolutions) + 1:06d}",
+                "resolution_id": _resolution_id(
+                    bucket["signature_id"],
+                    industry_id,
+                    concept_id,
+                    relation_id,
+                    runtime.version.resolver_version,
+                    runtime.version.knowledge_version,
+                ),
                 "transaction_ref": bucket["transaction_ref"],
                 "semantic_signature_ref": bucket["signature_id"],
                 "concept_id": concept_id,
@@ -220,14 +321,8 @@ def build_business_semantics_resolutions(
                     if runtime.taxonomy.node(industry_id)
                     else ""
                 ),
-                "relation_id": _relation_id(
-                    industry_id,
-                    concept_id,
-                    runtime.version.relation_kb_version,
-                ),
-                "relation_resolution_source": _relation_source(
-                    relation_source
-                ),
+                "relation_id": relation_id,
+                "relation_resolution_source": _relation_resolution_source(best),
                 "relevance": final_relevance,
                 "inherited": inherited,
                 "inherited_from_industry_id": (
@@ -236,6 +331,7 @@ def build_business_semantics_resolutions(
                     else ""
                 ),
                 "review_status": "approved",
+                "candidate_ref": "",
             }
         )
 
@@ -247,6 +343,7 @@ def build_business_semantics_resolutions(
             "semantic_kb_version": runtime.version.semantic_kb_version,
             "relation_kb_version": runtime.version.relation_kb_version,
             "resolver_version": runtime.version.resolver_version,
+            "migration_status": "parsed",
             "resolutions": resolutions,
         },
         "parameters": {

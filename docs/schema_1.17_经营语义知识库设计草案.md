@@ -1,6 +1,6 @@
 # schema 1.17 正式设计：business_semantics_resolutions（方案 B）
 
-状态：正式设计（接近可实施），尚未实施。
+状态：已实施（2026-08-07，Commit 2 契约/迁移/兼容 + Commit 3 shadow resolution 写入）。
 更新：2026-08-07
 
 ## 一、设计原则
@@ -211,12 +211,13 @@ rejected              -> 不进入正式 resolution
 ## 十一、Rollout Plan
 
 ```text
-Commit 2（本阶段设计）  schema 1.17 contract + migration + compatibility tests
-Commit 3（后续实施）    knowledge_v1 shadow resolution 写入 1.17
+Commit 2（已完成）      schema 1.17 contract + migration + compatibility tests（4893b47）
+Commit 3（已完成）      knowledge_v1 shadow resolution 写入 1.17（见 git log）
 之后                    用户确认后 GUI 只读展示，再评估正式切换
 ```
 
-不混提交；不改 GUI；不 push（除非授权）。
+不混提交；不改 GUI；不 push（除非授权）。实施明细与测试见
+`docs/change-history/2026-08.md#chg-20260807-16`。
 
 ## 十二、Gate C 结论
 

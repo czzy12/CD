@@ -14,6 +14,7 @@ from pathlib import Path
 from .ai_business_observation import build_ai_business_observation
 from .knowledge.schema_117 import (
     SCHEMA_117_OBSERVATION_TYPE,
+    build_business_semantics_resolutions,
     empty_resolutions_observation,
 )
 from .deepseek_adapter import load_deepseek_runtime
@@ -1822,10 +1823,70 @@ def build_bankflow_result(
     )
     knowledge_diagnostics: dict[str, object] = {}
     if include_knowledge_shadow:
-        knowledge_observation, knowledge_diagnostics = (
-            empty_resolutions_observation(migration_status="not_parsed")
-        )
+        try:
+            knowledge_observation, knowledge_diagnostics = (
+                build_business_semantics_resolutions(
+                    original_transactions,
+                    case_context,
+                )
+            )
+        except Exception:
+            knowledge_observation, knowledge_diagnostics = (
+                empty_resolutions_observation(migration_status="not_parsed")
+            )
         observations.append(knowledge_observation)
+        ai_observation = next(
+            (
+                item
+                for item in observations
+                if isinstance(item, dict)
+                and item.get("observation_type")
+                == "ai_business_relevance_candidates"
+            ),
+            None,
+        )
+        legacy_map: dict[str, str] = {}
+        if isinstance(ai_observation, dict):
+            ai_value = ai_observation.get("value", {})
+            if isinstance(ai_value, dict):
+                for candidate in [
+                    *ai_value.get("deterministic_candidates", []),
+                    *ai_value.get("deterministic_non_business_candidates", []),
+                    *ai_value.get("ai_candidates", []),
+                ]:
+                    transaction_id = candidate.get("transaction_id")
+                    if not transaction_id:
+                        continue
+                    classification = str(candidate.get("classification", ""))
+                    strength = str(candidate.get("evidence_strength", ""))
+                    legacy_map[str(transaction_id)] = {
+                        "directly_related": "strong",
+                        "possibly_related": (
+                            strength
+                            if strength in {"medium", "weak"}
+                            else "medium"
+                        ),
+                        "no_relation_evidence": "none",
+                        "undetermined": "undetermined",
+                    }.get(classification, "")
+        knowledge_value = knowledge_observation.get("value", {})
+        comparison: dict[str, object] = {}
+        if isinstance(knowledge_value, dict):
+            for entry in knowledge_value.get("resolutions", []):
+                if not isinstance(entry, dict):
+                    continue
+                transaction_ref = str(entry.get("transaction_ref", ""))
+                if not transaction_ref:
+                    continue
+                legacy_relevance = legacy_map.get(transaction_ref, "")
+                comparison[transaction_ref] = {
+                    "legacy_relevance": legacy_relevance,
+                    "agreement": bool(legacy_relevance)
+                    and legacy_relevance == entry.get("relevance"),
+                }
+        knowledge_diagnostics.setdefault("knowledge_v1", {})[
+            "legacy_comparison"
+        ] = comparison
     facts = _facts(original_transactions, summary)
     indicators = _indicators(original_transactions)
     evidence = _evidence_output(

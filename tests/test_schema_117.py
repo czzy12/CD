@@ -38,7 +38,16 @@ def transaction() -> Transaction:
 
 class Schema117ContractTests(unittest.TestCase):
     def test_build_emits_schema_117_with_shadow_observation(self):
-        result = build_bankflow_result([transaction()], ai_config={})
+        result = build_bankflow_result(
+            [transaction()],
+            case_context={
+                "business_context": {
+                    "confirmed_primary_business": "建筑材料批发",
+                    "confirmation_status": "confirmed",
+                }
+            },
+            ai_config={},
+        )
         self.assertEqual(result["schema_version"], "1.17")
         observation = next(
             item
@@ -50,11 +59,71 @@ class Schema117ContractTests(unittest.TestCase):
             observation["parameters"]["production_resolver"],
             "legacy_v11",
         )
-        self.assertEqual(observation["value"]["resolutions"], [])
+        self.assertGreater(len(observation["value"]["resolutions"]), 0)
         self.assertEqual(
             result["diagnostics"]["knowledge_v1"]["migration_status"],
-            "not_parsed",
+            "parsed",
         )
+
+    def test_resolutions_carry_knowledge_fields_without_legacy_pollution(self):
+        result = build_bankflow_result(
+            [transaction()],
+            case_context={
+                "business_context": {
+                    "confirmed_primary_business": "建筑材料批发",
+                    "confirmation_status": "confirmed",
+                }
+            },
+            ai_config={},
+        )
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item["observation_type"] == "business_semantics_resolutions"
+        )
+        entry = observation["value"]["resolutions"][0]
+        for field in (
+            "resolution_id",
+            "transaction_ref",
+            "semantic_signature_ref",
+            "concept_id",
+            "concept_name_snapshot",
+            "concept_resolution_source",
+            "industry_id",
+            "industry_name_snapshot",
+            "relation_id",
+            "relation_resolution_source",
+            "relevance",
+            "inherited",
+            "inherited_from_industry_id",
+            "review_status",
+        ):
+            self.assertIn(field, entry)
+        self.assertNotIn("legacy_relevance", entry)
+        self.assertEqual(entry["concept_id"], "logistics")
+        self.assertEqual(entry["relevance"], "medium")
+
+    def test_legacy_comparison_lives_in_diagnostics_only(self):
+        result = build_bankflow_result(
+            [transaction()],
+            case_context={
+                "business_context": {
+                    "confirmed_primary_business": "建筑材料批发",
+                    "confirmation_status": "confirmed",
+                }
+            },
+            ai_config={},
+        )
+        comparison = result["diagnostics"]["knowledge_v1"][
+            "legacy_comparison"
+        ]
+        self.assertIn("tx:schema:1", comparison)
+        observation = next(
+            item
+            for item in result["result"]["observations"]
+            if item["observation_type"] == "business_semantics_resolutions"
+        )
+        self.assertNotIn("legacy_comparison", observation)
 
     def test_build_without_knowledge_shadow_omits_observation(self):
         result = build_bankflow_result(

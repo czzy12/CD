@@ -260,20 +260,51 @@ def _statement_metadata(pdf_path: str) -> StatementMetadata:
 
 def extract_ccb_corp(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
+    diagnostics = {
+        "source_row_count": 0,
+        "parsed_transaction_count": 0,
+        "skipped_row_count": 0,
+        "unparsed_row_count": 0,
+        "ignored_non_transaction_row_count": 0,
+        "review_row_count": 0,
+        "unsupported_row_count": 0,
+    }
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
                 if _is_deposit_detail_table(table):
+                    diagnostics["source_row_count"] += len(table)
+                    parsed_before = len(transactions)
                     transactions.extend(_extract_deposit_detail_rows(table, page_index))
+                    parsed_now = len(transactions) - parsed_before
+                    diagnostics["parsed_transaction_count"] += parsed_now
+                    diagnostics["skipped_row_count"] += max(len(table) - parsed_now, 0)
+                    diagnostics["unparsed_row_count"] += max(len(table) - parsed_now, 0)
                     continue
 
+                header_row: list[str] = []
+                for row in table[:5]:
+                    header_text = "|".join(_clean_cell(cell) for cell in row)
+                    if any(
+                        marker in header_text
+                        for marker in ("交易时间", "交易日期", "借方发生额", "贷方发生额", "借方", "贷方")
+                    ):
+                        header_row = [_clean_cell(cell) for cell in row]
+                        break
                 for row_index, row in enumerate(table, start=1):
                     if len(row) <= BALANCE_COL:
+                        diagnostics["ignored_non_transaction_row_count"] += 1
+                        continue
+                    if header_row and [_clean_cell(cell) for cell in row] == header_row:
+                        diagnostics["ignored_non_transaction_row_count"] += 1
                         continue
 
+                    diagnostics["source_row_count"] += 1
                     tx_time = _parse_time(row[TIME_COL])
                     if tx_time is None:
+                        diagnostics["skipped_row_count"] += 1
+                        diagnostics["unparsed_row_count"] += 1
                         continue
 
                     debit = _parse_money(row[DEBIT_COL])
@@ -287,6 +318,7 @@ def extract_ccb_corp(pdf_path: str) -> TransactionList:
                     if debit == 0 and credit == 0:
                         issues.append("借方和贷方均为零")
 
+                    raw_fields = [_clean_cell(cell) for cell in row]
                     transactions.append(
                         Transaction(
                             transaction_time=tx_time,
@@ -299,14 +331,21 @@ def extract_ccb_corp(pdf_path: str) -> TransactionList:
                             raw_time=_clean_cell(row[TIME_COL]),
                             raw_amount=f"{_clean_cell(row[DEBIT_COL])}|{_clean_cell(row[CREDIT_COL])}",
                             raw_balance=_clean_cell(row[BALANCE_COL]),
+                            raw_text=" | ".join(raw_fields),
+                            raw_fields=raw_fields,
+                            raw_headers=header_row,
                             status="ok" if not issues else "review",
                             issues=issues,
                         )
                     )
 
                     transactions[-1].merge_key = _transaction_key(row)
+                    diagnostics["parsed_transaction_count"] += 1
+                    if transactions[-1].status == "review":
+                        diagnostics["review_row_count"] += 1
 
-    return TransactionList(transactions, _statement_metadata(pdf_path))
+    diagnostics["parsed_transaction_count"] = len(transactions)
+    return TransactionList(transactions, _statement_metadata(pdf_path), diagnostics=diagnostics)
 
 
 def merge_transactions(transactions: list[Transaction]) -> list[Transaction]:

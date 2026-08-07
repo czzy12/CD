@@ -95,6 +95,7 @@ class AnalysisService:
         source_results: list[SourceOutcome] = []
         issues: list[Issue] = []
         transactions = []
+        parser_diagnostics: dict[str, dict[str, object]] = {}
         for index, path in enumerate(paths, start=1):
             if token.requested:
                 raise AnalysisCancelled()
@@ -112,6 +113,21 @@ class AnalysisService:
                 status = "included" if source_transactions else "review"
                 if not source_transactions and not message:
                     message = "未解析到流水"
+                parser_diag = dict(getattr(source_transactions, "diagnostics", None) or {})
+                source_metadata = get_statement_metadata(source_transactions)
+                parser_diagnostics[path.name] = {
+                    **parser_diag,
+                    "metadata_owner_available": bool(
+                        (source_metadata.account_name or "").strip()
+                    ),
+                    "metadata_account_available": bool(
+                        (source_metadata.account_number or "").strip()
+                    ),
+                    "metadata_period_available": (
+                        source_metadata.statement_period_start is not None
+                        and source_metadata.statement_period_end is not None
+                    ),
+                }
                 outcome = SourceOutcome(path, status, message, source_transactions)
             except Exception as exc:
                 message = str(exc)
@@ -132,11 +148,15 @@ class AnalysisService:
             case_context=case_context or {},
             ai_config=ai_config,
             ai_evaluator=ai_evaluator,
-            source_diagnostics=[{
-                "source_file": source.path.name,
-                "status": "review" if source.status == "review" else "included",
-                "review_reason": source.message if source.status == "review" else "",
-            } for source in source_results],
+            source_diagnostics=[
+                {
+                    "source_file": source.path.name,
+                    "status": "review" if source.status == "review" else "included",
+                    "review_reason": source.message if source.status == "review" else "",
+                    **parser_diagnostics.get(source.path.name, {}),
+                }
+                for source in source_results
+            ],
         )
         build_ms = round((time.perf_counter() - build_started) * 1000, 3)
         emit(ProgressEvent("validating_result", len(paths), ""))

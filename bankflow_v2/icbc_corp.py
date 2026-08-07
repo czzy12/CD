@@ -124,11 +124,11 @@ def _parse_format_a(row: list, index: dict[str, int], page_no: int, row_no: int)
         issues.append("余额无法解析")
 
     if direction == "贷":
-        income = amount
+        income = abs(amount)
         expense = Decimal("0.00")
     elif direction == "借":
         income = Decimal("0.00")
-        expense = amount
+        expense = abs(amount)
     else:
         income = Decimal("0.00")
         expense = Decimal("0.00")
@@ -169,14 +169,22 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
     issues: list[str] = []
 
     if direction == "贷":
-        income = credit or Decimal("0.00")
-        expense = Decimal("0.00")
+        if credit is not None and credit < 0:
+            income = Decimal("0.00")
+            expense = abs(credit)
+        else:
+            income = credit or Decimal("0.00")
+            expense = Decimal("0.00")
         raw_amount = _cell(row, index, "贷方发生额")
         if credit is None:
             issues.append("贷方金额无法解析")
     elif direction == "借":
-        income = Decimal("0.00")
-        expense = debit or Decimal("0.00")
+        if debit is not None and debit < 0:
+            income = abs(debit)
+            expense = Decimal("0.00")
+        else:
+            income = Decimal("0.00")
+            expense = debit or Decimal("0.00")
         raw_amount = _cell(row, index, "借方发生额")
         if debit is None:
             issues.append("借方金额无法解析")
@@ -189,6 +197,8 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
     if balance is None:
         issues.append("余额无法解析")
 
+    raw_fields = [_clean_cell(cell) for cell in row]
+    raw_headers = [name for name, _ in sorted(index.items(), key=lambda item: item[1])]
     tx = Transaction(
         transaction_time=tx_time,
         income=income,
@@ -200,6 +210,9 @@ def _parse_format_b(row: list, index: dict[str, int], page_no: int, row_no: int)
         raw_time=_cell(row, index, "交易时间"),
         raw_amount=raw_amount,
         raw_balance=_cell(row, index, "余额"),
+        raw_text=" | ".join(raw_fields),
+        raw_fields=raw_fields,
+        raw_headers=raw_headers,
         status="ok" if not issues else "review",
         issues=issues,
     )
@@ -229,8 +242,15 @@ def _parse_format_c(row: list, index: dict[str, int], page_no: int, row_no: int)
     if debit != Decimal("0.00") and credit != Decimal("0.00"):
         issues.append("借贷金额同时存在")
 
-    income = credit
-    expense = debit
+    if debit is not None and debit < 0:
+        income = abs(debit)
+        expense = Decimal("0.00")
+    elif credit is not None and credit < 0:
+        income = Decimal("0.00")
+        expense = abs(credit)
+    else:
+        income = credit or Decimal("0.00")
+        expense = debit or Decimal("0.00")
     raw_amount = _cell(row, index, "贷方发生额") if credit != Decimal("0.00") else _cell(row, index, "借方发生额")
 
     return Transaction(
@@ -257,8 +277,17 @@ def _parse_format_d(row: list, index: dict[str, int], page_no: int, row_no: int)
     if tx_time is None:
         return None
 
-    income = money_to_decimal(_cell(row, index, "转入金额")) or Decimal("0.00")
-    expense = money_to_decimal(_cell(row, index, "转出金额")) or Decimal("0.00")
+    income_raw = money_to_decimal(_cell(row, index, "转入金额"))
+    expense_raw = money_to_decimal(_cell(row, index, "转出金额"))
+    if income_raw is not None and income_raw < 0:
+        income = Decimal("0.00")
+        expense = abs(income_raw)
+    elif expense_raw is not None and expense_raw < 0:
+        income = abs(expense_raw)
+        expense = Decimal("0.00")
+    else:
+        income = income_raw or Decimal("0.00")
+        expense = expense_raw or Decimal("0.00")
     balance = money_to_decimal(_cell(row, index, "余额"))
     issues: list[str] = []
 
@@ -332,6 +361,15 @@ def _restore_same_time_order(transactions: list[Transaction]) -> list[Transactio
 def extract_icbc_corp(pdf_path: str) -> TransactionList:
     transactions: list[Transaction] = []
     metadata = StatementMetadata()
+    diagnostics = {
+        "source_row_count": 0,
+        "parsed_transaction_count": 0,
+        "skipped_row_count": 0,
+        "unparsed_row_count": 0,
+        "ignored_non_transaction_row_count": 0,
+        "review_row_count": 0,
+        "unsupported_row_count": 0,
+    }
 
     with pdfplumber.open(pdf_path) as pdf:
         if pdf.pages:
@@ -343,6 +381,7 @@ def extract_icbc_corp(pdf_path: str) -> TransactionList:
 
                 for row_index, row in enumerate(table, start=1):
                     if not row:
+                        diagnostics["ignored_non_transaction_row_count"] += 1
                         continue
                     if _looks_like_header(row):
                         index = _header_index(row)
@@ -354,12 +393,23 @@ def extract_icbc_corp(pdf_path: str) -> TransactionList:
                             parser = _parse_format_d
                         else:
                             parser = _parse_format_a
+                        diagnostics["ignored_non_transaction_row_count"] += 1
                         continue
                     if index is None or parser is None:
+                        diagnostics["ignored_non_transaction_row_count"] += 1
                         continue
 
+                    diagnostics["source_row_count"] += 1
                     tx = parser(row, index, page_index, row_index)
                     if tx is not None:
                         transactions.append(tx)
+                        diagnostics["parsed_transaction_count"] += 1
+                        if tx.status == "review":
+                            diagnostics["review_row_count"] += 1
+                    else:
+                        diagnostics["skipped_row_count"] += 1
+                        diagnostics["unparsed_row_count"] += 1
 
-    return TransactionList(_restore_same_time_order(transactions), metadata=metadata)
+    transactions = _restore_same_time_order(transactions)
+    diagnostics["parsed_transaction_count"] = len(transactions)
+    return TransactionList(transactions, metadata=metadata, diagnostics=diagnostics)

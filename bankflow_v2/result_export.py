@@ -34,6 +34,19 @@ from .summary import Summary, sort_transactions, summarize
 SCHEMA_VERSION = "1.17"
 SCHEMA_VERSION_LEGACY = "1.16"
 
+SOURCE_DIAGNOSTIC_FIELDS = (
+    "source_row_count",
+    "parsed_transaction_count",
+    "skipped_row_count",
+    "unparsed_row_count",
+    "ignored_non_transaction_row_count",
+    "review_row_count",
+    "unsupported_row_count",
+    "metadata_owner_available",
+    "metadata_account_available",
+    "metadata_period_available",
+)
+
 
 def _decimal(value: Decimal | None) -> str | None:
     return None if value is None else f"{value:.2f}"
@@ -140,6 +153,9 @@ def _source_files(
         if diagnostic.get("status") == "review":
             record["status"] = "review"
             record["review_reason"] = str(diagnostic.get("review_reason") or "需复核")
+        for field_name in SOURCE_DIAGNOSTIC_FIELDS:
+            if field_name in diagnostic:
+                record[field_name] = diagnostic[field_name]
     return records
 
 
@@ -1908,6 +1924,16 @@ def build_bankflow_result(
             "account_number": statement_metadata.account_number,
             "statement_period_start": _date(statement_metadata.statement_period_start),
             "statement_period_end": _date(statement_metadata.statement_period_end),
+            "account_name_available": bool(
+                (statement_metadata.account_name or "").strip()
+            ),
+            "account_number_available": bool(
+                (statement_metadata.account_number or "").strip()
+            ),
+            "statement_period_available": (
+                statement_metadata.statement_period_start is not None
+                and statement_metadata.statement_period_end is not None
+            ),
             "generated_at": _date(statement_metadata.generated_at),
             "source_part_label": statement_metadata.source_part_label,
             "page_total": statement_metadata.page_total,

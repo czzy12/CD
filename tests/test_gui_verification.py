@@ -1714,7 +1714,16 @@ class GuiVerificationTests(unittest.TestCase):
         self.assertIsNone(mocked.call_args.kwargs["ai_evaluator"])
         self.assertEqual(
             mocked.call_args.kwargs["source_diagnostics"],
-            [{"source_file": "missing.xlsx", "status": "included", "review_reason": ""}],
+            [
+                {
+                    "source_file": "missing.xlsx",
+                    "status": "included",
+                    "review_reason": "",
+                    "metadata_owner_available": False,
+                    "metadata_account_available": False,
+                    "metadata_period_available": False,
+                }
+            ],
         )
 
     def test_open_existing_case_prefers_schema_result_without_worker(self):

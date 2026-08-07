@@ -32,6 +32,8 @@ HEAD 以 git log --oneline -1 为准；chg-20260807-14 起为经营语义知识�
 
 AI 经营关联验收链：2026-07-28 曾在检查点 `68e0ac8` 完成 v11 验收；当前代码在其后有 `6e149d6/7b08441` 经营上下文准入改动，旧缓存离线重放 286 项全部未命中，不能沿用。2026-08-07 已用当前代码完成整条验收链（`chg-20260807-05`）：development 50 离线重放、reserved 50 真实调用 + 离线重放、286 语义 / 1115 笔完整验收 + 离线重放 + 输入审计全部通过；产物在 `outputs/mvp-acceptance-2026-08-07/`（仓库外）。真实调用在验收进程内显式授权，产品 AI 默认关闭语义未改变。
 
+Foundation 状态（2026-08-07，`chg-20260807-17`）：Foundation Remediation 已完成，结论 GREEN（G1-G8 全部满足）。华夏 6 列回归恢复（57 笔）、对公 19 文件 4,316 笔 raw evidence 补齐、negative income/expense 与 double nonzero 全库 0、skipped/unparsed 具备 source diagnostics 可观测性、metadata 缺失显式 unavailable、无新 Critical/High regression、transaction_id 稳定性验证通过（4,316 笔 ID 因 raw evidence 修复变化但无已发布引用，其余 77,316 笔不变）、核心 downstream 测试全部通过。全量回归：81,746 笔（CD_assets 61,740 + MVP-input 20,006）、172 同 sha256 旧基线对比 0 regression。剩余 MEDIUM/LOW 发现（abc/generic raw_fields partial、兴业水印、45 笔 0 金额、ccb_corp 0530 unexplained 等）不阻塞 GREEN，单独记录。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -43,6 +45,11 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-07：Foundation Remediation 完成（`chg-20260807-17`）：华夏 6/9 列版式自适应（6 列 57 笔恢复）、
+  对公 19 文件 4,316 笔 raw evidence 补齐、icbc_corp 负值方向契约修复（全库 negative=0）、
+  source diagnostics（skipped/unparsed 可观测）、metadata 显式 unavailable；
+  Python 全量 447 项、统一回归 71/0/20/1、81,746 笔全量 invariant 与 172 同文件 differential 通过，
+  Foundation 结论 GREEN；已本地 commit，未 push。
 - 2026-08-07：schema 1.17 已实施（`chg-20260807-16`）：独立 `business_semantics_resolutions`
   观察 + diagnostics legacy comparison + `migrate_schema_116_to_117`（不伪造历史）；
   1.16/1.17 双向兼容；Python 全量 437 项通过；已本地 commit（契约/迁移与 shadow 写入各一），未 push。

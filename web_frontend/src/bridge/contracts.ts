@@ -71,6 +71,7 @@ export interface DesktopBridge {
   reanalyzeRecentCase(recordId: string): Promise<ApiEnvelope<CaseSelectionDTO>>;
   getManualCaseContext(caseHandle: string): Promise<ApiEnvelope<ManualContextDTO>>;
   saveManualCaseContext(caseHandle: string, fields: ManualContextInput): Promise<ApiEnvelope<ManualContextSaveDTO>>;
+  clearManualCaseContext(caseHandle: string): Promise<ApiEnvelope<ManualContextSaveDTO>>;
   getCurrentManualCaseContext(): Promise<ApiEnvelope<ManualContextDTO>>;
   saveCurrentManualCaseContext(fields: ManualContextInput): Promise<ApiEnvelope<ManualContextSaveDTO>>;
   clearCurrentManualCaseContext(): Promise<ApiEnvelope<ManualContextSaveDTO>>;

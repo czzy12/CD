@@ -20,6 +20,15 @@ MANUAL_CASE_CONTEXT_FILENAME = "manual_case_context.json"
 STANDARD_RESULT_FILENAME = "bankflow_verification_result.json"
 
 
+def _safe_case_name(name: str) -> str:
+    safe_name = re.sub(
+        r"[^0-9A-Za-z\u4e00-\u9fff_-]+",
+        "_",
+        str(name),
+    ).strip("_")
+    return safe_name or "case"
+
+
 def web_output_root() -> Path:
     """Repository-adjacent ignored output directory (``outputs/``)."""
     return Path(__file__).resolve().parents[2] / "outputs" / "web-gui-12b2"
@@ -32,8 +41,7 @@ def recent_cases_path() -> Path:
 def workspace_key(case_dir: str | Path) -> str:
     normalized = os.path.normcase(str(Path(case_dir).resolve(strict=False)))
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
-    safe_name = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff_-]+", "_", Path(case_dir).name).strip("_")
-    safe_name = safe_name or "case"
+    safe_name = _safe_case_name(Path(case_dir).name)
     return f"{safe_name}-{digest}"
 
 
@@ -45,12 +53,33 @@ def manual_context_path(case_dir: str | Path) -> Path:
     return case_workspace_dir(case_dir) / MANUAL_CASE_CONTEXT_FILENAME
 
 
+def _legacy_manual_context_path(case_dir: str | Path) -> Path | None:
+    """Fallback for workspaces created under an older path normalization."""
+    safe_name = _safe_case_name(Path(case_dir).name)
+    root = web_output_root() / "workspaces"
+    if not root.is_dir():
+        return None
+    candidates: list[Path] = []
+    for child in root.iterdir():
+        if child.is_dir() and child.name.startswith(f"{safe_name}-"):
+            candidate = child / MANUAL_CASE_CONTEXT_FILENAME
+            if candidate.is_file():
+                candidates.append(candidate)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item.stat().st_mtime)
+
+
 def standard_result_path(case_dir: str | Path) -> Path:
     return case_workspace_dir(case_dir) / STANDARD_RESULT_FILENAME
 
 
 def load_manual_case_context(case_dir: str | Path) -> dict[str, object]:
     path = manual_context_path(case_dir)
+    if not path.exists():
+        fallback = _legacy_manual_context_path(case_dir)
+        if fallback is not None:
+            path = fallback
     if not path.exists():
         return {}
     try:

@@ -178,6 +178,7 @@ test("adapter maps recent-case and context methods to the Python whitelist", asy
   await bridge.reanalyzeRecentCase("record-a");
   await bridge.getManualCaseContext("case-a");
   await bridge.saveManualCaseContext("case-a", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" });
+  await bridge.clearManualCaseContext("case-a");
   await bridge.getCurrentManualCaseContext();
   await bridge.saveCurrentManualCaseContext({ company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" });
   await bridge.clearCurrentManualCaseContext();
@@ -191,6 +192,7 @@ test("adapter maps recent-case and context methods to the Python whitelist", asy
     ["reanalyze_recent_case", "record-a"],
     ["get_manual_case_context", "case-a"],
     ["save_manual_case_context", "case-a", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" }],
+    ["clear_manual_case_context", "case-a"],
     ["get_current_manual_case_context"],
     ["save_current_manual_case_context", { company_name: "单位", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" }],
     ["clear_current_manual_case_context"],

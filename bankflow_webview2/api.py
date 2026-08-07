@@ -366,31 +366,41 @@ class WebView2Api:
                     "CURRENT_CASE_CONTEXT_UNAVAILABLE",
                     "当前案件没有关联目录，无法清空经营上下文。",
                 )
-            try:
-                base = build_case_context_from_directory(self._current_case_dir)
-            except OSError as exc:
-                raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
-            record = save_workspace_manual_context(
-                self._current_case_dir,
-                base,
-                {
-                    "confirmed_primary_business": "",
-                    "confirmed_products_or_services": "",
-                    "confirmation_note": "",
-                    "confirmation_status": "unconfirmed",
-                    "confirmed_by": "",
-                    "enable_ai_business_analysis": False,
-                },
-            )
-            return ManualContextSaveDTO(
-                saved=True,
-                case_name=self._current_case_dir.name or "未命名案件",
-                confirmation_status=str(
-                    record.get("confirmation_status") or "unconfirmed"
-                ),
-            )
+            return self._clear_manual_context(self._current_case_dir)
 
         return self._bridge.invoke(clear)
+
+    def clear_manual_case_context(self, case_handle: str) -> dict[str, object]:
+        def clear() -> object:
+            selection = self._case_directories.get(case_handle)
+            return self._clear_manual_context(selection.path)
+
+        return self._bridge.invoke(clear)
+
+    def _clear_manual_context(self, case_dir: Path) -> ManualContextSaveDTO:
+        try:
+            base = build_case_context_from_directory(case_dir)
+        except OSError as exc:
+            raise ApplicationError("CASE_DIRECTORY_READ_FAILED") from exc
+        record = save_workspace_manual_context(
+            case_dir,
+            base,
+            {
+                "confirmed_primary_business": "",
+                "confirmed_products_or_services": "",
+                "confirmation_note": "",
+                "confirmation_status": "unconfirmed",
+                "confirmed_by": "",
+                "enable_ai_business_analysis": False,
+            },
+        )
+        return ManualContextSaveDTO(
+            saved=True,
+            case_name=case_dir.name or "未命名案件",
+            confirmation_status=str(
+                record.get("confirmation_status") or "unconfirmed"
+            ),
+        )
 
     def get_ai_runtime_status(self) -> dict[str, object]:
         def query() -> object:

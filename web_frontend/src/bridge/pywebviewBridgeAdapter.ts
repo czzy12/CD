@@ -41,6 +41,7 @@ export class PyWebviewBridgeAdapter implements DesktopBridge {
   reanalyzeRecentCase = (recordId: string) => this.call<CaseSelectionDTO>("reanalyze_recent_case", recordId);
   getManualCaseContext = (caseHandle: string) => this.call<ManualContextDTO>("get_manual_case_context", caseHandle);
   saveManualCaseContext = (caseHandle: string, fields: ManualContextInput) => this.call<ManualContextSaveDTO>("save_manual_case_context", caseHandle, fields);
+  clearManualCaseContext = (caseHandle: string) => this.call<ManualContextSaveDTO>("clear_manual_case_context", caseHandle);
   getCurrentManualCaseContext = () => this.call<ManualContextDTO>("get_current_manual_case_context");
   saveCurrentManualCaseContext = (fields: ManualContextInput) => this.call<ManualContextSaveDTO>("save_current_manual_case_context", fields);
   clearCurrentManualCaseContext = () => this.call<ManualContextSaveDTO>("clear_current_manual_case_context");

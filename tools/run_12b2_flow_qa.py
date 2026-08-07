@@ -203,6 +203,26 @@ def run_flow_qa(case_dir: Path, old_case: Path, output: Path, hold_open: bool, w
                 "roundtrip_ok": True,
                 "file_exists": manual_context_path(case_dir).exists(),
             }
+            click('.sidebar-bottom .sidebar-row')
+            wait_for("!!document.querySelector('.settings-page')", 30)
+            wait_for("!!Array.from(document.querySelectorAll('.settings-page .property-button')).find((b) => b.textContent.includes('保存经营上下文'))", 30)
+            preflight_settings = json.loads(js("""
+                JSON.stringify((() => {
+                  const inputs = document.querySelectorAll('.settings-page .context-grid input');
+                  return {
+                    companyInput: inputs[0]?.value || '',
+                    primaryBusinessInput: inputs[1]?.value || '',
+                  };
+                })())
+            """))
+            if (
+                preflight_settings.get("companyInput") != "QA 测试单位"
+                or preflight_settings.get("primaryBusinessInput") != "建材销售"
+            ):
+                raise AssertionError("preflight settings did not show saved context: " + json.dumps(preflight_settings, ensure_ascii=False))
+            click('.settings-page .workflow-actions .secondary-button')
+            wait_for("!document.querySelector('.settings-page')", 30)
+            manual_context_result["settings_from_preflight"] = True
             click('.workflow-actions .primary-button')
             wait_for("!!document.querySelector('.analysis-page')", 30)
             cancel_task_id = wait_task()

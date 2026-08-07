@@ -69,6 +69,7 @@ export function App() {
   });
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsAiStatus, setSettingsAiStatus] = useState<AiRuntimeStatusDTO | null>(null);
+  const [settingsHandle, setSettingsHandle] = useState<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const analysisTaskRef = useRef<string | null>(null);
   const requestRef = useRef(0);
@@ -271,15 +272,17 @@ export function App() {
 
   const openSettings = async () => {
     if (!bridge) return;
+    const handle = preflight?.case_handle || null;
+    setSettingsHandle(handle);
     setError(""); setSettingsNotice(""); setHistoryOpen(false); setSettingsOpen(true);
     setSettingsContext(null);
     setSettingsDraft({ company_name: "", confirmed_primary_business: "", confirmed_products_or_services: "", confirmation_note: "" });
     setSettingsLoading(true);
-    const response = await bridge.getCurrentManualCaseContext();
+    const response = handle ? await bridge.getManualCaseContext(handle) : await bridge.getCurrentManualCaseContext();
     setSettingsLoading(false);
     if (!response.ok || !response.data) {
       if (response.error?.code !== "CURRENT_CASE_CONTEXT_UNAVAILABLE") setError(response.error?.message || "读取经营上下文失败");
-      else setSettingsNotice("当前案件没有关联目录，无法读取经营上下文。");
+      else setSettingsNotice("当前没有可关联的案件目录，无法读取经营上下文。");
       return;
     }
     setSettingsContext(response.data);
@@ -296,7 +299,7 @@ export function App() {
   const saveSettingsContext = async () => {
     if (!bridge) return;
     setSettingsLoading(true); setError(""); setSettingsNotice("");
-    const response = await bridge.saveCurrentManualCaseContext(settingsDraft);
+    const response = settingsHandle ? await bridge.saveManualCaseContext(settingsHandle, settingsDraft) : await bridge.saveCurrentManualCaseContext(settingsDraft);
     setSettingsLoading(false);
     if (!response.ok || !response.data) { setError(response.error?.message || "保存经营上下文失败"); return; }
     setSettingsNotice("经营上下文已保存，重新构建上下文观察后会应用到当前案件");
@@ -307,7 +310,7 @@ export function App() {
   const clearSettingsContext = async () => {
     if (!bridge) return;
     setSettingsLoading(true); setError(""); setSettingsNotice("");
-    const response = await bridge.clearCurrentManualCaseContext();
+    const response = settingsHandle ? await bridge.clearManualCaseContext(settingsHandle) : await bridge.clearCurrentManualCaseContext();
     if (!response.ok) {
       setSettingsLoading(false);
       setError(response.error?.message || "清空经营上下文失败");

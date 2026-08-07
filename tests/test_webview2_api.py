@@ -66,6 +66,7 @@ class WebView2ApiTests(unittest.TestCase):
             "list_recent_cases", "open_recent_case", "remove_recent_case",
             "reanalyze_recent_case",
             "get_manual_case_context", "save_manual_case_context",
+            "clear_manual_case_context",
             "get_current_manual_case_context", "save_current_manual_case_context",
             "clear_current_manual_case_context",
             "get_ai_runtime_status",
@@ -252,6 +253,44 @@ class WebView2ApiTests(unittest.TestCase):
             self.assertEqual(response["data"]["model"], "deepseek-v4-flash")
             encoded = json.dumps(response, ensure_ascii=False)
             self.assertNotIn(str(cache), encoded)
+
+    def test_clear_manual_case_context_by_handle(self):
+        from bankflow_web.case_workspace import case_workspace_dir
+
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory)
+            workspace = case_workspace_dir(case_dir)
+            try:
+                selection = self.api._case_directories.register(case_dir)
+                saved = self.api.save_manual_case_context(
+                    selection.case_handle,
+                    {
+                        "company_name": "测试单位",
+                        "confirmed_primary_business": "建材批发",
+                        "confirmed_products_or_services": "护栏",
+                        "confirmation_note": "人工补充",
+                    },
+                )
+                self.assertTrue(saved["ok"])
+                cleared = self.api.clear_manual_case_context(
+                    selection.case_handle
+                )
+                self.assertTrue(cleared["ok"])
+                reloaded = self.api.get_manual_case_context(
+                    selection.case_handle
+                )
+                self.assertTrue(reloaded["ok"])
+                self.assertEqual(
+                    reloaded["data"]["confirmed_primary_business"],
+                    "",
+                )
+                self.assertEqual(
+                    reloaded["data"]["confirmation_status"],
+                    "unconfirmed",
+                )
+            finally:
+                if workspace.exists():
+                    shutil.rmtree(workspace)
 
     def test_state_summary_page_and_evidence_reuse_existing_session(self):
         state = self.api.get_app_state()

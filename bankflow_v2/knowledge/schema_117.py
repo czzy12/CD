@@ -84,6 +84,43 @@ def _resolution_id(
     return f"res-{digest}"
 
 
+def _unresolved_resolution(
+    bucket: Mapping[str, Any],
+    runtime: Any,
+    *,
+    concept_id: str,
+    concept_name: str,
+    concept_source: str,
+    industry_id: str,
+    industry_name: str,
+) -> dict[str, Any]:
+    """Minimal persisted resolution for a parsed-but-undetermined bucket."""
+    return {
+        "resolution_id": _resolution_id(
+            str(bucket["signature_id"]),
+            industry_id,
+            concept_id,
+            "",
+            runtime.version.resolver_version,
+            runtime.version.knowledge_version,
+        ),
+        "transaction_ref": str(bucket["transaction_ref"]),
+        "semantic_signature_ref": str(bucket["signature_id"]),
+        "concept_id": concept_id,
+        "concept_name_snapshot": concept_name,
+        "concept_resolution_source": concept_source,
+        "industry_id": industry_id,
+        "industry_name_snapshot": industry_name,
+        "relation_id": "",
+        "relation_resolution_source": "unresolved",
+        "relevance": "undetermined",
+        "inherited": False,
+        "inherited_from_industry_id": "",
+        "review_status": "unresolved",
+        "candidate_ref": "",
+    }
+
+
 def _concept_source(semantic: Mapping[str, Any]) -> str:
     direct = str(semantic.get("concept_resolution_source", "") or "")
     if direct:
@@ -172,6 +209,7 @@ def empty_resolutions_observation(
             "production_resolver": PRODUCTION_RESOLVER_LEGACY,
             "migration_status": migration_status,
             "resolved_count": 0,
+            "unresolved_count": 0,
             "unknown_concept_count": 0,
             "unknown_relation_count": 0,
             "concept_ai_fallback_theoretical": 0,
@@ -259,6 +297,8 @@ def build_business_semantics_resolutions(
     resolutions: list[dict[str, Any]] = []
     unknown_concept = 0
     unknown_relation = 0
+    approved_count = 0
+    unresolved_count = 0
     for bucket in grouped.values():
         bucket_profile = None
         if per_entry_profiles and bucket["profile_name"]:
@@ -270,14 +310,24 @@ def build_business_semantics_resolutions(
             bucket_profile,
         )
         semantic = resolved["semantic"]
-        if semantic["source"] == "undetermined" or not semantic["concept_id"]:
+        concept_id = str(semantic.get("concept_id", "") or "")
+        concept_source = _concept_source(semantic)
+        if semantic["source"] == "undetermined" or not concept_id:
             unknown_concept += 1
+            unresolved_count += 1
+            resolutions.append(
+                _unresolved_resolution(
+                    bucket,
+                    runtime,
+                    concept_id="",
+                    concept_name="",
+                    concept_source="unresolved",
+                    industry_id="",
+                    industry_name="",
+                )
+            )
             continue
-        concept_id = str(semantic["concept_id"])
         final_relevance = str(resolved["final_relevance"])
-        if final_relevance == "undetermined":
-            unknown_relation += 1
-            continue
         best = next(
             (
                 relation
@@ -286,8 +336,34 @@ def build_business_semantics_resolutions(
             ),
             None,
         )
-        if best is None:
+        if final_relevance == "undetermined" or best is None:
             unknown_relation += 1
+            unresolved_count += 1
+            relations = resolved["relations"]
+            industry_ids = {
+                str(item.get("industry_id", ""))
+                for item in relations
+                if str(item.get("industry_id", ""))
+            }
+            industry_id = (
+                next(iter(industry_ids)) if len(industry_ids) == 1 else ""
+            )
+            industry_node = (
+                runtime.taxonomy.node(industry_id) if industry_id else None
+            )
+            resolutions.append(
+                _unresolved_resolution(
+                    bucket,
+                    runtime,
+                    concept_id=concept_id,
+                    concept_name=str(semantic.get("concept_name", "")),
+                    concept_source=concept_source,
+                    industry_id=industry_id,
+                    industry_name=(
+                        industry_node.name if industry_node is not None else ""
+                    ),
+                )
+            )
             continue
         industry_id = str(best.get("industry_id", ""))
         relation_source = str(best.get("relation_source", "undetermined"))
@@ -334,6 +410,7 @@ def build_business_semantics_resolutions(
                 "candidate_ref": "",
             }
         )
+        approved_count += 1
 
     observation = {
         "observation_type": SCHEMA_117_OBSERVATION_TYPE,
@@ -362,7 +439,8 @@ def build_business_semantics_resolutions(
             "shadow": True,
             "production_resolver": PRODUCTION_RESOLVER_LEGACY,
             "migration_status": "parsed",
-            "resolved_count": len(resolutions),
+            "resolved_count": approved_count,
+            "unresolved_count": unresolved_count,
             "unknown_concept_count": unknown_concept,
             "unknown_relation_count": unknown_relation,
             "concept_ai_fallback_theoretical": unknown_concept,

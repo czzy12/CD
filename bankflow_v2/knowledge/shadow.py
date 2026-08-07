@@ -19,6 +19,54 @@ _STRENGTH_RANK = {
     "strong": 3,
 }
 
+MISMATCH_TYPES = (
+    "knowledge_undetermined",
+    "strength_escalation",
+    "strength_downgrade",
+    "legacy_undetermined_resolved",
+    "same_strength_different_state",
+    "other",
+)
+
+
+def classify_mismatch(
+    legacy_relevance: str,
+    knowledge_relevance: str,
+) -> str:
+    """Close mismatch taxonomy: every legacy vs knowledge pair gets one bucket."""
+    if knowledge_relevance == "undetermined":
+        return "knowledge_undetermined"
+    if (
+        legacy_relevance in _STRENGTH_RANK
+        and knowledge_relevance in _STRENGTH_RANK
+    ):
+        if _STRENGTH_RANK[knowledge_relevance] > _STRENGTH_RANK[legacy_relevance]:
+            return "strength_escalation"
+        if _STRENGTH_RANK[knowledge_relevance] < _STRENGTH_RANK[legacy_relevance]:
+            return "strength_downgrade"
+        return "same_strength_different_state"
+    if legacy_relevance == "undetermined":
+        return "legacy_undetermined_resolved"
+    return "other"
+
+
+def mismatch_reason(
+    mismatch_type: str,
+    legacy_relevance: str,
+    knowledge_relevance: str,
+) -> str:
+    if mismatch_type == "knowledge_undetermined":
+        return "knowledge_v1 本地无法解析（concept/relation unresolved），保持 undetermined"
+    if mismatch_type == "strength_escalation":
+        return f"knowledge_v1 强度高于 legacy（{legacy_relevance} → {knowledge_relevance}）"
+    if mismatch_type == "strength_downgrade":
+        return f"knowledge_v1 强度低于 legacy（{legacy_relevance} → {knowledge_relevance}）"
+    if mismatch_type == "legacy_undetermined_resolved":
+        return f"legacy 为 undetermined，knowledge_v1 本地解析为 {knowledge_relevance}"
+    if mismatch_type == "same_strength_different_state":
+        return "legacy 与 knowledge 五值相同但状态不同（按五值比较理论上不会出现）"
+    return f"未归类差异（legacy={legacy_relevance}，knowledge={knowledge_relevance}）"
+
 
 def load_legacy_signature_entries(
     legacy_cache_dir: str | Path,
@@ -141,6 +189,11 @@ def compare_legacy_cache(
             "profile_name": profile_key,
             "concept_id": resolved["semantic"]["concept_id"],
             "concept_source": resolved["semantic"]["source"],
+            "industry_id": (
+                resolved["relations"][0]["industry_id"]
+                if resolved["relations"]
+                else ""
+            ),
             "relation_source": (
                 resolved["relations"][0]["relation_source"]
                 if resolved["relations"]
@@ -161,7 +214,14 @@ def compare_legacy_cache(
             continue
         if legacy == knowledge:
             continue
+        mismatch_type = classify_mismatch(legacy, knowledge)
         disagreements.append(row)
+        row["mismatch_type"] = mismatch_type
+        row["mismatch_reason"] = mismatch_reason(
+            mismatch_type,
+            legacy,
+            knowledge,
+        )
         if (
             legacy in _STRENGTH_RANK
             and knowledge in _STRENGTH_RANK
@@ -208,6 +268,11 @@ def compare_legacy_cache(
         if row["legacy_semantic_judgement"] in _STRENGTH_RANK
         and row["knowledge_relevance"] == "undetermined"
     )
+    mismatch_types = Counter(
+        row["mismatch_type"]
+        for row in disagreements
+        if "mismatch_type" in row
+    )
     return {
         "legacy_cache_dir": str(legacy_cache_dir),
         "legacy_prompt_version": "business-relevance-mvp-v11",
@@ -226,6 +291,14 @@ def compare_legacy_cache(
         "disagreement_count": len(disagreements),
         "new_undetermined_count": undetermined_new,
         "strength_escalation_count": len(violations),
+        "strength_downgrade_count": mismatch_types.get(
+            "strength_downgrade",
+            0,
+        ),
+        "mismatch_classification": {
+            name: int(mismatch_types.get(name, 0))
+            for name in MISMATCH_TYPES
+        },
         "life_positive_count": len(life_positive),
         "legacy_judgement_counts": dict(sorted(legacy_counts.items())),
         "knowledge_relevance_counts": dict(sorted(knowledge_counts.items())),
@@ -255,8 +328,16 @@ def render_shadow_markdown(report: Mapping[str, Any]) -> str:
         f"- 含 legacy 判定条目：{report.get('with_legacy_judgement')}",
         f"- 一致：{report.get('agreement_count')}（{report.get('agreement_rate')}）",
         f"- 不一致：{report.get('disagreement_count')}",
+        f"- mismatch 分类："
+        + "、".join(
+            f"{name}={count}"
+            for name, count in sorted(
+                report.get("mismatch_classification", {}).items()
+            )
+        ),
         f"- 新增 undetermined：{report.get('new_undetermined_count')}",
         f"- 相对 legacy 强度上调：{report.get('strength_escalation_count')}",
+        f"- 相对 legacy 强度下调：{report.get('strength_downgrade_count')}",
         f"- 生活类正向样本：{report.get('life_positive_count')}",
         "",
         "## legacy 判定分布",
@@ -292,8 +373,10 @@ def render_shadow_markdown(report: Mapping[str, Any]) -> str:
     lines.extend(["", "## 不一致明细（仅签名哈希与判定，不含原文）", ""])
     disagreements = report.get("disagreements", [])
     if isinstance(disagreements, list) and disagreements:
-        lines.append("| 签名哈希 | legacy | knowledge | 概念 | 概念来源 | 关系来源 | 硬上限 |")
-        lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+        lines.append(
+            "| 签名哈希 | legacy | knowledge | 分类 | 概念 | 行业 | 关系来源 | 硬上限 |"
+        )
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
         for row in disagreements[:200]:
             lines.append(
                 "| " + " | ".join(
@@ -301,8 +384,9 @@ def render_shadow_markdown(report: Mapping[str, Any]) -> str:
                         str(row.get("signature_hash", "")),
                         str(row.get("legacy_semantic_judgement", "")),
                         str(row.get("knowledge_relevance", "")),
+                        str(row.get("mismatch_type", "")),
                         str(row.get("concept_id", "")),
-                        str(row.get("concept_source", "")),
+                        str(row.get("industry_id", "")),
                         str(row.get("relation_source", "")),
                         str(row.get("constraint_maximum", "")),
                     ]

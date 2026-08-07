@@ -26,9 +26,12 @@ from .resolver import (
 from .review import KnowledgeReviewService
 from .semantic_concepts import SemanticConceptKB
 from .shadow import (
+    MISMATCH_TYPES,
+    classify_mismatch,
     compare_legacy_cache,
     extended_shadow_metrics,
     load_legacy_signature_entries,
+    mismatch_reason,
     render_shadow_markdown,
 )
 from .validator import validate_knowledge_base
@@ -46,6 +49,7 @@ __all__ = [
     "KnowledgeReviewService",
     "KnowledgeRuntime",
     "KnowledgeVersion",
+    "MISMATCH_TYPES",
     "RelationKB",
     "RelationResolution",
     "RuntimeKnowledgeRepository",
@@ -56,9 +60,11 @@ __all__ = [
     "SemanticResolver",
     "SemanticSignature",
     "cap_strength",
+    "classify_mismatch",
     "compare_legacy_cache",
     "extended_shadow_metrics",
     "load_legacy_signature_entries",
+    "mismatch_reason",
     "render_shadow_markdown",
     "validate_knowledge_base",
     "versioning",

@@ -118,6 +118,14 @@
 - relevance 或影响最终判断的 canonical 语义变化必然改变 relation_id；`created_by / reviewed_at / reason_template / JSON 格式 / key 顺序` 等非语义 metadata 不参与哈希；
 - 保存 relation_id 与 knowledge_version 即可重建判断；不保存整份 Relation JSON。
 
+### relation_id 身份语义（C2.1 冻结）
+
+- `relation_id` = **Canonical Relation Snapshot Identity**：某一知识版本下、一份不可变的行业×概念关系快照标识；
+- 它不是“永久不变的关系概念主键”；长期逻辑关联由 `industry_id + concept_id`（+ knowledge version）表达；
+- 语义变化必然产生新 ID：`medium → weak`、`approved → deprecated`（review_status 参与哈希）都会改变 relation_id；
+- 非语义 metadata（created_by / reviewed_at / JSON 格式 / key 顺序）不参与哈希，不改变 relation_id；
+- 用途限定：历史审计、snapshot identity、重建当时判断；逻辑判断不得把 relation_id 当作永久主键使用。
+
 ### resolution_id 确定性
 
 - `resolution_id = "res-" + sha256(signature_ref + industry_id + concept_id + relation_id + resolver_version + knowledge_version)[:16]`；
@@ -136,7 +144,29 @@ rejected              -> 不进入正式 resolution
 
 Gate B.1 修订：`review_status` 正式枚举为 `approved / unresolved / candidate`。
 `unresolved` 允许承载本地未解析（relevance=undetermined、concept/relation unresolved），
-当前实现以 diagnostics 计数承载；`candidate` 仅表示存在 `candidate_ref`，不得被误读为 approved relevance。
+当前实现以持久化最小 resolution + diagnostics 计数共同承载（C2.1 落位）；`candidate` 仅表示存在 `candidate_ref`，不得被误读为 approved relevance。
+
+C2.1 补充：本地无法解析的签名桶写入最小 resolution（不伪造 concept_id / relation_id，不自动写 `none`，
+不把 unresolved 当 approved，不保存不必要客户数据）：
+
+```text
+resolution_id                      deterministic（同输入 + 同版本稳定）
+transaction_ref / semantic_signature_ref
+concept_id = ""                    （Concept unresolved；已解析则保留真实值）
+concept_resolution_source = unresolved / 真实来源
+industry_id                        （Concept unresolved 时为空；Relation unresolved 且尝试行业唯一时记录，否则为空）
+relation_id = ""
+relation_resolution_source = unresolved
+relevance = undetermined
+inherited = false
+inherited_from_industry_id = ""
+review_status = unresolved
+candidate_ref = ""
+knowledge_version / resolver_version
+```
+
+必须支持两种组合：`Concept unresolved`（concept 层全部空）与
+`Concept resolved + Relation unresolved`（保留真实 Concept，仅 Relation 层 unresolved）。
 
 ## 五、父行业继承审计
 
@@ -154,7 +184,9 @@ Gate B.1 修订：`review_status` 正式枚举为 `approved / unresolved / candi
 
 - 正式位置：`business_semantics_resolutions.value.migration_status`；
 - 枚举：`parsed` / `not_parsed`（暂不引入 partial）；
-- `resolutions=[] + migration_status=not_parsed` 表示历史案件未运行 knowledge resolver，不解释为“已运行但没有经营语义”。
+- `resolutions=[] + migration_status=not_parsed` 表示历史案件从未运行 knowledge resolver，不解释为“已运行但没有经营语义”；
+- `migration_status=parsed + resolution.review_status=unresolved` 表示已运行，但当前知识无法确定（本地未覆盖/关系未覆盖）；
+- 两者在跨会话读取时可明确区分，并有对应 contract tests。
 
 ## 七、1.16 → 1.17 Migration
 

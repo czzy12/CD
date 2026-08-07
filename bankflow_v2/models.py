@@ -284,9 +284,11 @@ class TransactionList(list[Transaction]):
         self,
         transactions: list[Transaction] | tuple[Transaction, ...] | None = None,
         metadata: StatementMetadata | None = None,
+        diagnostics: dict[str, object] | None = None,
     ) -> None:
         super().__init__(transactions or [])
         self.metadata = metadata or StatementMetadata()
+        self.diagnostics = dict(diagnostics or {})
 
 
 def get_statement_metadata(transactions: object) -> StatementMetadata:

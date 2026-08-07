@@ -216,6 +216,11 @@ test("settings page exposes current-case business context", () => {
   assert.match(source, /AI 经营判断状态/);
   assert.match(source, /不可用/);
   assert.match(source, /离线重放/);
+  assert.ok(source.indexOf("settingsOpen ? <SettingsPage") < source.indexOf("preflight ? <CasePreflight"));
+  assert.match(source, /原始内容（每行一项）/);
+  assert.match(source, /renderEvidenceLines/);
+  assert.doesNotMatch(source, /展开完整允许内容/);
+  assert.doesNotMatch(source, /收起完整允许内容/);
 });
 
 test("history page and context controls are wired in the UI", () => {

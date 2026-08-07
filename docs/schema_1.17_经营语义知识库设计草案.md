@@ -1,7 +1,15 @@
-# schema 1.17 正式设计：business_semantics_resolutions（方案 B）
+# schema 1.17 Frozen Contract：business_semantics_resolutions（方案 B）
 
-状态：已实施（2026-08-07，Commit 2 契约/迁移/兼容 + Commit 3 shadow resolution 写入）。
-更新：2026-08-07
+状态：**Frozen Contract / 实施基线**（2026-08-07，Gate B.1 冻结；Gate C1 契约修订；Gate C2 shadow writer 修订）。
+更新：2026-08-07（Gate B.1 / C1 / C2 收口）
+
+## 0. Foundation Stable Contract 冻结记录
+
+- F-CONTRACT-1：Canonical 字段语义稳定（transaction_time / income / expense / balance / counterparty... / summary / remark / purpose / field_confidence）；schema 1.17 writer 只能消费这些字段，不得重新解释 parser raw 字段。
+- F-CONTRACT-2：raw evidence traceability 必须保留；business semantics resolution 通过 `transaction_ref` / `semantic_signature_ref` 引用稳定对象，禁止复制整份 raw evidence。
+- F-CONTRACT-3：metadata 缺失表达为 `unavailable`，不得被解释为“确认没有”，不得按文件名/客户名/对手/路径推断填充。
+- F-CONTRACT-4：source_diagnostics（source_row_count / parsed / skipped / unparsed / ignored / review / unsupported）继续兼容，不为 business semantics 重构。
+- F-CONTRACT-5：transaction_id 长期稳定承诺从 Foundation GREEN 基线开始；4,316 笔 remediation ID 变化不构成先例；此后 identity 变更属于 breaking change，需独立 migration。
 
 ## 一、设计原则
 
@@ -65,7 +73,7 @@
 }
 ```
 
-### 必填 / 可选
+### 必填 / 可选（Gate B.1 修订后）
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
@@ -80,11 +88,12 @@
 | relation_resolution_source | 必填 | 见枚举 |
 | relevance | 必填 | 五值契约 |
 | inherited / inherited_from_industry_id | 必填 | 继承标记独立保存 |
-| review_status | 必填 | approved / candidate / rejected / deprecated |
+| review_status | 必填 | approved / unresolved / candidate（rejected 属于 Candidate lifecycle，不进入 resolution 主契约） |
+| candidate_ref | 可选 | 指向 KnowledgeCandidate；pending candidate 不得以 approved 写入正式 resolution |
 
 ### 枚举（以现有实现为准）
 
-`concept_resolution_source`：
+`concept_resolution_source`（由 resolver 直接输出，writer 只序列化）：
 
 - `exact_alias`（整值别名精确命中，对应实现 knowledge_base + confidence=high）
 - `knowledge_base`（关键词/归一化别名命中）
@@ -92,7 +101,7 @@
 - `ai_candidate`（仅授权 fallback，review_status 必须为 candidate）
 - `unresolved`（本地未覆盖）
 
-`relation_resolution_source`：
+`relation_resolution_source`（由 resolver 直接输出，writer 只序列化）：
 
 - `exact_relation`（本行业 approved 精确关系）
 - `specialty_relation`（专项概念关系）
@@ -104,9 +113,15 @@
 
 ### relation_id 审计方式
 
-- `relation_id = sha256(industry_id + ":" + concept_id + ":" + relation_rules_version)[:16]`；
-- 保存 relation_id 与 knowledge_version 即可重建判断：按 industry×concept 查对应版本 canonical；
-- 不保存整份 Relation JSON（避免冗余大对象）。
+- `relation_id = "rel-" + sha256(canonical_payload)[:16]`；
+- canonical_payload = `industry_id + concept_id + 最终 relevance + confidence_tier + review_status + relation_kb_version`（sort_keys 后 JSON 序列化）；
+- relevance 或影响最终判断的 canonical 语义变化必然改变 relation_id；`created_by / reviewed_at / reason_template / JSON 格式 / key 顺序` 等非语义 metadata 不参与哈希；
+- 保存 relation_id 与 knowledge_version 即可重建判断；不保存整份 Relation JSON。
+
+### resolution_id 确定性
+
+- `resolution_id = "res-" + sha256(signature_ref + industry_id + concept_id + relation_id + resolver_version + knowledge_version)[:16]`；
+- 同输入 + 同版本 → 同 ID；数组顺序变化 → ID 不变；不使用姓名/案件 ID/卡号/路径/数组 index。
 
 ## 四、生命周期与 Candidate 边界
 
@@ -118,6 +133,10 @@ rejected              -> 不进入正式 resolution
 
 `review_status` 在 resolution 中只允许 approved；AI candidate 如需展示，通过
 `candidate_ref` 引用审核队列，不写入正式字段值。
+
+Gate B.1 修订：`review_status` 正式枚举为 `approved / unresolved / candidate`。
+`unresolved` 允许承载本地未解析（relevance=undetermined、concept/relation unresolved），
+当前实现以 diagnostics 计数承载；`candidate` 仅表示存在 `candidate_ref`，不得被误读为 approved relevance。
 
 ## 五、父行业继承审计
 
@@ -131,6 +150,12 @@ rejected              -> 不进入正式 resolution
 - legacy comparison（legacy_relevance / agreement）不进正式 schema，放入运行 diagnostics；
 - 迁移期观察指标单独存 `outputs/` 报告，不污染长期业务 schema。
 
+## 六之一、migration_status 正式落位
+
+- 正式位置：`business_semantics_resolutions.value.migration_status`；
+- 枚举：`parsed` / `not_parsed`（暂不引入 partial）；
+- `resolutions=[] + migration_status=not_parsed` 表示历史案件未运行 knowledge resolver，不解释为“已运行但没有经营语义”。
+
 ## 七、1.16 → 1.17 Migration
 
 1. `SCHEMA_VERSION` 1.16 → 1.17；既有字段与结构不删除、不改义。
@@ -142,6 +167,19 @@ rejected              -> 不进入正式 resolution
      顶层 `migration_status="not_parsed"`。
 4. migration 脚本只追加，不回写历史交易；1.16 → 1.17 幂等。
 
+## 七之一、Resolver Source 由 resolver 输出
+
+- `concept_resolution_source` / `relation_resolution_source` 由 resolver（SemanticResolver / IndustryRelationResolver / RelationKB）直接输出；
+- schema writer 只序列化，不根据 `source / confidence / reason` 二次猜测；
+- 当前代码真实可产生的枚举：concept = exact_alias / knowledge_base / semantic_cache / unresolved（ai_candidate 仅未来 AI 路径）；relation = exact_relation / specialty_relation / inherited_relation / generic_business_relation / relation_cache / unresolved（ai_candidate 仅未来 AI 路径）。
+
+## 七之二、Per-entry Industry Context
+
+- 不得用单案件统一行业画像覆盖所有 transaction；
+- `build_business_semantics_resolutions(..., per_entry_profiles={transaction_id: IndustryProfile})` 按交易行业画像拆分语义桶；
+- 无 per-entry 时使用 case_context 构建的真实模型画像（单案件单行业）；
+- 多行业 legacy 场景（建材/烟酒超市/家具家电）沿用 Gate A 修正的 per-entry 机制。
+
 ## 八、兼容策略（至少覆盖）
 
 1. schema 1.16 文件由新代码读取；
@@ -152,6 +190,13 @@ rejected              -> 不进入正式 resolution
 6. export/report 不因新字段改变旧结果；
 7. replay_only 行为保持；
 8. AI disabled 时可正常执行。
+
+### 方向明确的兼容性
+
+- New-reader 读取 1.16：支持（validate_standard_result 接受 1.16）。
+- New-reader 读取 1.17：支持。
+- Old-reader 读取 1.17：不支持（旧代码不认识 schema_version=1.17）；文档不宣称“双向兼容”。
+- GUI / DTO：对未知 observation_type 忽略、不崩；旧结果正常展示（tolerant DTO）。
 
 ## 九、示例 JSON（完整）
 

@@ -25,6 +25,7 @@ from bankflow_v2.knowledge import (
     versioning,
 )
 from bankflow_v2.knowledge.normalization import semantic_signature_from_fields
+from bankflow_v2.knowledge.review_set import build_review_set_manifest
 
 
 CONCEPT_TASK = "semantic-concept-v1"
@@ -133,6 +134,8 @@ def main() -> int:
         default=Path("bankflow_v2/knowledge/canonical"),
     )
     parser.add_argument("--unseen-manifest", type=Path)
+    parser.add_argument("--d1c-candidate-ids", type=Path)
+    parser.add_argument("--d1c-provider-runs-json", type=Path)
     parser.add_argument(
         "--provider-runs-json",
         type=Path,
@@ -177,6 +180,14 @@ def main() -> int:
         for candidate in real_ai
         if candidate["input_signature"].get("task") == RELATION_TASK
     ]
+    d1c_ids: set[str] = set()
+    if args.d1c_candidate_ids:
+        d1c_ids = {
+            str(item)
+            for item in json.loads(
+                args.d1c_candidate_ids.read_text(encoding="utf-8")
+            )
+        }
     catalog = _concept_catalog(args.canonical_dir)
     runtime = KnowledgeRuntime.load(args.canonical_dir)
     concept_by_signature: dict[str, dict[str, Any]] = {}
@@ -196,8 +207,25 @@ def main() -> int:
         for run in provider_runs
         if run.get("task") == RELATION_TASK
     ]
+    d1c_concept_batch_sizes: list[int] = []
+    d1c_relation_batch_sizes: list[int] = []
+    if args.d1c_provider_runs_json and args.d1c_provider_runs_json.is_file():
+        d1c_runs = json.loads(
+            args.d1c_provider_runs_json.read_text(encoding="utf-8")
+        )
+        d1c_concept_batch_sizes = [
+            int(run.get("item_count", 0))
+            for run in d1c_runs
+            if run.get("task") == CONCEPT_TASK
+        ]
+        d1c_relation_batch_sizes = [
+            int(run.get("item_count", 0))
+            for run in d1c_runs
+            if run.get("task") == RELATION_TASK
+        ]
 
     concept_queue: list[dict[str, Any]] = []
+    d1c_concept_index = 0
     for index, candidate in enumerate(concept_candidates):
         signature_hash = str(
             candidate["input_signature"].get("signature_hash", "")
@@ -211,9 +239,31 @@ def main() -> int:
         concept = catalog.get(concept_id)
         guard = guard_item(fields)
         proposed_value = candidate["proposed_value"]
+        provider_run = _provider_run(
+            CONCEPT_TASK,
+            index,
+            concept_batch_sizes,
+        )
+        if candidate["candidate_id"] in d1c_ids:
+            provider_run = _provider_run(
+                CONCEPT_TASK,
+                d1c_concept_index,
+                d1c_concept_batch_sizes,
+            )
+            d1c_concept_index += 1
         queue_item = {
             "candidate_id": candidate["candidate_id"],
             "task": CONCEPT_TASK,
+            "stage": (
+                "Gate D.1C"
+                if candidate["candidate_id"] in d1c_ids
+                else "Gate D"
+            ),
+            "privacy_history": (
+                "previously blocked false-positive, safely remediated"
+                if candidate["candidate_id"] in d1c_ids
+                else ""
+            ),
             "semantic_signature": signature_hash,
             "normalized_safe_semantic_text": dict(fields),
             "source": source,
@@ -233,11 +283,7 @@ def main() -> int:
             ),
             "prompt_version": candidate["prompt_version"],
             "model": candidate["model"],
-            "provider_run": _provider_run(
-                CONCEPT_TASK,
-                index,
-                concept_batch_sizes,
-            ),
+            "provider_run": provider_run,
             "review_status": candidate["review_status"],
             "duplicate_status": {
                 "same_concept_candidates": sum(
@@ -292,10 +338,31 @@ def main() -> int:
         industry_id = str(candidate["input_signature"].get("industry_id", ""))
         industry_node = runtime.taxonomy.node(industry_id)
         proposed = candidate["proposed_value"]
+        relation_provider_run = _provider_run(
+            RELATION_TASK,
+            index,
+            relation_batch_sizes,
+        )
+        if candidate["candidate_id"] in d1c_ids:
+            relation_provider_run = _provider_run(
+                RELATION_TASK,
+                index,
+                d1c_relation_batch_sizes,
+            )
         relation_queue.append(
             {
                 "candidate_id": candidate["candidate_id"],
                 "task": RELATION_TASK,
+                "stage": (
+                    "Gate D.1C"
+                    if candidate["candidate_id"] in d1c_ids
+                    else "Gate D"
+                ),
+                "privacy_history": (
+                    "previously blocked false-positive, safely remediated"
+                    if candidate["candidate_id"] in d1c_ids
+                    else ""
+                ),
                 "concept_candidate_ref": (
                     concept_ref["candidate_id"] if concept_ref else ""
                 ),
@@ -326,11 +393,7 @@ def main() -> int:
                 "provider_rationale": candidate["reason"],
                 "task_version": candidate["prompt_version"],
                 "model": candidate["model"],
-                "provider_run": _provider_run(
-                    RELATION_TASK,
-                    index,
-                    relation_batch_sizes,
-                ),
+                "provider_run": relation_provider_run,
                 "knowledge_version": str(
                     proposed.get("created_version", "")
                     or versioning.KNOWLEDGE_VERSION
@@ -341,7 +404,7 @@ def main() -> int:
 
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "scope": "Gate D real AI fallback candidates (59)",
+        "scope": "Gate D / D.1C real AI fallback candidates",
         "ai_pending_total": len(real_ai),
         "concept_candidates": len(concept_queue),
         "relation_candidates": len(relation_queue),
@@ -380,6 +443,18 @@ def main() -> int:
             )
         ],
         "legacy_relation_pending_excluded": len(legacy_pending),
+        "stage_counts": {
+            "Gate D": sum(
+                1
+                for item in concept_queue + relation_queue
+                if item["stage"] == "Gate D"
+            ),
+            "Gate D.1C": sum(
+                1
+                for item in concept_queue + relation_queue
+                if item["stage"] == "Gate D.1C"
+            ),
+        },
         "provenance": {
             "task": [CONCEPT_TASK, RELATION_TASK],
             "knowledge_version": versioning.KNOWLEDGE_VERSION,
@@ -403,9 +478,16 @@ def main() -> int:
     write_json("review_summary.json", summary)
     write_json("concept_review_queue.json", concept_queue)
     write_json("relation_review_queue.json", relation_queue)
-    write_json(
-        "candidate_review_decisions.json",
-        {
+    decisions_path = args.output_dir / "candidate_review_decisions.json"
+    human_decision_count = 0
+    if decisions_path.is_file():
+        decisions_data = json.loads(
+            decisions_path.read_text(encoding="utf-8")
+        )
+        human_decision_count = len(decisions_data.get("decisions", []))
+        decisions_value = decisions_data
+    else:
+        decisions_value = {
             "schema_version": "d1-review-v1",
             "reviewed_by": "human",
             "promotion_status": "not_promoted",
@@ -416,8 +498,18 @@ def main() -> int:
                 "approve|reject|modify|insufficient with final_value and "
                 "review_reason."
             ),
-        },
+        }
+    write_json(
+        "real_ai_review_set_manifest.json",
+        build_review_set_manifest(
+            review_set_version="real-ai-review-set-v1",
+            knowledge_version=versioning.KNOWLEDGE_VERSION,
+            candidates=concept_queue + relation_queue,
+            legacy_pending_count=len(legacy_pending),
+            human_decision_count=human_decision_count,
+        ),
     )
+    write_json("candidate_review_decisions.json", decisions_value)
     write_json(
         "candidate_quality_metrics.json",
         {
@@ -498,11 +590,19 @@ def render_sheet(
         "- 本表仅提供审核材料；人工结论写入 candidate_review_decisions.json。",
         "- 禁止：自动 approve、AI 自审视为人工、把真实商户名写入 canonical alias。",
         "",
-        "## Concept Candidates（57）",
+        f"## Concept Candidates（{len(concept_queue)}）",
         "",
     ]
     for index, item in enumerate(concept_queue, start=1):
         lines.append(f"### C{index:03d} — {item['proposal_kind']}：{item['concept_id']} / {item['concept_name']}")
+        if item["stage"] == "Gate D.1C":
+            lines.extend(
+                [
+                    "",
+                    f"**Source Stage: {item['stage']}**",
+                    f"**Privacy History: {item['privacy_history']}**",
+                ]
+            )
         if item["proposal_kind"] == "new_concept":
             lines.append("")
             lines.append("**NEW CONCEPT — 需重点判断是否与现有近义 Concept 合并**")
@@ -561,12 +661,29 @@ def render_sheet(
                 "",
             ]
         )
-    lines.extend(["## Relation Candidates（2）", ""])
+    lines.extend(
+        [
+            f"## Relation Candidates（{len(relation_queue)}）",
+            "",
+        ]
+    )
     for index, item in enumerate(relation_queue, start=1):
         lines.extend(
             [
                 f"### R{index:03d} — {item['industry_id']} × {item['concept_id']}",
                 "",
+            ]
+        )
+        if item["stage"] == "Gate D.1C":
+            lines.extend(
+                [
+                    f"**Source Stage: {item['stage']}**",
+                    f"**Privacy History: {item['privacy_history']}**",
+                    "",
+                ]
+            )
+        lines.extend(
+            [
                 f"- candidate_id：`{item['candidate_id']}`",
                 f"- concept candidate ref：`{item['concept_candidate_ref']}`（来源链："
                 f"transaction semantic → new concept candidate → relation candidate）",

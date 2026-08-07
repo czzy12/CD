@@ -79,6 +79,18 @@ Gate D.1B Human Review Package 状态（2026-08-07，`chg-20260807-22`）：59 �
 `D:\Investigator PDF\outputs\knowledge-v1\candidate-human-review-20260807\`（仓库外）；
 已本地 commit，未 push。
 
+Gate D.1C-1 最小真实 AI 重验收状态（2026-08-07，`chg-20260807-23`）：2 条 privacy released
+signature 重新通过最新版 preflight（blocked=0）后首次真实调用成功（semantic-concept-v1 1 批 × 2）：
+`ecab16e4…` → convenience_store（high）、`8ec1dd4c…` → retail（medium）；生成 2 个 pending
+concept candidate；relation fallback 未自然触发；本地幂等检查 duplicate_prevented=2（未重复调用）；
+unauthorized_sensitive_outbound=0；D.1C 产物在
+`D:\Investigator PDF\outputs\knowledge-v1\ai-revalidation-20260807\`（仓库外）；已本地 commit，未 push。
+
+Gate D.1C-2 冻结 Review Set 状态（2026-08-07，`chg-20260807-24`）：`real-ai-review-set-v1` 冻结
+61 条真实 AI candidate（concept 59 / relation 2；Gate D=59、Gate D.1C=2），legacy excluded=12、
+human decisions=0、manifest identity=`35bc6d24…`；审核表已追加 D.1C 来源标记与 privacy history；
+`candidate_review_decisions.json` 仍为空；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -90,6 +102,13 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-07：Gate D.1C-2 完成（`chg-20260807-24`）：冻结 Real-AI Candidate Review Set
+  （real-ai-review-set-v1，61 条 = 59 concept + 2 relation；Gate D 59 / D.1C 2；
+  legacy 12 隔离；decisions 0；确定性 manifest identity）；Python 全量 496 项通过；
+  已本地 commit，未 push。
+- 2026-08-07：Gate D.1C-1 完成（`chg-20260807-23`）：2 条 privacy released case 最小真实 AI
+  重验收（1 次调用，convenience_store / retail 各 1 条 pending 候选；幂等防重 2；无 relation
+  fallback；0 敏感外发）；Python 全量 496 项通过；已本地 commit，未 push。
 - 2026-08-07：Gate D.1B 完成（`chg-20260807-22`）：59 条真实 AI candidate 独立人工审核包
   （57 concept + 2 relation，12 legacy 隔离，provenance 完整，decisions 空待人工）；
   Python 全量 492 项通过；已本地 commit，未 push。

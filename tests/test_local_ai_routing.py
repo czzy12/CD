@@ -11,9 +11,11 @@ from bankflow_v2.knowledge.coverage import industry_consistency_evidence_coverag
 from bankflow_v2.knowledge.evidence import BusinessEvidenceResolver
 from bankflow_v2.knowledge.models import IndustryProfile
 from bankflow_v2.knowledge.routing import (
+    CASE_AI_LIFECYCLE,
     ROUTING_AI_ELIGIBLE_TRANSACTION,
     ROUTING_INSUFFICIENT_TRANSACTION,
     ROUTING_LOCAL_RESOLVED,
+    TRANSACTION_AI_LIFECYCLE,
     evaluate_routing,
 )
 
@@ -107,8 +109,35 @@ class LocalAiRoutingTest(unittest.TestCase):
             "transaction_id": "tx-fee",
             "routing_state": ROUTING_AI_ELIGIBLE_TRANSACTION,
         }
-        metrics = evaluate_routing([ambiguous], ai_invoked_ids=set())
+        metrics = evaluate_routing(
+            [ambiguous],
+            ai_invoked_ids=set(),
+            execution_mode="live",
+        )
         self.assertEqual(metrics["missed_ai_call"], 1)
+
+    def test_deferred_ai_is_not_missed_ai(self):
+        ambiguous = {
+            "transaction_id": "tx-fee",
+            "routing_state": ROUTING_AI_ELIGIBLE_TRANSACTION,
+        }
+        metrics = evaluate_routing(
+            [ambiguous],
+            ai_invoked_ids=set(),
+            execution_mode="deferred",
+        )
+        self.assertEqual(metrics["ai_execution_deferred"], 1)
+        self.assertEqual(metrics["missed_ai_call"], 0)
+
+    def test_ai_lifecycles_are_separate(self):
+        self.assertEqual(
+            TRANSACTION_AI_LIFECYCLE,
+            "transaction_ai_knowledge_candidate_lifecycle",
+        )
+        self.assertEqual(
+            CASE_AI_LIFECYCLE,
+            "case_ai_case_observation_lifecycle",
+        )
 
 
 class CoverageDiagnosticTest(unittest.TestCase):
@@ -231,11 +260,15 @@ class CaseEvidencePackTest(unittest.TestCase):
             self._entries(),
             case_ref="case-abc",
             declared_industry="51 批发业",
+            total_transaction_count=5,
+            insufficient_transaction_count=2,
         )
         second = build_case_evidence_pack(
             self._entries(),
             case_ref="case-abc",
             declared_industry="51 批发业",
+            total_transaction_count=5,
+            insufficient_transaction_count=2,
         )
         first_without_ts = {
             key: value
@@ -252,6 +285,12 @@ class CaseEvidencePackTest(unittest.TestCase):
             json.dumps(second_without_ts, ensure_ascii=False, sort_keys=True),
         )
         self.assertTrue(first["pii_safe"])
+        availability = first["evidence_availability"]
+        self.assertEqual(availability["total_transaction_count"], 5)
+        self.assertEqual(availability["evidence_eligible_transaction_count"], 3)
+        self.assertEqual(availability["insufficient_transaction_count"], 2)
+        self.assertEqual(availability["evidence_availability_ratio"], 0.6)
+        self.assertTrue(availability["semantics"]["unavailable_not_absent"])
         serialized = json.dumps(
             {
                 key: value

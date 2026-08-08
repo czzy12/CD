@@ -56,16 +56,30 @@ class ManualMetadataRegistryTest(unittest.TestCase):
             self.assertFalse(entry["transaction_evidence_used_for_metadata"])
 
     def test_all_entries_pending_and_blank(self):
-        for entry in self.registry["entries"]:
+        pending = [
+            entry
+            for entry in self.registry["entries"]
+            if entry.get("metadata_source_type") == "manual_screenshot_review"
+        ]
+        self.assertGreater(len(pending), 0)
+        for entry in pending:
             self.assertFalse(entry["human_confirmed"])
             self.assertEqual(entry["declared_industry"], "")
             self.assertEqual(entry["business_description"], "")
 
-    def test_no_confirmed_entries_means_no_expansion(self):
+    def test_confirmed_0808_entries_have_provenance(self):
         confirmed = self.tool.load_confirmed_entries(
             OUTPUT_DIR / "manual_external_metadata_registry.json"
         )
-        self.assertEqual(confirmed, [])
+        self.assertGreaterEqual(len(confirmed), 14)
+        for entry in confirmed:
+            self.assertEqual(
+                entry["metadata_source_type"],
+                "human_collected_case_material",
+            )
+            self.assertEqual(entry["entered_by"], "human_user")
+            self.assertFalse(entry["transaction_evidence_used_for_metadata"])
+            self.assertTrue(entry["declared_industry"])
 
     def test_screenshot_candidates_found(self):
         candidates = self.tool.find_screenshot_candidates()

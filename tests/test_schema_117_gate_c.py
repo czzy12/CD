@@ -141,9 +141,19 @@ class Schema117FoundationRetentionTests(unittest.TestCase):
             for item in shadow["result"]["observations"]
             if item["observation_type"] == "ai_business_relevance_candidates"
         )
+
+        def _strip_created_at(node):
+            if isinstance(node, dict):
+                for key in ("created_at", "run_at"):
+                    node.pop(key, None)
+                for value in node.values():
+                    _strip_created_at(value)
+            elif isinstance(node, list):
+                for value in node:
+                    _strip_created_at(value)
+
         for item in (plain_legacy, shadow_legacy):
-            if isinstance(item.get("value"), dict):
-                item["value"].pop("created_at", None)
+            _strip_created_at(item)
         self.assertEqual(plain_legacy, shadow_legacy)
         self.assertEqual(
             plain["result"]["summary"],

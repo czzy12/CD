@@ -105,6 +105,19 @@ error taxonomy 闭合（unexplained=0）；systemic conclusion=targeted_remediat
 remediation candidates 仅记录未执行；promotion_status 全部 not_promoted；frozen checksum
 `35bc6d24…` 未变化；Python 全量 512 项通过；已本地 commit，未 push。
 
+Gate D.3 Targeted Remediation 状态（2026-08-08，`chg-20260808-27/28/29/30`）：
+D.3A payment-rail boundary（支付渠道≠经营 Concept，payment-rail-only 本地 unresolved 且跳过 AI，
+prompt v2 增加边界指令）；D.3B 新增 canonical Concept property_management（两条 supporting
+signatures 本地 exact_alias 命中）+ `47×property_management=strong` relation snapshot；
+06 条件关系不扩 schema，保持 undetermined + conditional_relation_candidate；
+版本升级 knowledge/semantic/relation/alias/resolver/prompt → v2，schema 仍 1.17；
+D.3C personal-name sanitization（组织/平台+分隔符+2-3字 CJK → [PERSON]，非人名实体不受影响）；
+D.3E calibration regression（45 条真实 AI，1 批，0 失败/0 敏感外发）：after exact=19（31.15%）、
+acceptable=13（21.31%）、wrong=5（8.20%）、unresolved_when_sufficient=24；
+payment-rail 非批准 5 条全部修复、拉卡拉 high-confidence wrong-domain 修复；
+error taxonomy closed、unexplained=0；Human Gold 冻结未改；Python 全量 531 项通过；
+已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -116,6 +129,11 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate D.3 完成（`chg-20260808-27..30`）：payment-rail boundary、property_management
+  canonical（47 strong / 06 conditional undetermined）、姓名脱敏、版本 v2（schema 1.17 不变）、
+  calibration regression（exact 31.15% / acceptable 21.31% / wrong 8.20% / unresolved 39.34%）；
+  payment-rail 非批准 5 条全部修复；error taxonomy closed、unexplained=0；Python 全量 531 项通过；
+  已本地 commit，未 push。
 - 2026-08-08：Gate D.2 完成（`chg-20260808-26`）：61 条人工裁决全部落盘；
   Overall exact approve 77.05%、usable 78.69%；existing recovery accuracy 77.19%；
   property_management 新 Concept 2 条合并批准；relation 47 strong / 06 medium；

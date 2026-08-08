@@ -86,8 +86,13 @@ def resolve_entry(
             profile=profile,
         )
         industry_relevance = str(relation.relevance or "undetermined")
+        relation_source = (
+            str(getattr(relation, "relation_resolution_source", "") or "")
+            or str(getattr(relation, "relation_source", "") or "")
+        )
     else:
         industry_relevance = "undetermined"
+        relation_source = ""
     evidence = resolver.resolve(
         fields,
         concept_id=concept_id,
@@ -99,10 +104,12 @@ def resolve_entry(
         "concept_name": str(semantic.concept_name or ""),
         "concept_source": str(semantic.source or "undetermined"),
         "industry_relevance": industry_relevance,
+        "relation_source": relation_source,
         "role": str(evidence["role"]),
         "trace_strength": str(evidence["trace_strength"]),
         "role_source": str(evidence["role_source"]),
         "evidence_group_key": str(evidence["evidence_group_key"]),
+        "routing_state": str(evidence["routing_state"]),
         "unresolved_reason": str(evidence["unresolved_reason"]),
         "reason": str(evidence["reason"]),
         "matched_terms": list(evidence["matched_terms"]),

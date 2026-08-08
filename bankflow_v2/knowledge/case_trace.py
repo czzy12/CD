@@ -19,6 +19,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .coverage import industry_consistency_evidence_coverage
 from .evidence import BUSINESS_EVIDENCE_CONTRACT_VERSION
 
 
@@ -62,6 +63,9 @@ class CaseTraceResolver:
         *,
         case_context: Mapping[str, object] | None = None,
         profile_name: str = "",
+        coverage: Mapping[str, Any] | None = None,
+        relation_kb_covered_count: int = 0,
+        relation_kb_total_count: int = 0,
     ) -> dict[str, Any]:
         families: dict[str, dict[str, Any]] = {}
         total = 0
@@ -181,15 +185,49 @@ class CaseTraceResolver:
             business_activity_presence = "undetermined"
 
         # Declared industry consistency: never stronger than direct industry
-        # trace, and requires at least some direct evidence.
+        # trace, and requires at least some direct evidence. Knowledge
+        # coverage insufficient must never be read as "industry inconsistent".
+        coverage_result = coverage or industry_consistency_evidence_coverage(
+            entries,
+            relation_kb_covered_count=relation_kb_covered_count,
+            relation_kb_total_count=relation_kb_total_count,
+        )
+        coverage_value = str(coverage_result.get("value") or "unavailable")
+        coverage_reason = str(coverage_result.get("reason") or "")
         if direct_industry_trace == "strong":
-            declared_industry_consistency = "strong"
+            base_consistency = "strong"
         elif direct_industry_trace == "medium":
-            declared_industry_consistency = "medium"
+            base_consistency = "medium"
         elif direct_industry_trace == "weak":
-            declared_industry_consistency = "weak"
+            base_consistency = "weak"
         else:
+            base_consistency = "undetermined"
+        if coverage_value in {"insufficient", "unavailable"}:
             declared_industry_consistency = "undetermined"
+            coverage_qualification = (
+                "knowledge coverage insufficient; cannot distinguish "
+                "inconsistency from missing knowledge"
+            )
+        elif coverage_value == "partial":
+            if base_consistency in {"strong", "medium"}:
+                declared_industry_consistency = "weak"
+                coverage_qualification = (
+                    "direct evidence present but relation KB coverage partial; "
+                    "consistency not fully confirmed"
+                )
+            elif base_consistency == "weak":
+                declared_industry_consistency = "weak"
+                coverage_qualification = (
+                    "direct evidence weak and relation KB coverage partial"
+                )
+            else:
+                declared_industry_consistency = "undetermined"
+                coverage_qualification = (
+                    "coverage partial and no direct industry support"
+                )
+        else:
+            declared_industry_consistency = base_consistency
+            coverage_qualification = ""
 
         contradictions: list[str] = []
         if (
@@ -242,6 +280,9 @@ class CaseTraceResolver:
             "business_activity_presence": business_activity_presence,
             "declared_industry_consistency": declared_industry_consistency,
             "direct_industry_trace": direct_industry_trace,
+            "industry_consistency_evidence_coverage": coverage_value,
+            "industry_consistency_coverage_reason": coverage_reason,
+            "industry_consistency_coverage_qualification": coverage_qualification,
             "supporting_evidence_roles": supporting_roles,
             "direct_business_evidence_count": direct_occurrences,
             "direct_business_group_count": direct_groups,
@@ -284,6 +325,7 @@ class CaseTraceResolver:
                 positive_groups=distinct_positive_groups,
                 direct_groups=direct_groups,
                 recurrence=recurrence_months,
+                coverage=coverage_value,
             ),
             "contract_version": BUSINESS_EVIDENCE_CONTRACT_VERSION,
             "case_trace_resolver_version": self.version,
@@ -314,10 +356,12 @@ class CaseTraceResolver:
         positive_groups: int,
         direct_groups: int,
         recurrence: int,
+        coverage: str,
     ) -> str:
         parts = [
             f"经营存在={business_activity_presence}",
             f"申报行业一致性={declared_industry_consistency}",
+            f"一致性证据覆盖={coverage}",
             f"正向证据族={positive_families}、去重证据组={positive_groups}、"
             f"直接经营证据组={direct_groups}、跨月复现={recurrence}",
         ]

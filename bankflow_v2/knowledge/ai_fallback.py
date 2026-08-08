@@ -206,12 +206,28 @@ class DeepSeekKnowledgeAdapter:
                 "items": safe_items,
                 "instructions": [
                     "支付渠道、支付工具、收单机构（如财付通、微信支付、支付宝、扫码、POS、"
-                    "拉卡拉、银联等）本身不构成经营 Concept。",
-                    "只有存在明确业务对象（企业/商户/商品/用途语义）时才可映射到经营 Concept。",
-                    "缺乏可识别业务对象时应返回 concept_id=undetermined 或 confidence=low，"
-                    "不要默认映射 generic。",
-                    "generic 是合法父级 Concept，但不是“无法判断”的默认答案；证据不足应 "
-                    "undetermined。",
+                    "拉卡拉、银联等）本身不构成经营 Concept；应忽略支付渠道语义，"
+                    "不得把支付渠道或收单机构映射到任何经营 Concept。",
+                    "如果支付渠道之外存在独立充分的业务语义（商户类别、商品/服务描述、"
+                    "用途、组织类型、可识别经营动作），必须根据剩余业务语义判断 Concept。",
+                    "generic 是合法的宽泛经营 Concept；存在真实经营/交易业务语义但无法"
+                    "归属更具体概念时可以使用 generic，不得把 generic 当作“无法判断”。",
+                    "只有剩余非敏感证据确实不足以推断稳定可复用语义时才返回 undetermined；"
+                    "不得为了减少 insufficient 而强行分类，也不得把纯支付渠道文本映射 generic。",
+                    "地名、项目名、实体名片段本身不构成经营 Concept（例如“汽车小镇”不是"
+                    "汽车销售或娱乐的依据），除非文本同时包含明确业务动作、商品或服务。",
+                    "带有位置限定（行政区/道路/楼层等）且没有明确商品或服务类别的门店名，"
+                    "不足以推断 Concept，应 undetermined。",
+                    "简短品牌门店名（品牌+编号+店，如“鲁泰37店”）且无位置限定时，"
+                    "可判 retail；餐饮品牌门店应优先 dining；只有位置限定而无明确类别时才 undetermined。",
+                    "党政机关、兵团师市、政务事业单位的分公司/分支机构应优先 "
+                    "government_public_service。",
+                    "仅含支付/交易动作（如经营码交易、扫码付款）而没有业务对象时，"
+                    "应 undetermined，不得映射 generic。",
+                    "明确家用电器/净水设备/水龙头过滤类商品应优先 home_appliance，"
+                    "而不是泛化 goods；水果零售/品牌门店应优先 retail，而不是 food；"
+                    "鲜肉/生鲜/食品门店应优先 food，而不是 retail；"
+                    "便利连锁门店应优先 convenience_store；平台商户/电商提现应优先 ecommerce。",
                     "不得把真实商户名或个人姓名作为新 Concept 名称。",
                 ],
             },

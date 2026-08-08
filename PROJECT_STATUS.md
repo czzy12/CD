@@ -1,6 +1,6 @@
 # PDF流水项目当前状态
 
-更新时间：2026-08-07
+更新时间：2026-08-08
 
 ## 当前仓库
 
@@ -25,8 +25,9 @@ origin/work/2026-07-18-bankflow-verification
 已提交的当前实现：
 
 ```text
-HEAD 以 git log --oneline -1 为准（当前 `c6e74b0`）；chg-20260807-14 起为经营语义知识库架构 v1 收口；
-chg-19..30（C2.1、Gate D/D.1/D.1C、Gate D.2、Gate D.3）已全部推送至
+HEAD 以 git log --oneline -1 为准；chg-20260807-14 起为经营语义知识库架构 v1 收口；
+chg-19..31（C2.1、Gate D/D.1/D.1C、Gate D.2、Gate D.3、Gate D.3.1）已全部提交，
+其中 chg-19..30 已推送至
 origin/work/2026-07-18-bankflow-verification
 ```
 
@@ -120,6 +121,17 @@ payment-rail 非批准 5 条全部修复、拉卡拉 high-confidence wrong-domai
 error taxonomy closed、unexplained=0；Human Gold 冻结未改；Python 全量 531 项通过；
 已本地 commit，未 push。
 
+Gate D.3.1 Recall Recovery 状态（2026-08-08，`chg-20260808-31`）：D.3 过度保守修复完成。
+payment rail 改为“剥离后检查剩余业务证据”，generic/life/settlement 恢复为合法宽泛 Concept；
+home_appliance/retail/food/电商/政务边界与“汽车小镇”实体名 overreach 修复；
+knowledge/semantic/alias/resolver/prompt 升至 v3，schema 仍 1.17；
+真实 AI（semantic-concept-v3）28 条唯一签名 1 批成功，18 条 pending candidate，0 失败/0 敏感外发；
+Calibration：exact=45、acceptable=14、wrong=1、unresolved_when_sufficient=1、
+sufficient recall=0.96；Human insufficient 11/11 保持 unresolved；24 条 false-insufficient 恢复 23 条；
+payment rail 0 regression、拉卡拉不回归、PII=0、property_management 本地复用稳定、
+47 strong / 06 conditional 不变；real-ai-review-set-v1 不变；12 legacy pending 未触碰；
+Python 全量 543 项通过；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -131,6 +143,11 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate D.3.1 完成（`chg-20260808-31`）：payment rail 剥离 + business evidence 再平衡、
+  generic/life/settlement 恢复、home_appliance/retail/food/电商边界与实体名 overreach 修复、
+  prompt v3；Calibration exact=45 / acceptable=14 / wrong=1 / unresolved=1、
+  sufficient recall=0.96、Human insufficient 11/11 保护；payment rail 0 regression、PII=0；
+  Python 全量 543 项通过；已本地 commit，未 push。
 - 2026-08-08：Gate D.3 完成（`chg-20260808-27..30`）：payment-rail boundary、property_management
   canonical（47 strong / 06 conditional undetermined）、姓名脱敏、版本 v2（schema 1.17 不变）、
   calibration regression（exact 31.15% / acceptable 21.31% / wrong 8.20% / unresolved 39.34%）；

@@ -118,7 +118,8 @@ class BusinessEvidenceTest(unittest.TestCase):
         )
         self.assertEqual(result["role"], "direct_business")
         self.assertEqual(result["trace_strength"], "strong")
-        self.assertEqual(result["role_source"], "context_override")
+        self.assertEqual(result["role_source"], "context_override_local")
+        self.assertEqual(result["routing_state"], "local_resolved")
 
     def test_direct_metal_sales_with_profile51(self):
         result = self.resolve(

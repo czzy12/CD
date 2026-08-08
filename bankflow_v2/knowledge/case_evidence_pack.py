@@ -84,6 +84,9 @@ def build_case_evidence_pack(
     declared_industry: str = "",
     profile_name: str = "",
     ai_eligible_only: bool = False,
+    total_transaction_count: int | None = None,
+    insufficient_transaction_count: int | None = None,
+    unavailable_reason_counts: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """Compress transaction evidence into a structured pack for case AI.
 
@@ -96,6 +99,20 @@ def build_case_evidence_pack(
             str(row.get("evidence_group_key") or ""),
             str(row.get("transaction_id") or ""),
         ),
+    )
+    eligible_count = len(rows)
+    total_count = (
+        int(total_transaction_count)
+        if total_transaction_count is not None
+        else eligible_count
+    )
+    insufficient_count = (
+        int(insufficient_transaction_count)
+        if insufficient_transaction_count is not None
+        else max(total_count - eligible_count, 0)
+    )
+    availability_ratio = (
+        round(eligible_count / total_count, 4) if total_count else None
     )
     families: dict[str, list[Mapping[str, Any]]] = {}
     for row in rows:
@@ -199,6 +216,24 @@ def build_case_evidence_pack(
         "case_ref": case_ref,
         "declared_industry": declared_industry,
         "profile_name": profile_name,
+        "evidence_availability": {
+            "total_transaction_count": total_count,
+            "evidence_eligible_transaction_count": eligible_count,
+            "insufficient_transaction_count": insufficient_count,
+            "evidence_availability_ratio": availability_ratio,
+            "unavailable_reason_counts": {
+                "no_semantic_evidence": insufficient_count,
+                **(unavailable_reason_counts or {}),
+            },
+            "semantics": {
+                "unavailable_not_absent": True,
+                "note": (
+                    "insufficient/no-semantic transactions are recorded as "
+                    "evidence unavailable; they must never be interpreted as "
+                    "evidence absent"
+                ),
+            },
+        },
         "evidence_group_count": len(group_keys),
         "counterparty_diversity": len({item for item in counterparties if item}),
         "monthly_recurrence": len(months),

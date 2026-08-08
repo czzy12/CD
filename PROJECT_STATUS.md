@@ -175,6 +175,12 @@ Relation Holdout blocked（insufficient_confirmed_industry_context）。
 reviewed=0/pending=120；production-candidate-v1 checksum 未变；
 knowledge_v1 run=0、AI call=0；Python 全量 563 项通过；已本地 commit，未 push。
 
+Gate F1.1b Relation Holdout 状态（2026-08-08，`chg-20260808-38`）：用户提供韩培培外部案例
+（两份 PDF + 行业信息，行业=铝锭大宗贸易/金属材料销售），经 holdout-only normalization 归为
+`51 批发业`；`production-relation-holdout-v1` 已冻结：30 条唯一签名、contamination 全 0、
+independence=limited_single_case；Relation Human Batch RH-H01=30 条，Human Gold 空；
+production-candidate-v1 未变；knowledge_v1 run=0、AI call=0；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -186,6 +192,8 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate F1.1b（`chg-20260808-38`）：韩培培 external case → relation-holdout-v1
+  （30 条 / 行业 51 / 污染 0）；RH-H01 就绪；已本地 commit，未 push。
 - 2026-08-08：Gate F1.1（`chg-20260808-37`）：industry context audit 63/63 unavailable；
   Concept Holdout 冻结、Relation Holdout blocked；新 H01=30 条；
   Python 全量 563 项通过；已本地 commit，未 push。

@@ -7,8 +7,10 @@ import unittest
 from bankflow_v2.knowledge.freeze import file_checksums, manifest_checksum
 from bankflow_v2.knowledge.holdout import (
     balanced_selection,
+    classify_industry_availability,
     dedup_by_signature,
     holdout_manifest_checksum,
+    relation_denominator_eligible,
 )
 
 
@@ -75,6 +77,42 @@ class HoldoutHelperTests(unittest.TestCase):
             if s not in excluded
         ]
         self.assertNotIn("s1", selected)
+
+    def test_industry_availability_classification(self):
+        self.assertEqual(
+            classify_industry_availability(
+                has_external_metadata=False,
+                normalized_industry_ids=[],
+            ),
+            "unavailable",
+        )
+        self.assertEqual(
+            classify_industry_availability(
+                has_external_metadata=True,
+                normalized_industry_ids=["47"],
+            ),
+            "confirmed",
+        )
+        self.assertEqual(
+            classify_industry_availability(
+                has_external_metadata=True,
+                normalized_industry_ids=["47", "06"],
+            ),
+            "available_but_ambiguous",
+        )
+        self.assertEqual(
+            classify_industry_availability(
+                has_external_metadata=True,
+                normalized_industry_ids=["47", "06"],
+                metadata_conflict=True,
+            ),
+            "invalid_metadata",
+        )
+
+    def test_relation_denominator_requires_confirmed(self):
+        self.assertTrue(relation_denominator_eligible("confirmed"))
+        self.assertFalse(relation_denominator_eligible("unavailable"))
+        self.assertFalse(relation_denominator_eligible("available_but_ambiguous"))
 
 
 if __name__ == "__main__":

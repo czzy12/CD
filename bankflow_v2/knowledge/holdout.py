@@ -58,3 +58,26 @@ def balanced_selection(
 
 def holdout_manifest_checksum(payload: Mapping[str, Any]) -> str:
     return manifest_checksum(payload)
+
+
+def classify_industry_availability(
+    *,
+    has_external_metadata: bool,
+    normalized_industry_ids: Sequence[str],
+    metadata_conflict: bool = False,
+) -> str:
+    """Classify one source document's external industry context.
+
+    External ground context only; knowledge_v1 prediction is never a source.
+    """
+    if metadata_conflict:
+        return "invalid_metadata"
+    if not has_external_metadata:
+        return "unavailable"
+    if len(set(normalized_industry_ids)) == 1:
+        return "confirmed"
+    return "available_but_ambiguous"
+
+
+def relation_denominator_eligible(industry_status: str) -> bool:
+    return industry_status == "confirmed"

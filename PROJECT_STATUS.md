@@ -167,6 +167,14 @@ Blinded Human Review Pack 与 Batch H01（12 条）已生成；
 knowledge_v1 run=0、AI call=0、system prediction 未暴露；Human Gold 空；
 未开始 Gate F2 Blind Run；未 push。
 
+Gate F1.1 Holdout Fitness 状态（2026-08-08，`chg-20260808-37`）：Industry Context Audit 完成。
+63/63 pristine documents 无 external declared industry metadata（confirmed=0）；
+决策=split_required_relation_blocked：Concept Holdout（120 签名 / 63 文档）ready，
+Relation Holdout blocked（insufficient_confirmed_industry_context）。
+旧 H01 标记 superseded_before_human_labeling；新 Concept Batch H01=30 条，
+reviewed=0/pending=120；production-candidate-v1 checksum 未变；
+knowledge_v1 run=0、AI call=0；Python 全量 563 项通过；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -178,6 +186,9 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate F1.1（`chg-20260808-37`）：industry context audit 63/63 unavailable；
+  Concept Holdout 冻结、Relation Holdout blocked；新 H01=30 条；
+  Python 全量 563 项通过；已本地 commit，未 push。
 - 2026-08-08：Gate F0+F1（`chg-20260808-35/36`）：production-candidate-v1 冻结；
   production-holdout-v1（120 签名 / 63 文档 / 污染 0）冻结；Blinded H01 就绪；
   Python 全量 561 项通过；已本地 commit，未 push。

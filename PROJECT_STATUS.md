@@ -147,6 +147,13 @@ Promotion eligibility：R01～R04 由 generic_business weak 现有 canonical 覆
 无法表达 evidence-specific none 而 blocked_contract（Human Gold 保留 weak/none 不变）。
 Batch 2（R-Legacy-07～12）审核材料已生成，等待人工裁决；未 push。
 
+Gate E 全部裁决状态（2026-08-08，`chg-20260808-34`）：Batch 2 六条 Human 全部确认 approve，
+12/12 legacy relation pending 裁决完成（approve=8 / modify=4 / reject=0 / insufficient=0；
+final=4×weak + 8×none）。Promotion eligibility：R01～R04 复用现有 generic_business weak；
+R05～R12 因 relation model 无法表达 evidence-specific none 而 blocked_contract。
+未改变 canonical KB、无 version bump；legacy pending=0；D.3/D.3.1/review-set 均未触碰；
+未开始 Holdout/Promotion；未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -158,6 +165,9 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate E 全部裁决（`chg-20260808-34`）：12/12 Human decisions 落盘；
+  promotion 4 条复用现有 canonical、8 条 contract-blocked；legacy pending=0；
+  Python 全量 554 项通过；已本地 commit，未 push。
 - 2026-08-08：Gate E Batch 1（`chg-20260808-33`）：6 条 Human decisions 落盘；
   promotion eligibility 4 条复用现有 generic weak、2 条 contract-blocked；
   Batch 2 材料就绪，等待人工；Python 全量 554 项通过；已本地 commit，未 push。

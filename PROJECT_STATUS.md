@@ -132,6 +132,14 @@ payment rail 0 regression、拉卡拉不回归、PII=0、property_management 本
 47 strong / 06 conditional 不变；real-ai-review-set-v1 不变；12 legacy pending 未触碰；
 Python 全量 543 项通过；已本地 commit，未 push。
 
+Gate E Legacy Relation Review 准备状态（2026-08-08，`chg-20260808-32`）：Git branch/upstream audit 完成。
+当前 branch=`work/deepseek-12b2-followup`，HEAD=`eaddff4`，**未配置 upstream tracking**；
+此前 `origin/work/2026-07-18-bankflow-verification` 是显式 push refspec 目标，不是 tracking；
+push target requires confirmation，未 push。12 条 legacy relation pending 已确认
+（6 个唯一签名 × 2 行业画像），独立 `legacy-relation-pending-v1` 审核材料已生成；
+与 real-ai-review-set-v1 及 D.3/D.3.1 calibration pending 完全隔离；
+人工裁决 pending，promotion 未开始；Python 全量 549 项通过；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -143,6 +151,9 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate E 准备（`chg-20260808-32`）：Git branch/upstream audit 确认当前分支无 tracking；
+  12 条 legacy relation pending 独立审核材料（legacy-relation-pending-v1）就绪；
+  人工裁决 pending、promotion 未开始；Python 全量 549 项通过；已本地 commit，未 push。
 - 2026-08-08：Gate D.3.1 完成（`chg-20260808-31`）：payment rail 剥离 + business evidence 再平衡、
   generic/life/settlement 恢复、home_appliance/retail/food/电商边界与实体名 overreach 修复、
   prompt v3；Calibration exact=45 / acceptable=14 / wrong=1 / unresolved=1、

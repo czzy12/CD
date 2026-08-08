@@ -126,11 +126,11 @@ class VersionDeltaTests(unittest.TestCase):
     def test_versions_bumped_and_schema_unchanged(self):
         self.assertEqual(
             versioning.KNOWLEDGE_VERSION,
-            "business-semantic-kb-v2",
+            "business-semantic-kb-v3",
         )
         self.assertEqual(
             versioning.SEMANTIC_KB_VERSION,
-            "semantic-concepts-v2",
+            "semantic-concepts-v3",
         )
         self.assertEqual(
             versioning.RELATION_KB_VERSION,
@@ -138,15 +138,15 @@ class VersionDeltaTests(unittest.TestCase):
         )
         self.assertEqual(
             versioning.ALIAS_KB_VERSION,
-            "semantic-aliases-v2",
+            "semantic-aliases-v3",
         )
         self.assertEqual(
             versioning.RESOLVER_VERSION,
-            "knowledge-v1-resolver-2",
+            "knowledge-v1-resolver-3",
         )
         self.assertEqual(
             versioning.PROMPT_SEMANTIC_CONCEPT_VERSION,
-            "semantic-concept-v2",
+            "semantic-concept-v3",
         )
         from bankflow_v2.result_export import SCHEMA_VERSION
 

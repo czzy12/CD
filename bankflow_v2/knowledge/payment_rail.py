@@ -58,6 +58,8 @@ BUSINESS_OBJECT_MARKERS = (
     "商场",
     "市场",
     "大厦",
+    "购物中心",
+    "开发区",
     "酒店",
     "餐厅",
     "饭店",
@@ -78,6 +80,26 @@ BUSINESS_OBJECT_MARKERS = (
     "电信",
 )
 
+GENERIC_BUSINESS_ACTION_MARKERS = (
+    "收款",
+    "取款",
+    "提现",
+    "卡存",
+    "汇款",
+    "跨行汇款",
+    "转账",
+    "退款",
+    "订单支付",
+    "账户信息变更",
+    "帐户信息变更",
+    "红包",
+    "消费",
+    "退货",
+    "普通充值",
+    "实时提现",
+    "消费退货",
+)
+
 _PAYMENT_INSTITUTION_RE = re.compile(
     r"(?:拉卡拉支付(?:股份有限公司)?|财付通支付科技(?:有限公司)?|"
     r"支付宝(?:\(中国\))?网络技术(?:有限公司)?|银联商务(?:股份有限公司)?|"
@@ -85,24 +107,40 @@ _PAYMENT_INSTITUTION_RE = re.compile(
 )
 
 
+def strip_payment_rail_semantics(value: str) -> str:
+    """Remove payment-channel/acquirer semantics, leaving other text.
+
+    Payment rails are transport metadata: they must be ignored, not used to
+    veto the whole transaction. After stripping, the remaining text is checked
+    for independently sufficient business evidence.
+    """
+    text = _PAYMENT_INSTITUTION_RE.sub(" ", str(value or ""))
+    for marker in sorted(PAYMENT_RAIL_MARKERS, key=len, reverse=True):
+        text = re.sub(re.escape(marker), " ", text)
+    text = re.sub(r"[\s\u3000\-_/|·]+", " ", text).strip()
+    return text
+
+
 def is_payment_rail_only(
     fields: Mapping[str, object],
     *,
     business_terms: tuple[str, ...] = (),
 ) -> bool:
-    """True when fields contain payment-rail text without a business object.
+    """True when fields are payment-rail text without remaining business evidence.
 
     A payment channel/tool/acquirer (微信/支付宝/财付通/扫码/POS/拉卡拉 etc.)
-    is transport metadata, not a business concept. When no organization /
-    business-object marker is present, the transaction has no business
-    semantics and must not be mapped to any business concept.
+    is transport metadata, not a business concept. The rail itself is stripped;
+    if anything with stable business evidence remains (organization marker,
+    canonical business term, or broad business action), the transaction must
+    proceed to normal concept resolution.
     """
     text = " ".join(str(value or "") for value in fields.values())
     if not any(marker in text for marker in PAYMENT_RAIL_MARKERS):
         return False
-    business_text = _PAYMENT_INSTITUTION_RE.sub("", text)
-    business_text = re.sub(r"(?:股份)?有限公司$", "", business_text).strip()
-    has_business_object = any(
-        marker in business_text for marker in BUSINESS_OBJECT_MARKERS
-    ) or any(term in business_text for term in business_terms)
+    remaining = strip_payment_rail_semantics(text)
+    has_business_object = (
+        any(marker in remaining for marker in BUSINESS_OBJECT_MARKERS)
+        or any(term in remaining for term in business_terms)
+        or any(marker in remaining for marker in GENERIC_BUSINESS_ACTION_MARKERS)
+    )
     return not has_business_object

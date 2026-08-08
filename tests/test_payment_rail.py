@@ -28,17 +28,26 @@ class PaymentRailDetectionTests(unittest.TestCase):
     def test_payment_rail_only_texts(self):
         cases = [
             {"remark": "财付通-微信支付-扫二维码付款"},
-            {"remark": "微信零钱提现"},
-            {"remark": "财付通-微信支付-微信转账"},
-            {"summary": "支付机构提现", "remark": "微信零钱提现"},
             {"remark": "支付宝-扫二维码付款"},
-            {"product_description": "收钱码收款"},
             {"counterparty_name": "拉卡拉支付股份有限公司"},
             {"counterparty_name": "财付通支付科技有限公司"},
         ]
         for fields in cases:
             with self.subTest(fields=fields):
                 self.assertTrue(is_payment_rail_only(fields))
+
+    def test_payment_rail_with_business_action_not_rail_only(self):
+        cases = [
+            {"remark": "微信零钱提现"},
+            {"remark": "财付通-微信支付-微信转账"},
+            {"summary": "支付机构提现", "remark": "微信零钱提现"},
+            {"product_description": "收钱码收款"},
+            {"remark": "财付通-微信支付-微信红包"},
+            {"remark": "财付通-微信支付-消费退货"},
+        ]
+        for fields in cases:
+            with self.subTest(fields=fields):
+                self.assertFalse(is_payment_rail_only(fields))
 
     def test_business_object_not_payment_rail_only(self):
         cases = [
@@ -47,10 +56,29 @@ class PaymentRailDetectionTests(unittest.TestCase):
             {"remark": "支付宝-淘宝-龙政煊"},
             {"remark": "财付通-微信支付-美团平台商户"},
             {"remark": "财付通-微信支付-手机充值-中国移动"},
+            {"remark": "财付通-微信支付-深圳市腾讯计算机系统有限公司"},
+            {"remark": "支付宝便利店消费"},
+            {"remark": "微信餐饮消费"},
         ]
         for fields in cases:
             with self.subTest(fields=fields):
                 self.assertFalse(is_payment_rail_only(fields))
+
+    def test_payment_rail_with_canonical_business_term_not_rail_only(self):
+        runtime = KnowledgeRuntime.load(CANONICAL_DIR)
+        business_terms = tuple(
+            dict.fromkeys(
+                term
+                for terms in runtime.concepts.keyword_terms().values()
+                for term in terms
+            )
+        )
+        self.assertFalse(
+            is_payment_rail_only(
+                {"remark": "POS家电销售"},
+                business_terms=business_terms,
+            )
+        )
 
     def test_no_payment_marker_is_not_payment_rail_only(self):
         self.assertFalse(is_payment_rail_only({"remark": "物流费"}))

@@ -9,14 +9,14 @@ from typing import Any
 from .models import KnowledgeVersion
 
 
-KNOWLEDGE_VERSION = "business-semantic-kb-v2"
+KNOWLEDGE_VERSION = "business-semantic-kb-v3"
 TAXONOMY_VERSION = "gb-t-4754-2017-core-v1"
-SEMANTIC_KB_VERSION = "semantic-concepts-v2"
+SEMANTIC_KB_VERSION = "semantic-concepts-v3"
 RELATION_KB_VERSION = "industry-relations-v2"
-ALIAS_KB_VERSION = "semantic-aliases-v2"
-RESOLVER_VERSION = "knowledge-v1-resolver-2"
+ALIAS_KB_VERSION = "semantic-aliases-v3"
+RESOLVER_VERSION = "knowledge-v1-resolver-3"
 SIGNATURE_VERSION = "semantic-signature-v1"
-PROMPT_SEMANTIC_CONCEPT_VERSION = "semantic-concept-v2"
+PROMPT_SEMANTIC_CONCEPT_VERSION = "semantic-concept-v3"
 PROMPT_INDUSTRY_RELATION_VERSION = "industry-concept-relevance-v1"
 
 

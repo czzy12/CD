@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from ..ai_business_observation import (
@@ -41,6 +42,38 @@ _DIRECT_FIELD_PRIORITY = (
 )
 _NAME_FIELD_PRIORITY = ("counterparty_name", "merchant_name")
 _CEMENT_BLOCKERS = ("过滤棉", "过滤器", "水龙头", "泥沙", "净水")
+_ENTITY_PLACE_TERMS = ("小镇", "产业园", "园区", "新城")
+_ENTITY_BUSINESS_CONTEXT_TERMS = (
+    "销售",
+    "服务",
+    "维修",
+    "配件",
+    "4s",
+    "4S",
+    "汽修",
+    "餐饮",
+    "饭店",
+    "餐厅",
+    "超市",
+    "商场",
+    "娱乐",
+    "门票",
+    "乐园",
+    "公园",
+    "景区",
+    "酒店",
+    "住宿",
+    "批发",
+    "零售",
+    "建材",
+    "五金",
+    "物流",
+    "工厂",
+    "生产",
+    "制造",
+    "经营部",
+    "门市",
+)
 _NAME_ONLY_CAP_WEAK_CONCEPTS = frozenset(
     {
         "goods",
@@ -130,6 +163,20 @@ def _capped_maximum(maximum: str, cap: str) -> str:
     return maximum
 
 
+def _is_entity_place_overreach(value: str) -> bool:
+    """Place/project names alone are not business concepts.
+
+    A name like ``汽车小镇橄榄城店`` contains an automotive token, but the
+    token is part of a place/project label rather than evidence of an actual
+    automotive service. Without an explicit business-category term we keep it
+    unresolved instead of inventing car_sales / entertainment semantics.
+    """
+    text = str(value or "")
+    if not any(term in text for term in _ENTITY_PLACE_TERMS):
+        return False
+    return not any(term in text for term in _ENTITY_BUSINESS_CONTEXT_TERMS)
+
+
 class SemanticResolver:
     def __init__(
         self,
@@ -180,6 +227,21 @@ class SemanticResolver:
                 reason="支付渠道/收单语义，无经营业务对象",
                 knowledge_version=self._version.semantic_kb_version,
             )
+
+        for field_name in (*_DIRECT_FIELD_PRIORITY, *_NAME_FIELD_PRIORITY):
+            field_value = str(fields.get(field_name, "") or "")
+            if _is_entity_place_overreach(field_value):
+                if stats is not None:
+                    stats.undetermined_count += 1
+                return SemanticResolution(
+                    concept_id="",
+                    concept_name="",
+                    confidence="none",
+                    source="undetermined",
+                    concept_resolution_source="unresolved",
+                    reason="地名/项目名本身不构成经营 Concept",
+                    knowledge_version=self._version.semantic_kb_version,
+                )
 
         ordered_values = [
             str(fields[field_name] or "")

@@ -1,6 +1,6 @@
 {
   "format": "semantic-concepts",
-  "version": "semantic-concepts-v2",
+  "version": "semantic-concepts-v3",
   "source": "curated_knowledge_v1",
   "source_note": "通用经营语义概念，不含任何客户身份或真实商户名；examples_generic 全部为示例性泛化词。",
   "updated_at": "2026-08-08T00:00:00+08:00",
@@ -81,13 +81,13 @@
       "concept_id": "home_appliance",
       "name_zh": "家用电器",
       "aliases": ["家电", "家用电器"],
-      "keywords": ["家电", "家用电器", "电器"],
+      "keywords": ["家电", "家用电器", "电器", "净水", "净水器", "净水设备", "家用净水", "水龙头过滤", "过滤器", "过滤棉"],
       "parent_concept_id": "goods",
       "description": "家用电器类商品",
       "examples_generic": ["家电款"],
       "status": "active",
       "source": "curated_knowledge_v1",
-      "knowledge_version": "business-semantic-kb-v1"
+      "knowledge_version": "business-semantic-kb-v3"
     },
     {
       "concept_id": "alcohol",
@@ -440,14 +440,14 @@
     {
       "concept_id": "settlement",
       "name_zh": "结算",
-      "aliases": [],
-      "keywords": [],
+      "aliases": ["退货", "消费退货"],
+      "keywords": ["退货", "消费退货"],
       "parent_concept_id": "",
       "description": "结算类语义的父级概念",
       "examples_generic": [],
       "status": "active",
       "source": "curated_knowledge_v1",
-      "knowledge_version": "business-semantic-kb-v1"
+      "knowledge_version": "business-semantic-kb-v3"
     },
     {
       "concept_id": "goods_payment",
@@ -500,26 +500,26 @@
     {
       "concept_id": "retail",
       "name_zh": "零售",
-      "aliases": ["零售", "门店销售"],
-      "keywords": ["零售", "门店销售"],
+      "aliases": ["零售", "门店销售", "广场", "购物中心", "水果零售"],
+      "keywords": ["零售", "门店销售", "广场", "购物中心", "水果零售"],
       "parent_concept_id": "settlement",
       "description": "零售交易模式",
       "examples_generic": ["零售"],
       "status": "active",
       "source": "curated_knowledge_v1",
-      "knowledge_version": "business-semantic-kb-v1"
+      "knowledge_version": "business-semantic-kb-v3"
     },
     {
       "concept_id": "generic",
       "name_zh": "泛化业务",
-      "aliases": [],
-      "keywords": [],
+      "aliases": ["收款", "取款", "提现", "卡存", "汇款", "跨行汇款", "转账", "退款", "订单支付", "账户信息变更", "帐户信息变更", "普通充值", "实时提现"],
+      "keywords": ["收款", "取款", "提现", "卡存", "汇款", "跨行汇款", "转账", "退款", "订单支付", "账户信息变更", "帐户信息变更", "普通充值", "实时提现"],
       "parent_concept_id": "",
       "description": "缺少具体语义的泛化业务父级概念",
       "examples_generic": [],
       "status": "active",
       "source": "curated_knowledge_v1",
-      "knowledge_version": "business-semantic-kb-v1"
+      "knowledge_version": "business-semantic-kb-v3"
     },
     {
       "concept_id": "generic_trade",
@@ -536,8 +536,8 @@
     {
       "concept_id": "generic_technology",
       "name_zh": "泛化科技",
-      "aliases": ["科技"],
-      "keywords": ["科技"],
+      "aliases": ["科技", "计算机系统"],
+      "keywords": ["科技", "计算机系统"],
       "parent_concept_id": "generic",
       "description": "无具体产品的科技公司",
       "examples_generic": ["科技公司"],
@@ -608,14 +608,14 @@
     {
       "concept_id": "life",
       "name_zh": "生活消费",
-      "aliases": [],
-      "keywords": [],
+      "aliases": ["消费", "红包"],
+      "keywords": ["消费", "红包"],
       "parent_concept_id": "",
       "description": "生活消费类语义父级概念，用于行业关系库保守排除",
       "examples_generic": [],
       "status": "active",
       "source": "curated_knowledge_v1",
-      "knowledge_version": "business-semantic-kb-v1"
+      "knowledge_version": "business-semantic-kb-v3"
     },
     {
       "concept_id": "dining",
@@ -740,14 +740,14 @@
     {
       "concept_id": "ecommerce",
       "name_zh": "电商",
-      "aliases": ["电商", "电商提现", "直播带货"],
-      "keywords": ["电商", "电商提现", "直播带货", "店铺保证金"],
+      "aliases": ["电商", "电商提现", "直播带货", "平台商户"],
+      "keywords": ["电商", "电商提现", "直播带货", "店铺保证金", "平台商户"],
       "parent_concept_id": "service",
       "description": "电商平台经营与提现",
       "examples_generic": ["电商提现"],
       "status": "active",
       "source": "curated_knowledge_v1",
-      "knowledge_version": "business-semantic-kb-v1"
+      "knowledge_version": "business-semantic-kb-v3"
     },
     {
       "concept_id": "cleaning_service",

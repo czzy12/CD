@@ -91,7 +91,7 @@ class KnowledgeVersioningTests(unittest.TestCase):
         from bankflow_v2.knowledge import versioning
 
         version = versioning.default_knowledge_version()
-        self.assertEqual(version.knowledge_version, "business-semantic-kb-v2")
+        self.assertEqual(version.knowledge_version, "business-semantic-kb-v3")
         self.assertTrue(version.taxonomy_version)
         self.assertTrue(version.resolver_version)
 

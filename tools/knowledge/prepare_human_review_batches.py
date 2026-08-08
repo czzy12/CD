@@ -24,12 +24,6 @@ from bankflow_v2.knowledge.human_review import (
 from bankflow_v2.knowledge.review_set import review_set_identity
 
 
-def _mask(value: str) -> str:
-    if len(value) <= 4:
-        return "***"
-    return value[:2] + "…" + value[-2:]
-
-
 def _nearest_alternatives(
     fields: dict[str, str],
     catalog: dict[str, dict[str, Any]],
@@ -78,9 +72,9 @@ def _concept_batch_form(item: dict[str, Any], index: int) -> list[str]:
         f"- AI proposed concept：{item['concept_id']} / {item['concept_name']}"
         f"（{item['proposal_kind']}，confidence={item['confidence']}）",
         f"- source field types：{', '.join(item['source_fields']) or '-'}",
-        f"- safe semantic evidence（掩码）："
+        f"- safe semantic evidence（完整）："
         + "；".join(
-            f"{key}={_mask(value)}"
+            f"{key}={value}"
             for key, value in item["normalized_safe_semantic_text"].items()
         ),
         f"- AI rationale：{item['model_rationale']}",

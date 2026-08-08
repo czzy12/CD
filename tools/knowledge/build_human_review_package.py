@@ -32,12 +32,6 @@ CONCEPT_TASK = "semantic-concept-v1"
 RELATION_TASK = "industry-concept-relevance-v1"
 
 
-def _mask(value: str) -> str:
-    if len(value) <= 4:
-        return "***"
-    return value[:2] + "…" + value[-2:]
-
-
 def _load_candidates(cache_root: Path) -> list[dict[str, Any]]:
     conn = sqlite3.connect(str(cache_root / "knowledge_v1_runtime.db"))
     conn.row_factory = sqlite3.Row
@@ -615,9 +609,9 @@ def render_sheet(
                 f"- source：{item['source']}",
                 f"- confidence：{item['confidence']}",
                 f"- used fields：{', '.join(item['used_fields']) or '-'}",
-                f"- 归一化语义文本（掩码）："
+                f"- 归一化语义文本（完整）："
                 + "；".join(
-                    f"{key}={_mask(value)}"
+                    f"{key}={value}"
                     for key, value in item["normalized_safe_semantic_text"].items()
                 ),
                 f"- 模型 rationale：{item['model_rationale']}",

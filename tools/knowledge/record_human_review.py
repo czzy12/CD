@@ -64,6 +64,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("review_set_dir", type=Path)
     parser.add_argument("batch_decisions_json", type=Path)
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="replace existing decisions for the same candidate ids "
+        "(human correction during interactive review)",
+    )
     args = parser.parse_args()
     root = args.review_set_dir
     decisions_path = root / "candidate_review_decisions.json"
@@ -73,6 +79,17 @@ def main() -> int:
         return 2
     existing = _load_json(decisions_path)
     existing_records = list(existing.get("decisions", []))
+    if args.update:
+        replace_ids = {
+            str(entry.get("candidate_id", ""))
+            for entry in _load_json(args.batch_decisions_json)
+            if isinstance(entry, dict)
+        }
+        existing_records = [
+            record
+            for record in existing_records
+            if str(record.get("candidate_id", "")) not in replace_ids
+        ]
     existing_ids = {
         str(record.get("candidate_id", "")) for record in existing_records
     }
@@ -90,7 +107,6 @@ def main() -> int:
     now = datetime.now(timezone.utc).isoformat()
     added: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    concept_decisions: dict[str, str] = {}
     for entry in inputs:
         candidate_id = str(entry.get("candidate_id", ""))
         candidate = candidates.get(candidate_id)
@@ -125,10 +141,14 @@ def main() -> int:
             continue
         added.append(record)
         existing_ids.add(candidate_id)
-        if str(candidate.get("task", "")) == "semantic-concept-v1":
-            concept_decisions[candidate_id] = str(
-                record.get("review_decision", "")
-            )
+
+    # upstream decisions come from BOTH previously recorded and this batch
+    concept_decisions: dict[str, str] = {
+        str(record["candidate_id"]): str(record["review_decision"])
+        for record in existing_records + added
+        if str(candidates.get(str(record["candidate_id"]), {}).get("task", ""))
+        == "semantic-concept-v1"
+    }
 
     relation_errors: list[dict[str, Any]] = []
     for record in added:

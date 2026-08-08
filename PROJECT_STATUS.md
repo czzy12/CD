@@ -96,6 +96,15 @@ Gate D.2 Human Review 工具状态（2026-08-07，`chg-20260807-25`）：冻结�
 batch_c01..c05 + batch_r01（61 条），reviewed=0 / pending=61；未写入任何 human decision；
 等待人工逐批裁决（awaiting_human_labels）；Python 全量 512 项通过；已本地 commit，未 push。
 
+Gate D.2 Human Review 完成状态（2026-08-08，`chg-20260808-26`）：61/61 人工裁决完成
+（reviewed_by=human，interactive_human_review）。Overall approve=47 / modify=1 / reject=2 /
+insufficient=11；exact approve 77.05%、usable 78.69%；Existing Concept Recovery accuracy
+77.19%；2 条 property_management 新 Concept 均批准并合并为 1 个 canonical 候选；
+Relation 47×property_management=strong（approve）、06×property_management=medium（modify）；
+error taxonomy 闭合（unexplained=0）；systemic conclusion=targeted_remediation_recommended；
+remediation candidates 仅记录未执行；promotion_status 全部 not_promoted；frozen checksum
+`35bc6d24…` 未变化；Python 全量 512 项通过；已本地 commit，未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -107,6 +116,11 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate D.2 完成（`chg-20260808-26`）：61 条人工裁决全部落盘；
+  Overall exact approve 77.05%、usable 78.69%；existing recovery accuracy 77.19%；
+  property_management 新 Concept 2 条合并批准；relation 47 strong / 06 medium；
+  error taxonomy 闭合、unexplained=0；systemic=targeted_remediation_recommended；
+  remediation 仅记录；frozen checksum 未变；Python 全量 512 项通过；已本地 commit，未 push。
 - 2026-08-07：Gate D.2 工具与批次准备完成（`chg-20260807-25`）：human review 决策校验、
   quality metrics（concept/existing/new/relation/overall + confidence calibration）、
   error taxonomy 闭合、relation dependency、批次文件 batch_c01..c05 + batch_r01；

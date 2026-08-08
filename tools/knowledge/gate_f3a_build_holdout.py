@@ -237,9 +237,17 @@ def collect_excluded_signatures_and_texts() -> tuple[
     doc_refs: set[str] = set()
     tx_ids: set[str] = set()
     outputs = Path(r"D:\Investigator PDF\outputs\knowledge-v1")
-    self_skip = Path(
-        r"D:\Investigator PDF\outputs\knowledge-v1\gate-f3a-holdout-20260808"
-    )
+    self_skip_dirs = {
+        Path(
+            r"D:\Investigator PDF\outputs\knowledge-v1\gate-f3a-holdout-20260808"
+        ),
+        Path(
+            r"D:\Investigator PDF\outputs\knowledge-v1\gate-f3a-1-holdout-20260808"
+        ),
+        Path(
+            r"D:\Investigator PDF\outputs\knowledge-v1\gate-f3a-1-resume-holdout-20260808"
+        ),
+    }
 
     def walk_json(value: Any) -> None:
         if isinstance(value, dict):
@@ -281,7 +289,7 @@ def collect_excluded_signatures_and_texts() -> tuple[
                 texts.add(compact)
 
     for path in outputs.rglob("*.json"):
-        if self_skip in path.parents:
+        if any(skip in path.parents for skip in self_skip_dirs):
             continue
         try:
             walk_json(json.loads(path.read_text(encoding="utf-8")))

@@ -154,6 +154,19 @@ R05～R12 因 relation model 无法表达 evidence-specific none 而 blocked_con
 未改变 canonical KB、无 version bump；legacy pending=0；D.3/D.3.1/review-set 均未触碰；
 未开始 Holdout/Promotion；未 push。
 
+Gate F0 Production Candidate Freeze 状态（2026-08-08，`chg-20260808-35`）：
+`production-candidate-v1` 已冻结（schema 1.17、knowledge v3、resolver v3、prompt v3），
+prediction-affecting 文件 checksum 固化；known limitations 登记 Gate E ×8、
+06×property_management conditional、calibration pending excluded=39；
+legacy_v11 Production、knowledge_v1 Shadow 不变；未 push。
+
+Gate F1 Production Holdout 状态（2026-08-08，`chg-20260808-36`）：
+`production-holdout-v1` 已冻结：120 条唯一语义签名、63 个来源文档、
+document max contribution=2；contamination audit 全 0；independence=Level 2；
+Blinded Human Review Pack 与 Batch H01（12 条）已生成；
+knowledge_v1 run=0、AI call=0、system prediction 未暴露；Human Gold 空；
+未开始 Gate F2 Blind Run；未 push。
+
 AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`（DPAPI 加密，不进仓库），新增 `tools/save_deepseek_ai_config.ps1` 与 `tools/load_deepseek_ai.ps1`；每个新会话先运行 load 脚本即可。
 
 2026-07-28 第4至第8项已统一提交为 `4cf71ef feat: close bankflow verification rounds four through eight`，续接记录提交为 `f6640d4 docs: record bankflow rounds four through eight checkpoint`；第9项已提交为 `4241ba9 feat: close traceable evidence output`，续接记录提交为 `7833959 docs: record traceable evidence checkpoint`。以上均未推送；领先数继续以 `git status`、`git log -1 --oneline` 和远端差异实际核验。v1C 本人账户精确匹配基线为 `893c5d1`，建行个人完整对手账号确定性拆分提交为 `941c2b7`，均尚未推送。
@@ -165,6 +178,9 @@ AI 运行配置已持久化到 `%LOCALAPPDATA%\BankFlowReview\ai_runtime.json`�
 
 最近重要变更：
 
+- 2026-08-08：Gate F0+F1（`chg-20260808-35/36`）：production-candidate-v1 冻结；
+  production-holdout-v1（120 签名 / 63 文档 / 污染 0）冻结；Blinded H01 就绪；
+  Python 全量 561 项通过；已本地 commit，未 push。
 - 2026-08-08：Gate E 全部裁决（`chg-20260808-34`）：12/12 Human decisions 落盘；
   promotion 4 条复用现有 canonical、8 条 contract-blocked；legacy pending=0；
   Python 全量 554 项通过；已本地 commit，未 push。

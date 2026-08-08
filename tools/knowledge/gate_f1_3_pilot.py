@@ -113,6 +113,8 @@ def main() -> int:
             "semantic": doc_semantic,
         }
 
+    non_semantic_count = total_transactions - len(entries)
+
     distinct_concepts = {
         str(entry.get("concept_id") or "")
         for entry in entries
@@ -143,14 +145,21 @@ def main() -> int:
         case_ref=case_ref_hash("hanpeipei"),
         declared_industry="51 批发业（铝锭大宗贸易/金属材料销售）",
         profile_name=profile.profile_name,
+        total_transaction_count=total_transactions,
+        insufficient_transaction_count=non_semantic_count,
+        unavailable_reason_counts={"no_semantic_evidence": non_semantic_count},
     )
-    metrics = evaluate_routing(entries, ai_invoked_ids=set())
+    metrics = evaluate_routing(
+        entries,
+        ai_invoked_ids=set(),
+        execution_mode="deferred",
+    )
     metrics = update_overreach_metrics(metrics)
     metrics["note"] = (
-        "no real AI invoked this round; missed_ai_call is the potential "
-        "AI-eligible volume that a future minimal validation would cover"
+        "execution mode is deferred: ai_eligible items are intentionally "
+        "not invoked; ai_execution_deferred is a normal state and "
+        "missed_ai_call is 0 unless a live-mode routing defect exists"
     )
-    non_semantic_count = total_transactions - len(entries)
     metrics["total_entries"] += non_semantic_count
     metrics["insufficient"] += non_semantic_count
     metrics["routing_counts"] = routing_counts(entries)
@@ -210,14 +219,15 @@ def main() -> int:
     write("hanpeipei_case_evidence_pack.json", pack)
     write("hanpeipei_case_diagnostic.json", diagnostic)
     write("routing_metrics.json", metrics)
+    write("routing_metrics_corrected.json", metrics)
 
     report = [
         "# Gate F1.3 Report",
         "",
         "- conclusion：PASS WITH FOLLOW-UP",
         "- reason：Local/AI 职责边界已冻结；模糊项正确进入 AI eligible；",
-        "  CaseEvidencePack 与 coverage 诊断可用；真实 AI task 与 development",
-        "  regression 留作 follow-up。",
+        "  deferred 与 missed metric 已分离；CaseEvidencePack 含 availability；",
+        "  真实 AI task 与 development regression 由 Gate F1.3.1 处理。",
         "",
         "## 韩培培 Diagnostic（DIAGNOSTIC ONLY）",
         "",

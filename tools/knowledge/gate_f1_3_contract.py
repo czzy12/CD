@@ -15,12 +15,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bankflow_v2.knowledge.evidence import RULE_REGISTRY
 from bankflow_v2.knowledge.routing import (
     BUSINESS_EVIDENCE_TASK_VERSION,
+    CASE_AI_LIFECYCLE,
     CASE_EVIDENCE_PACK_VERSION,
     CASE_SYNTHESIS_TASK_VERSION,
     LOCAL_AI_RESPONSIBILITY_CONTRACT_VERSION,
     ROUTING_AI_ELIGIBLE_TRANSACTION,
     ROUTING_INSUFFICIENT_TRANSACTION,
     ROUTING_LOCAL_RESOLVED,
+    TRANSACTION_AI_LIFECYCLE,
 )
 
 
@@ -120,6 +122,25 @@ def build_responsibility_contract() -> dict[str, Any]:
             "case-level AI result auto-sinking to canonical KB",
             "relation not known interpreted as relation none",
         ],
+        "ai_lifecycles": {
+            "transaction_level": {
+                "lifecycle": TRANSACTION_AI_LIFECYCLE,
+                "flow": "AI -> KnowledgeCandidate -> pending -> Human Review -> approved -> canonical knowledge",
+                "notes": [
+                    "AI cannot self-approve",
+                    "reusable transaction semantics may become candidates",
+                ],
+            },
+            "case_level": {
+                "lifecycle": CASE_AI_LIFECYCLE,
+                "flow": "CaseEvidencePack -> Case AI -> CaseObservation",
+                "notes": [
+                    "case observation is case-specific, not reusable canonical KB",
+                    "case observation must not become KnowledgeCandidate by default",
+                    "reusable knowledge extraction requires a separate Human Review Gate",
+                ],
+            },
+        },
     }
 
 
@@ -156,25 +177,14 @@ def build_evidence_ai_task_contract() -> dict[str, Any]:
             "insufficient_behavior": "unknown / undetermined",
         },
         "candidate_behavior": "AI -> KnowledgeCandidate -> pending -> Human Review -> approved -> local knowledge",
-        "case_level_behavior": (
-            "case-level AI results are case observations, not reusable "
-            "canonical KB; only repeated stable transaction patterns may "
-            "become KnowledgeCandidate"
-        ),
+        "lifecycle": TRANSACTION_AI_LIFECYCLE,
+        "case_level_behavior": CASE_AI_LIFECYCLE,
     }
 
 
 def build_case_evidence_pack_contract() -> dict[str, Any]:
     return {
         "pack_version": CASE_EVIDENCE_PACK_VERSION,
-        "requirements": [
-            "deterministic",
-            "PII-safe",
-            "auditable",
-            "evidence refs traceable",
-            "source provenance preserved",
-            "provider-neutral",
-        ],
         "structure": [
             "declared_industry",
             "direct_business_evidence[]",
@@ -195,10 +205,29 @@ def build_case_evidence_pack_contract() -> dict[str, Any]:
             "amount_summary",
             "direct_industry_relation_summary",
         ],
+        "evidence_availability": {
+            "total_transaction_count": "int",
+            "evidence_eligible_transaction_count": "int",
+            "insufficient_transaction_count": "int",
+            "evidence_availability_ratio": "float or null",
+            "unavailable_reason_counts": "dict[str,int]",
+            "semantics": {
+                "unavailable_not_absent": True,
+            },
+        },
         "compression": (
             "representative refs, strongest evidence, recurrence statistics, "
             "safe semantic summaries; never the full raw statement"
         ),
+        "requirements": [
+            "deterministic",
+            "PII-safe",
+            "auditable",
+            "evidence refs traceable",
+            "source provenance preserved",
+            "provider-neutral",
+            "evidence unavailable is never interpreted as evidence absent",
+        ],
         "forbidden_identity": [
             "customer name",
             "id card",
@@ -229,9 +258,14 @@ def build_case_synthesis_ai_task_contract() -> dict[str, Any]:
             "must remain separable",
             "weak consistency must distinguish real inconsistency from "
             "knowledge coverage insufficiency",
+            "evidence unavailable != evidence absent; reasoning must "
+            "consider evidence coverage limitation",
             "no complex scoring in v1",
             "output is case observation, not canonical KB",
         ],
+        "lifecycle": CASE_AI_LIFECYCLE,
+        "not_knowledge_candidate": True,
+        "no_canonical_sink": True,
     }
 
 

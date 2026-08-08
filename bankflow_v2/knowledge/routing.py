@@ -28,6 +28,11 @@ ROUTING_INSUFFICIENT_TRANSACTION = "insufficient_transaction"
 ROUTING_CASE_AGGREGATION_ONLY = "case_aggregation_only"
 ROUTING_CASE_AI_ELIGIBLE = "case_ai_eligible"
 
+ROUTING_AI_EXECUTION_DEFERRED = "ai_execution_deferred"
+
+TRANSACTION_AI_LIFECYCLE = "transaction_ai_knowledge_candidate_lifecycle"
+CASE_AI_LIFECYCLE = "case_ai_case_observation_lifecycle"
+
 ROUTING_STATES = frozenset(
     {
         ROUTING_LOCAL_RESOLVED,
@@ -70,13 +75,19 @@ def evaluate_routing(
     entries: Iterable[Mapping[str, Any]],
     *,
     ai_invoked_ids: set[str] | frozenset[str] | None = None,
+    execution_mode: str = "deferred",
 ) -> dict[str, Any]:
     """Routing metrics without treating local coverage as the success metric.
 
     unnecessary_ai_call: AI invoked on a locally-resolved obvious item.
-    missed_ai_call:      AI-eligible item that was not invoked.
+    ai_execution_deferred: AI-eligible item intentionally not invoked because
+                           the current Gate/execution mode disables real AI.
+                           This is a normal state, not a defect.
+    missed_ai_call:       AI-eligible item that should have been invoked in a
+                          live mode but was not (implementation defect).
     """
     invoked = set(ai_invoked_ids or ())
+    live_mode = execution_mode == "live"
     rows = list(entries)
     local_resolved = [
         row for row in rows if row.get("routing_state") == ROUTING_LOCAL_RESOLVED
@@ -93,7 +104,9 @@ def evaluate_routing(
         row for row in local_resolved if row.get("transaction_id") in invoked
     ]
     missed_ai = [
-        row for row in ai_eligible if row.get("transaction_id") not in invoked
+        row
+        for row in ai_eligible
+        if live_mode and row.get("transaction_id") not in invoked
     ]
     return {
         "total_entries": len(rows),
@@ -111,8 +124,10 @@ def evaluate_routing(
             if row.get("routing_state") == ROUTING_CASE_AI_ELIGIBLE
         ),
         "unnecessary_ai_call": len(unnecessary_ai),
+        "ai_execution_deferred": len(ai_eligible) if not live_mode else 0,
         "missed_ai_call": len(missed_ai),
         "ai_invoked_count": len(invoked),
+        "execution_mode": execution_mode,
         "local_overreach": 0,
         "local_false_confidence": 0,
     }

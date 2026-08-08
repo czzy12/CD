@@ -364,7 +364,9 @@ class KnowledgeVersion:
 
     @property
     def knowledge_version(self) -> str:
-        return "business-semantic-kb-v1"
+        from . import versioning
+
+        return versioning.KNOWLEDGE_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         return {

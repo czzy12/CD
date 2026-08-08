@@ -1,9 +1,9 @@
 {
   "format": "industry-concept-relations",
-  "version": "industry-relations-v1",
+  "version": "industry-relations-v2",
   "source": "curated_knowledge_v1",
   "source_note": "初始行业×概念关系为人工编写的通用模板关系（bootstrap），全部 approved 仅用于离线 shadow 验证；正式投入生产前需按人工验收流程复核。",
-  "updated_at": "2026-08-07T00:00:00+08:00",
+  "updated_at": "2026-08-08T00:00:00+08:00",
   "relations": [
     { "industry_id": "generic_business", "concept_id": "logistics", "relevance": "weak", "reason_template": "通用经营可能涉及的物流运输配套", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" },
     { "industry_id": "generic_business", "concept_id": "warehouse", "relevance": "weak", "reason_template": "通用经营可能涉及的仓储配套", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" },
@@ -298,6 +298,7 @@
     { "industry_id": "06", "concept_id": "mining", "relevance": "strong", "reason_template": "矿业开发是煤炭行业的直接相关业务", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" },
     { "industry_id": "internal.building_material_trade", "concept_id": "mining", "relevance": "medium", "reason_template": "建材批发贸易可能从矿业采购原料", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" },
     { "industry_id": "internal.environmental_engineering", "concept_id": "mining", "relevance": "medium", "reason_template": "环保工程可能涉及矿料与治理项目", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" },
-    { "industry_id": "47", "concept_id": "mining", "relevance": "weak", "reason_template": "房屋建筑行业与矿业只存在弱关联", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" }
+    { "industry_id": "47", "concept_id": "mining", "relevance": "weak", "reason_template": "房屋建筑行业与矿业只存在弱关联", "source": "curated_knowledge_v1", "review_status": "approved", "confidence_tier": "template", "knowledge_version": "business-semantic-kb-v1", "created_by": "knowledge_v1_bootstrap", "reviewed_at": "2026-08-07T00:00:00+08:00" },
+    { "industry_id": "47", "concept_id": "property_management", "relevance": "strong", "reason_template": "物业管理是房屋建筑业（47）的下游服务环节", "source": "human_review:gate_d2", "review_status": "approved", "confidence_tier": "reviewed", "knowledge_version": "business-semantic-kb-v2", "created_by": "human_review", "reviewed_at": "2026-08-08T00:00:00+08:00" }
   ]
 }

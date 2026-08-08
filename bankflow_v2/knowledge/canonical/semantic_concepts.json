@@ -1,9 +1,9 @@
 {
   "format": "semantic-concepts",
-  "version": "semantic-concepts-v1",
+  "version": "semantic-concepts-v2",
   "source": "curated_knowledge_v1",
   "source_note": "通用经营语义概念，不含任何客户身份或真实商户名；examples_generic 全部为示例性泛化词。",
-  "updated_at": "2026-08-07T00:00:00+08:00",
+  "updated_at": "2026-08-08T00:00:00+08:00",
   "concepts": [
     {
       "concept_id": "goods",
@@ -472,6 +472,18 @@
       "status": "active",
       "source": "curated_knowledge_v1",
       "knowledge_version": "business-semantic-kb-v1"
+    },
+    {
+      "concept_id": "property_management",
+      "name_zh": "物业管理",
+      "aliases": ["物业", "物业管理", "物业费", "物业服务", "物业公司"],
+      "keywords": ["物业", "物业管理", "物业费"],
+      "parent_concept_id": "service",
+      "description": "与物业管理服务、物业管理费、住宅/商业物业日常管理服务直接相关的交易语义",
+      "examples_generic": ["物业管理费", "物业费"],
+      "status": "active",
+      "source": "human_review:gate_d2",
+      "knowledge_version": "business-semantic-kb-v2"
     },
     {
       "concept_id": "wholesale",

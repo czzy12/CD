@@ -1,9 +1,9 @@
 {
   "format": "semantic-aliases",
-  "version": "semantic-aliases-v1",
+  "version": "semantic-aliases-v2",
   "source": "curated_knowledge_v1",
   "source_note": "通用经营语义别名库，只包含脱敏泛化表达，不含客户姓名、商户全名、账号或路径。",
-  "updated_at": "2026-08-07T00:00:00+08:00",
+  "updated_at": "2026-08-08T00:00:00+08:00",
   "aliases": [
     { "alias_id": "alias:建材", "alias_text": "建材", "concept_id": "building_material", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
     { "alias_id": "alias:建筑材料", "alias_text": "建筑材料", "concept_id": "building_material", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
@@ -257,6 +257,11 @@
     { "alias_id": "alias:资产开发", "alias_text": "资产开发", "concept_id": "real_estate", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
     { "alias_id": "alias:矿业", "alias_text": "矿业", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
     { "alias_id": "alias:矿业开发", "alias_text": "矿业开发", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
-    { "alias_id": "alias:矿山", "alias_text": "矿山", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" }
+    { "alias_id": "alias:矿山", "alias_text": "矿山", "concept_id": "mining", "status": "active", "source": "curated_knowledge_v1", "knowledge_version": "business-semantic-kb-v1" },
+    { "alias_id": "alias:物业", "alias_text": "物业", "concept_id": "property_management", "status": "active", "source": "human_review:gate_d2", "knowledge_version": "business-semantic-kb-v2" },
+    { "alias_id": "alias:物业管理", "alias_text": "物业管理", "concept_id": "property_management", "status": "active", "source": "human_review:gate_d2", "knowledge_version": "business-semantic-kb-v2" },
+    { "alias_id": "alias:物业费", "alias_text": "物业费", "concept_id": "property_management", "status": "active", "source": "human_review:gate_d2", "knowledge_version": "business-semantic-kb-v2" },
+    { "alias_id": "alias:物业服务", "alias_text": "物业服务", "concept_id": "property_management", "status": "active", "source": "human_review:gate_d2", "knowledge_version": "business-semantic-kb-v2" },
+    { "alias_id": "alias:物业公司", "alias_text": "物业公司", "concept_id": "property_management", "status": "active", "source": "human_review:gate_d2", "knowledge_version": "business-semantic-kb-v2" }
   ]
 }

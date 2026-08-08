@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from bankflow_v2.knowledge.ai_contracts import (
+    build_transaction_evidence_observations,
     validate_case_observation,
     validate_transaction_evidence_result,
 )
@@ -137,6 +138,34 @@ class AiContractValidationTest(unittest.TestCase):
             TRANSACTION_AI_LIFECYCLE,
             CASE_AI_LIFECYCLE,
         )
+
+    def test_transaction_observation_is_non_canonical(self):
+        result = {
+            "accepted": [
+                {
+                    "item_id": "dev-fee",
+                    "role": "operating_expense",
+                    "trace_strength": "weak",
+                    "context_dependency": "high",
+                    "reason": "ambiguous",
+                    "evidence_refs": ["dev-fee"],
+                    "confidence": "medium",
+                }
+            ]
+        }
+        observations = build_transaction_evidence_observations(
+            result,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+        )
+        self.assertEqual(len(observations), 1)
+        observation = observations[0]
+        self.assertEqual(
+            observation["observation_type"],
+            "TransactionEvidenceObservation",
+        )
+        self.assertTrue(observation["non_canonical"])
+        self.assertEqual(observation["evidence_refs"], ["dev-fee"])
 
 
 class CoverageRegressionTest(unittest.TestCase):

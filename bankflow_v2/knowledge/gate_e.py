@@ -142,3 +142,73 @@ def validate_legacy_relation_decision(
         if category not in RELATION_ERROR_CATEGORIES:
             errors.append("error_category_missing_or_invalid")
     return errors
+
+
+def classify_legacy_relation_promotion(
+    *,
+    review_decision: str,
+    final_relevance: str,
+    current_local_relevance: str,
+    existing_exact_relevance: str | None,
+    generic_business_relevance: str | None,
+) -> dict[str, Any]:
+    """Classify one Gate E promotion path without mutating canonical KB.
+
+    The Human semantic decision is frozen; this only decides how the current
+    relation model can safely express it.
+    """
+    if review_decision not in {"approve", "modify"}:
+        return {
+            "eligible": False,
+            "classification": "not_eligible_human_decision",
+            "blocker": "review_decision_not_promotable",
+            "promote": False,
+        }
+    if final_relevance == "none" and current_local_relevance != "none":
+        if generic_business_relevance in {"weak", "medium", "strong"}:
+            return {
+                "eligible": False,
+                "classification": "blocked_contract",
+                "blocker": "relation_model_expressiveness",
+                "promote": False,
+            }
+        return {
+            "eligible": False,
+            "classification": "blocked_contract",
+            "blocker": "none_requires_evidence_specific_relation",
+            "promote": False,
+        }
+    if existing_exact_relevance == final_relevance:
+        return {
+            "eligible": False,
+            "classification": "resolved_by_existing_canonical",
+            "blocker": "",
+            "promote": False,
+        }
+    if current_local_relevance == final_relevance and generic_business_relevance == final_relevance:
+        return {
+            "eligible": False,
+            "classification": "resolved_by_existing_canonical",
+            "blocker": "",
+            "promote": False,
+        }
+    if current_local_relevance == final_relevance:
+        return {
+            "eligible": False,
+            "classification": "promotion_not_required",
+            "blocker": "",
+            "promote": False,
+        }
+    if existing_exact_relevance is not None and existing_exact_relevance != final_relevance:
+        return {
+            "eligible": False,
+            "classification": "blocked_conflict",
+            "blocker": "existing_canonical_conflict",
+            "promote": False,
+        }
+    return {
+        "eligible": True,
+        "classification": "promoted_new_snapshot",
+        "blocker": "",
+        "promote": True,
+    }

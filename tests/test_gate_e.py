@@ -8,6 +8,7 @@ from bankflow_v2.knowledge.gate_e import (
     LEGACY_RELATION_PROMPT_VERSION,
     LEGACY_RELATION_SET_VERSION,
     build_legacy_relation_manifest,
+    classify_legacy_relation_promotion,
     select_legacy_relation_pending,
     validate_legacy_relation_decision,
 )
@@ -143,6 +144,64 @@ class LegacyRelationDecisionValidationTests(unittest.TestCase):
             candidate=self._candidate_dict(),
         )
         self.assertIn("review_set_version_mismatch", errors)
+
+
+class LegacyRelationPromotionClassificationTests(unittest.TestCase):
+    def test_weak_resolved_by_generic_business(self):
+        result = classify_legacy_relation_promotion(
+            review_decision="modify",
+            final_relevance="weak",
+            current_local_relevance="weak",
+            existing_exact_relevance=None,
+            generic_business_relevance="weak",
+        )
+        self.assertFalse(result["eligible"])
+        self.assertEqual(result["classification"], "resolved_by_existing_canonical")
+
+    def test_explicit_none_blocked_when_generic_weak_exists(self):
+        result = classify_legacy_relation_promotion(
+            review_decision="approve",
+            final_relevance="none",
+            current_local_relevance="weak",
+            existing_exact_relevance=None,
+            generic_business_relevance="weak",
+        )
+        self.assertFalse(result["eligible"])
+        self.assertEqual(result["classification"], "blocked_contract")
+        self.assertEqual(result["blocker"], "relation_model_expressiveness")
+
+    def test_none_not_required_when_local_already_none(self):
+        result = classify_legacy_relation_promotion(
+            review_decision="approve",
+            final_relevance="none",
+            current_local_relevance="none",
+            existing_exact_relevance=None,
+            generic_business_relevance=None,
+        )
+        self.assertFalse(result["eligible"])
+        self.assertEqual(result["classification"], "promotion_not_required")
+
+    def test_reject_not_promotable(self):
+        result = classify_legacy_relation_promotion(
+            review_decision="reject",
+            final_relevance="none",
+            current_local_relevance="weak",
+            existing_exact_relevance=None,
+            generic_business_relevance="weak",
+        )
+        self.assertFalse(result["eligible"])
+        self.assertEqual(result["classification"], "not_eligible_human_decision")
+
+    def test_new_snapshot_eligible_when_no_equivalent(self):
+        result = classify_legacy_relation_promotion(
+            review_decision="modify",
+            final_relevance="medium",
+            current_local_relevance="weak",
+            existing_exact_relevance=None,
+            generic_business_relevance="weak",
+        )
+        self.assertTrue(result["eligible"])
+        self.assertEqual(result["classification"], "promoted_new_snapshot")
 
 
 if __name__ == "__main__":

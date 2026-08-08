@@ -20,6 +20,7 @@ from .models import (
 )
 from .normalization import semantic_signature_from_fields
 from .normalization import normalize_semantic_text
+from .payment_rail import is_payment_rail_only
 from .relations import RelationKB, cap_strength
 from .repository import RuntimeKnowledgeRepository
 from .semantic_concepts import SemanticConceptKB
@@ -160,6 +161,25 @@ class SemanticResolver:
             )
         if stats is not None:
             stats.semantic_requests += 1
+        business_terms = tuple(
+            dict.fromkeys(
+                term
+                for terms in self._concepts.keyword_terms().values()
+                for term in terms
+            )
+        )
+        if is_payment_rail_only(fields, business_terms=business_terms):
+            if stats is not None:
+                stats.undetermined_count += 1
+            return SemanticResolution(
+                concept_id="",
+                concept_name="",
+                confidence="none",
+                source="undetermined",
+                concept_resolution_source="unresolved",
+                reason="支付渠道/收单语义，无经营业务对象",
+                knowledge_version=self._version.semantic_kb_version,
+            )
 
         ordered_values = [
             str(fields[field_name] or "")

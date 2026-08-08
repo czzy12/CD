@@ -204,6 +204,16 @@ class DeepSeekKnowledgeAdapter:
             payload={
                 "concept_candidates": concept_candidates,
                 "items": safe_items,
+                "instructions": [
+                    "支付渠道、支付工具、收单机构（如财付通、微信支付、支付宝、扫码、POS、"
+                    "拉卡拉、银联等）本身不构成经营 Concept。",
+                    "只有存在明确业务对象（企业/商户/商品/用途语义）时才可映射到经营 Concept。",
+                    "缺乏可识别业务对象时应返回 concept_id=undetermined 或 confidence=low，"
+                    "不要默认映射 generic。",
+                    "generic 是合法父级 Concept，但不是“无法判断”的默认答案；证据不足应 "
+                    "undetermined。",
+                    "不得把真实商户名或个人姓名作为新 Concept 名称。",
+                ],
             },
             output_schema=output_schema,
         )

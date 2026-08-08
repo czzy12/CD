@@ -509,6 +509,58 @@ class RetryAndSafetyTests(unittest.TestCase):
                 concept_candidates=[],
             )
 
+    def test_concept_payload_includes_boundary_instructions(self):
+        captured = {}
+
+        def transport(url, body, headers, timeout):
+            captured["body"] = body.decode("utf-8")
+            return json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "results": [
+                                            {
+                                                "item_id": "i1",
+                                                "concept_id": "undetermined",
+                                                "confidence": "low",
+                                                "reason": "insufficient",
+                                                "used_fields": ["remark"],
+                                            }
+                                        ]
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+        from bankflow_v2.deepseek_adapter import DeepSeekSettings
+
+        settings = DeepSeekSettings(
+            api_key="k",
+            base_url="https://example.com",
+            enabled=True,
+            data_authorized=True,
+            retention_policy_confirmed=True,
+        )
+        adapter = DeepSeekKnowledgeAdapter(settings, transport)
+        adapter.resolve_concepts(
+            [{"item_id": "i1", "fields": {"remark": "财付通-微信支付-扫码付款"}}],
+            concept_candidates=[],
+        )
+        payload = json.loads(captured["body"])
+        user = json.loads(payload["messages"][1]["content"])
+        instructions = " ".join(user.get("instructions", []))
+        self.assertIn("支付渠道", instructions)
+        self.assertIn("generic", instructions)
+        self.assertIn("undetermined", instructions)
+
 
 if __name__ == "__main__":
     unittest.main()

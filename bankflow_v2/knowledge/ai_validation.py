@@ -23,6 +23,8 @@ from ..ai_business_observation import (
 from .ai_fallback import DeepSeekKnowledgeAdapter, KnowledgeAIError
 from .models import IndustryProfile
 from .normalization import semantic_signature_from_fields
+from .normalization import sanitize_personal_names
+from .payment_rail import is_payment_rail_only
 from .privacy import build_privacy_preflight, guard_item
 from .relations import cap_strength
 from .repository import RuntimeKnowledgeRepository
@@ -62,7 +64,7 @@ def safe_validation_fields(fields: Mapping[str, object]) -> dict[str, str]:
     if not isinstance(usable, Mapping):
         return {}
     return {
-        str(name): str(value)
+        str(name): sanitize_personal_names(str(value))
         for name, value in usable.items()
         if str(value or "").strip()
     }
@@ -102,6 +104,7 @@ def build_validation_items(
         "eligible_unique_signatures": 0,
         "duplicated_signatures_skipped": 0,
         "excluded_by_filter": 0,
+        "payment_rail_non_business_skipped": 0,
     }
 
     def append_entry(
@@ -124,6 +127,16 @@ def build_validation_items(
             and signature.signature_id not in only_signatures
         ):
             counts["excluded_by_filter"] += member_count
+            return
+        business_terms = tuple(
+            dict.fromkeys(
+                term
+                for terms in runtime.concepts.keyword_terms().values()
+                for term in terms
+            )
+        )
+        if is_payment_rail_only(safe, business_terms=business_terms):
+            counts["payment_rail_non_business_skipped"] += member_count
             return
         existing = by_signature.get(signature.signature_id)
         if existing is not None:

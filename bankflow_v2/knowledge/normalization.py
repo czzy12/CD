@@ -27,11 +27,41 @@ _REFERENCE_NUMBER_RE = re.compile(
 _HASH_RE = re.compile(r"^(?:[a-f0-9]{16,}|[a-z0-9+/]{24,}={0,2})$", re.IGNORECASE)
 _ASCII_PREFIX_RE = re.compile(r"^[a-z0-9._/-]{6,}(?=[\u3400-\u9fff])", re.IGNORECASE)
 _ASCII_SUFFIX_RE = re.compile(r"(?<=[\u3400-\u9fff])[a-z0-9._/-]{6,}$", re.IGNORECASE)
+_PERSON_AFTER_ORG_RE = re.compile(
+    r"((?:集团|公司|商行|经营部|门市部|中心|厂|店|铺|行|部|处|所|馆|城|园|府|坊|站|"
+    r"广场|商场|超市|银行|医院|学校|物业)[\s\-_/|·]+)"
+    r"([\u4e00-\u9fa5]{2,3})(?=$|[\s\d])"
+)
+_PERSON_AFTER_PLATFORM_RE = re.compile(
+    r"((?:淘宝|支付宝|微信|京东|拼多多|天猫|抖音|快手)[\s\-_/|·]+)"
+    r"([\u4e00-\u9fa5]{2,3})$"
+)
+
+
+def sanitize_personal_names(value: str) -> str:
+    """Redact likely personal names while preserving organization semantics.
+
+    Conservative: only a 2-3 character CJK token after an organization marker
+    or a known platform marker plus a separator is replaced with [PERSON].
+    Bare names and business entities without such structure stay untouched.
+    """
+    cleaned = _PERSON_AFTER_ORG_RE.sub(
+        lambda match: match.group(1) + "[PERSON]",
+        str(value or ""),
+    )
+    cleaned = _PERSON_AFTER_PLATFORM_RE.sub(
+        lambda match: match.group(1) + "[PERSON]",
+        cleaned,
+    )
+    return cleaned
 
 
 def normalize_semantic_text(value: str) -> str:
     """Conservative per-field normalization that preserves distinct identity."""
-    normalized = unicodedata.normalize("NFKC", str(value or "")).strip()
+    normalized = unicodedata.normalize(
+        "NFKC",
+        sanitize_personal_names(value),
+    ).strip()
     normalized = _WS_RE.sub("", normalized)
     if not normalized:
         return ""

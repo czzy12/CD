@@ -385,6 +385,39 @@ def persist_transaction_evidence_candidates(
     return records
 
 
+def build_transaction_evidence_observations(
+    result: Mapping[str, Any],
+    *,
+    provider: str,
+    model: str,
+) -> list[dict[str, Any]]:
+    """Current-case non-canonical observations from accepted AI results.
+
+    These observations may feed the current CaseEvidencePack, but they never
+    become canonical knowledge by being used. Reusable knowledge must go
+    through KnowledgeCandidate(pending) -> Human Review.
+    """
+    observations: list[dict[str, Any]] = []
+    for item in result.get("accepted", []):
+        observations.append(
+            {
+                "observation_type": "TransactionEvidenceObservation",
+                "source": "ai",
+                "provider": provider,
+                "model": model,
+                "contract_version": BUSINESS_EVIDENCE_TASK_VERSION,
+                "evidence_refs": list(item.get("evidence_refs", [])),
+                "confidence": str(item.get("confidence", "")),
+                "uncertainty": str(item.get("context_dependency", "")),
+                "role": str(item.get("role", "")),
+                "trace_strength": str(item.get("trace_strength", "")),
+                "reason": str(item.get("reason", "")),
+                "non_canonical": True,
+            }
+        )
+    return observations
+
+
 def validate_case_observation(
     observation: Mapping[str, Any],
     pack: Mapping[str, Any],

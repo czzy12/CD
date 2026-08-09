@@ -194,6 +194,76 @@ class F3bPrepTest(unittest.TestCase):
         self.assertIn("交易编号", headers)
         self.assertIn("经营证据角色(人工)", headers)
 
+    def test_dropdown_xlsx_files_exist(self):
+        tx = REVIEW_DIR / "transaction_human_review_v1_下拉填写版.xlsx"
+        case = REVIEW_DIR / "case_human_review_v1_下拉填写版.xlsx"
+        qc = REVIEW_DIR / "transaction_qc_rereview_v1_下拉填写版.xlsx"
+        self.assertTrue(tx.is_file())
+        self.assertTrue(case.is_file())
+        self.assertTrue(qc.is_file())
+
+    def test_transaction_xlsx_rows_and_dropdowns(self):
+        from openpyxl import load_workbook
+
+        wb = load_workbook(
+            REVIEW_DIR / "transaction_human_review_v1_下拉填写版.xlsx"
+        )
+        ws = wb.active
+        self.assertEqual(ws.max_row, 101)
+        self.assertEqual(ws.max_column, 23)
+        self.assertGreaterEqual(len(ws.data_validations.dataValidation), 6)
+        self.assertEqual(ws.cell(1, 1).value, "交易编号")
+        self.assertEqual(ws.cell(1, 13).value, "行业直接关系(人工)")
+
+    def test_chinese_selection_roundtrip(self):
+        import tempfile
+        from openpyxl import Workbook
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "filled.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.append(
+                [
+                    "交易编号",
+                    "行业直接关系(人工)",
+                    "经营证据角色(人工)",
+                    "经营痕迹强度(人工)",
+                    "预期处理层(人工)",
+                    "信息是否充分(人工)",
+                    "人工置信度",
+                    "判断理由(人工)",
+                    "审核人",
+                    "审核时间",
+                    "审核标准版本",
+                ]
+            )
+            ws.append(
+                [
+                    "TXH-V1-0001",
+                    "弱",
+                    "税务监管",
+                    "中",
+                    "本地处理",
+                    "是",
+                    "高",
+                    "持续税费",
+                    "user",
+                    "2026-08-09",
+                    "human_gold_review_standard_v1",
+                ]
+            )
+            wb.save(path)
+            gold = self.tool.read_transaction_gold_xlsx(path)
+            self.assertEqual(len(gold), 1)
+            self.assertEqual(gold[0]["holdout_item_id"], "TXH-V1-0001")
+            self.assertEqual(gold[0]["human_industry_direct_relation"], "weak")
+            self.assertEqual(gold[0]["human_business_evidence_role"], "tax_regulatory")
+            self.assertEqual(gold[0]["human_business_trace_strength"], "medium")
+            self.assertEqual(gold[0]["human_expected_route"], "local_resolved")
+            self.assertEqual(gold[0]["human_sufficient_information"], "true")
+            self.assertEqual(gold[0]["human_confidence"], "high")
+
 
 if __name__ == "__main__":
     unittest.main()

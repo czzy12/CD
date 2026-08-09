@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import sys
+from openpyxl import Workbook
+from openpyxl.worksheet.datavalidation import DataValidation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -147,6 +149,47 @@ QC_HEADER_ZH = {
     "amount": "金额",
     "blank_for_rereview": "复核用空白",
 }
+
+RELATION_ZH = {
+    "strong": "强",
+    "medium": "中",
+    "weak": "弱",
+    "none": "无",
+    "undetermined": "无法判断",
+}
+ROLE_ZH = {
+    "direct_business": "直接经营",
+    "operating_expense": "经营运营支出",
+    "tax_regulatory": "税务监管",
+    "financing": "融资借贷",
+    "settlement_infrastructure": "结算基础设施",
+    "employment_operation": "用工经营",
+    "government_interaction": "政府往来",
+    "personal_consumption": "个人消费",
+    "neutral_transfer": "中性转账",
+    "unknown": "未知",
+}
+ROUTE_ZH = {
+    "local_resolved": "本地处理",
+    "ai_eligible_transaction": "AI处理",
+    "insufficient_transaction": "信息不足",
+    "case_aggregation_only": "仅案件汇总",
+}
+SUFFICIENCY_ZH = {
+    "sufficient": "充分",
+    "partial": "部分",
+    "insufficient": "不足",
+}
+CONFIDENCE_ZH = {
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+}
+BOOL_ZH = {"true": "是", "false": "否"}
+
+ZH_TO_EN = {}
+for _map in (RELATION_ZH, ROLE_ZH, ROUTE_ZH, SUFFICIENCY_ZH, CONFIDENCE_ZH, BOOL_ZH):
+    ZH_TO_EN.update({zh: en for en, zh in _map.items()})
 
 
 def _utcnow() -> str:
@@ -337,6 +380,211 @@ def write_chinese_header_copy(
                     for name in fieldnames
                 }
             )
+
+
+def _add_dropdown(ws, column_letter: str, options: list[str], row_count: int) -> None:
+    dv = DataValidation(
+        type="list",
+        formula1='"' + ",".join(options) + '"',
+        allow_blank=True,
+        showDropDown=False,
+    )
+    ws.add_data_validation(dv)
+    dv.add(f"{column_letter}2:{column_letter}{row_count + 1}")
+
+
+def build_transaction_xlsx(items: list[dict[str, Any]], path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "交易人工审核"
+    headers = [TX_HEADER_ZH[name] for name in TX_REVIEW_INFO_COLUMNS + TX_GOLD_COLUMNS]
+    ws.append(headers)
+    for item in sorted(items, key=lambda row: row["holdout_item_id"]):
+        ws.append(
+            [
+                item["holdout_item_id"],
+                item["source_case_id"],
+                item["declared_industry"],
+                item["declared_industry"],
+                item["normalized_transaction_text"],
+                json.dumps(item["safe_semantic_evidence"], ensure_ascii=False),
+                item["date"],
+                item["month"],
+                item["direction"],
+                item["amount"],
+                item["amount_bucket"],
+                item["source_evidence_reference"],
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "human_gold_review_standard_v1",
+            ]
+        )
+    row_count = len(items)
+    _add_dropdown(ws, "M", list(RELATION_ZH.values()), row_count)
+    _add_dropdown(ws, "N", list(ROLE_ZH.values()), row_count)
+    _add_dropdown(ws, "O", list(RELATION_ZH.values()), row_count)
+    _add_dropdown(ws, "P", list(ROUTE_ZH.values()), row_count)
+    _add_dropdown(ws, "Q", ["是", "否"], row_count)
+    _add_dropdown(ws, "R", list(CONFIDENCE_ZH.values()), row_count)
+    _add_dropdown(ws, "W", ["human_gold_review_standard_v1"], row_count)
+    wb.save(path)
+
+
+def build_case_xlsx(cases: list[dict[str, Any]], path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "案件人工审核"
+    info_headers = (
+        "anonymized_case_id",
+        "declared_industry",
+        "business_description",
+        "account_source_coverage",
+        "company_address_available",
+        "home_address_available",
+    )
+    headers = [CASE_HEADER_ZH[name] for name in info_headers + CASE_GOLD_COLUMNS]
+    ws.append(headers)
+    for case in sorted(cases, key=lambda row: row["anonymized_case_id"]):
+        ws.append(
+            [
+                case["anonymized_case_id"],
+                case["declared_industry"],
+                case["business_description"],
+                "|".join(
+                    str(doc.get("bank_id", ""))
+                    for doc in case["statement_files"]
+                    if doc.get("supported")
+                ),
+                "是" if case["company_address_available"] else "否",
+                "是" if case["home_address_available"] else "否",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "human_gold_review_standard_v1",
+            ]
+        )
+    row_count = len(cases)
+    _add_dropdown(ws, "G", list(RELATION_ZH.values()), row_count)
+    _add_dropdown(ws, "H", list(RELATION_ZH.values()), row_count)
+    _add_dropdown(ws, "I", list(SUFFICIENCY_ZH.values()), row_count)
+    _add_dropdown(ws, "P", ["human_gold_review_standard_v1"], row_count)
+    wb.save(path)
+
+
+def build_qc_xlsx(items: list[dict[str, Any]], path: Path, count: int = 10) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "QC复核"
+    rng = random.Random(20260808)
+    selected = sorted(items, key=lambda row: row["holdout_item_id"])
+    rng.shuffle(selected)
+    selected = selected[:count]
+    headers = [
+        "复核编号",
+        "原交易编号",
+        "申报行业",
+        "交易归一化文本",
+        "安全语义证据(JSON)",
+        "交易日期",
+        "方向",
+        "金额",
+        "行业直接关系(人工)",
+        "经营证据角色(人工)",
+        "经营痕迹强度(人工)",
+        "预期处理层(人工)",
+        "信息是否充分(人工)",
+        "人工置信度",
+        "判断理由(人工)",
+        "审核人",
+        "审核时间",
+        "审核标准版本",
+    ]
+    ws.append(headers)
+    for index, item in enumerate(selected, start=1):
+        ws.append(
+            [
+                f"QC-{index:02d}",
+                item["holdout_item_id"],
+                item["declared_industry"],
+                item["normalized_transaction_text"],
+                json.dumps(item["safe_semantic_evidence"], ensure_ascii=False),
+                item["date"],
+                item["direction"],
+                item["amount"],
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "human_gold_review_standard_v1",
+            ]
+        )
+    _add_dropdown(ws, "I", list(RELATION_ZH.values()), count)
+    _add_dropdown(ws, "J", list(ROLE_ZH.values()), count)
+    _add_dropdown(ws, "K", list(RELATION_ZH.values()), count)
+    _add_dropdown(ws, "L", list(ROUTE_ZH.values()), count)
+    _add_dropdown(ws, "M", ["是", "否"], count)
+    _add_dropdown(ws, "N", list(CONFIDENCE_ZH.values()), count)
+    _add_dropdown(ws, "R", ["human_gold_review_standard_v1"], count)
+    wb.save(path)
+
+
+def read_transaction_gold_xlsx(path: Path) -> list[dict[str, Any]]:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+    headers = [str(cell.value or "") for cell in ws[1]]
+    reverse_headers = {zh: en for en, zh in TX_HEADER_ZH.items()}
+    rows: list[dict[str, Any]] = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] is None:
+            continue
+        record: dict[str, Any] = {}
+        for header, value in zip(headers, row):
+            english = reverse_headers.get(header, header)
+            if english in TX_GOLD_COLUMNS or english == "holdout_item_id":
+                record[english] = ZH_TO_EN.get(str(value or ""), str(value or ""))
+        rows.append(record)
+    return rows
+
+
+def read_case_gold_xlsx(path: Path) -> list[dict[str, Any]]:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+    headers = [str(cell.value or "") for cell in ws[1]]
+    reverse_headers = {zh: en for en, zh in CASE_HEADER_ZH.items()}
+    rows: list[dict[str, Any]] = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] is None:
+            continue
+        record: dict[str, Any] = {}
+        for header, value in zip(headers, row):
+            english = reverse_headers.get(header, header)
+            if english in CASE_GOLD_COLUMNS or english == "anonymized_case_id":
+                record[english] = ZH_TO_EN.get(str(value or ""), str(value or ""))
+        rows.append(record)
+    return rows
 
 
 def validate_transaction_gold(
@@ -533,6 +781,19 @@ def main() -> int:
         args.output_dir / "transaction_qc_rereview_v1.csv",
         args.output_dir / "transaction_qc_rereview_v1_中文版.csv",
         QC_HEADER_ZH,
+    )
+    build_transaction_xlsx(
+        items,
+        args.output_dir / "transaction_human_review_v1_下拉填写版.xlsx",
+    )
+    build_case_xlsx(
+        cases,
+        args.output_dir / "case_human_review_v1_下拉填写版.xlsx",
+    )
+    build_qc_xlsx(
+        items,
+        args.output_dir / "transaction_qc_rereview_v1_下拉填写版.xlsx",
+        count=args.qc_count,
     )
     report = {
         "gate": "F3B-PREP",

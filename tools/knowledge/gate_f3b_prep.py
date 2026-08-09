@@ -91,6 +91,63 @@ TX_REVIEW_INFO_COLUMNS = (
     "evidence_refs",
 )
 
+TX_HEADER_ZH = {
+    "holdout_item_id": "交易编号",
+    "anonymized_case_id": "案例ID(匿名)",
+    "declared_industry": "申报行业",
+    "business_description": "业务描述",
+    "normalized_transaction_text": "交易归一化文本",
+    "safe_semantic_evidence": "安全语义证据(JSON)",
+    "date": "交易日期",
+    "month": "月份",
+    "direction": "方向",
+    "amount": "金额",
+    "amount_bucket": "金额档",
+    "evidence_refs": "证据引用",
+    "human_industry_direct_relation": "行业直接关系(人工)",
+    "human_business_evidence_role": "经营证据角色(人工)",
+    "human_business_trace_strength": "经营痕迹强度(人工)",
+    "human_expected_route": "预期处理层(人工)",
+    "human_sufficient_information": "信息是否充分(人工)",
+    "human_confidence": "人工置信度",
+    "supporting_evidence_refs": "支持证据引用(人工)",
+    "reviewer_reasoning": "判断理由(人工)",
+    "reviewer_id": "审核人",
+    "reviewed_at": "审核时间",
+    "review_standard_version": "审核标准版本",
+}
+
+CASE_HEADER_ZH = {
+    "anonymized_case_id": "案例ID(匿名)",
+    "declared_industry": "申报行业",
+    "business_description": "业务描述",
+    "account_source_coverage": "账户/来源覆盖",
+    "company_address_available": "公司地址可用",
+    "home_address_available": "家庭地址可用",
+    "business_activity_presence": "经营存在(人工)",
+    "declared_industry_consistency": "申报行业一致性(人工)",
+    "human_assessment_sufficiency": "资料充分性(人工)",
+    "supporting_evidence_refs": "支持证据引用(人工)",
+    "contradictory_evidence_refs": "矛盾证据引用(人工)",
+    "uncertainty_notes": "不确定说明(人工)",
+    "reasoning_summary": "判断逻辑(人工)",
+    "reviewer_id": "审核人",
+    "reviewed_at": "审核时间",
+    "review_standard_version": "审核标准版本",
+}
+
+QC_HEADER_ZH = {
+    "qc_item_id": "复核编号",
+    "holdout_item_id": "原交易编号",
+    "declared_industry": "申报行业",
+    "normalized_transaction_text": "交易归一化文本",
+    "safe_semantic_evidence": "安全语义证据(JSON)",
+    "date": "交易日期",
+    "direction": "方向",
+    "amount": "金额",
+    "blank_for_rereview": "复核用空白",
+}
+
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -258,6 +315,28 @@ def build_qc_list(items: list[dict[str, Any]], *, count: int = 10) -> str:
             }
         )
     return buffer.getvalue()
+
+
+def write_chinese_header_copy(
+    source: Path,
+    target: Path,
+    header_map: dict[str, str],
+) -> None:
+    with open(source, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = list(reader.fieldnames or [])
+        rows = list(reader)
+    translated = [header_map.get(name, name) for name in fieldnames]
+    with open(target, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=translated)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    header_map.get(name, name): row[name]
+                    for name in fieldnames
+                }
+            )
 
 
 def validate_transaction_gold(
@@ -439,6 +518,21 @@ def main() -> int:
     (args.output_dir / "case_review_meta.json").write_text(
         json.dumps(cases, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
+    )
+    write_chinese_header_copy(
+        args.output_dir / "transaction_human_review_v1.csv",
+        args.output_dir / "transaction_human_review_v1_中文版.csv",
+        TX_HEADER_ZH,
+    )
+    write_chinese_header_copy(
+        args.output_dir / "case_human_review_v1.csv",
+        args.output_dir / "case_human_review_v1_中文版.csv",
+        CASE_HEADER_ZH,
+    )
+    write_chinese_header_copy(
+        args.output_dir / "transaction_qc_rereview_v1.csv",
+        args.output_dir / "transaction_qc_rereview_v1_中文版.csv",
+        QC_HEADER_ZH,
     )
     report = {
         "gate": "F3B-PREP",

@@ -182,6 +182,18 @@ class F3bPrepTest(unittest.TestCase):
                 ).is_file()
             )
 
+    def test_chinese_header_review_files_exist(self):
+        tx_zh = REVIEW_DIR / "transaction_human_review_v1_中文版.csv"
+        case_zh = REVIEW_DIR / "case_human_review_v1_中文版.csv"
+        qc_zh = REVIEW_DIR / "transaction_qc_rereview_v1_中文版.csv"
+        self.assertTrue(tx_zh.is_file())
+        self.assertTrue(case_zh.is_file())
+        self.assertTrue(qc_zh.is_file())
+        with open(tx_zh, encoding="utf-8-sig", newline="") as f:
+            headers = list(csv.DictReader(f).fieldnames or [])
+        self.assertIn("交易编号", headers)
+        self.assertIn("经营证据角色(人工)", headers)
+
 
 if __name__ == "__main__":
     unittest.main()

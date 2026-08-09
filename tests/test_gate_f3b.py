@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REVIEW_DIR = Path(
-    "D:/Investigator PDF/outputs/knowledge-v1/gate-f3b-human-gold-20260808"
+    "D:/Investigator PDF/outputs/knowledge-v1/gate-f3b-human-gold-20260809"
 )
 HOLDOUT_DIR = Path(
     "D:/Investigator PDF/outputs/knowledge-v1/gate-f3a-1-resume-holdout-20260808"
@@ -55,6 +55,14 @@ class F3bPrepTest(unittest.TestCase):
         self.assertEqual(len(self.tx_rows), 100)
         self.assertEqual(len(self.case_rows), 5)
         self.assertEqual(len(self.qc_rows), 10)
+
+    def test_identifiers_populated(self):
+        self.assertTrue(
+            all(row["holdout_item_id"] for row in self.tx_rows)
+        )
+        self.assertTrue(
+            all(row["anonymized_case_id"] for row in self.case_rows)
+        )
 
     def test_no_candidate_prediction_columns(self):
         forbidden = {

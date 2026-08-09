@@ -50,7 +50,6 @@ SUFFICIENCY_VALUES = ("sufficient", "partial", "insufficient")
 CONFIDENCE_VALUES = ("high", "medium", "low")
 
 TX_GOLD_COLUMNS = (
-    "holdout_item_id",
     "human_industry_direct_relation",
     "human_business_evidence_role",
     "human_business_trace_strength",
@@ -65,7 +64,6 @@ TX_GOLD_COLUMNS = (
 )
 
 CASE_GOLD_COLUMNS = (
-    "anonymized_case_id",
     "business_activity_presence",
     "declared_industry_consistency",
     "human_assessment_sufficiency",
@@ -417,7 +415,7 @@ def main() -> int:
         type=Path,
         default=Path(
             "D:/Investigator PDF/outputs/knowledge-v1/"
-            "gate-f3b-human-gold-20260808"
+            "gate-f3b-human-gold-20260809"
         ),
     )
     parser.add_argument("--qc-count", type=int, default=10)

@@ -88,8 +88,14 @@ def _parse_metadata(case_dir: Path) -> dict[str, Any]:
         "company_name": r"工作单位全称[:：]?\s*(.+)",
         "public_account": r"公户[:：]?\s*(.+)",
         "company": r"公司[:：]?\s*(.+)",
-        "company_address": r"(?:公司地址|工作单位详细地址)[:：]?\s*(.+)",
-        "home_address": r"(?:家庭地址|家庭住址)[:：]?\s*(.+)",
+        "company_address": (
+            r"(?:公司地址|工作单位地址|工作单位详细地址)"
+            r"[（(]?[^）)]*[）)]?[:：]?\s*(.+)"
+        ),
+        "home_address": (
+            r"(?:家庭地址|家庭住址)"
+            r"[（(]?[^）)]*[）)]?[:：]?\s*(.+)"
+        ),
         "main_business": r"主营业务[:：]?\s*(.+)",
         "industry_line": r"从事(.+?(?:行业|生意|业务))",
     }

@@ -93,6 +93,15 @@ class ResumeHoldoutTest(unittest.TestCase):
         for token in ("家庭住址", "公司地址", "家庭地址"):
             self.assertNotIn(token, items_text)
 
+    def test_specific_address_flags(self):
+        for row in self.inventory:
+            if "李玉勤" in row.get("source_directory", ""):
+                self.assertTrue(row["company_address_available"])
+                self.assertTrue(row["home_address_available"])
+            if "刘晶" in row.get("source_directory", ""):
+                self.assertTrue(row["company_address_available"])
+                self.assertFalse(row["home_address_available"])
+
     def test_metadata_provenance(self):
         registry = json.loads(
             (REGISTRY_DIR / "manual_external_metadata_registry.json").read_text(

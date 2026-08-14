@@ -45,6 +45,21 @@ def _parse_money(raw: str | None) -> Decimal:
     return money_to_decimal(_clean_cell(raw)) or Decimal("0.00")
 
 
+def _amount_columns(debit_raw: str | None, credit_raw: str | None) -> tuple[Decimal, Decimal, list[str]]:
+    debit = _parse_money(debit_raw)
+    credit = _parse_money(credit_raw)
+    issues: list[str] = []
+
+    if debit != 0 and credit != 0:
+        issues.append("借方和贷方同时有金额")
+
+    income = credit if credit > 0 else -debit if debit < 0 else Decimal("0.00")
+    expense = debit if debit > 0 else -credit if credit < 0 else Decimal("0.00")
+    if income == 0 and expense == 0:
+        issues.append("借方和贷方均为零")
+    return income, expense, issues
+
+
 def _cell_at(values: list[str], index: int) -> str:
     return values[index] if index < len(values) else ""
 
@@ -86,17 +101,10 @@ def _extract_deposit_detail_rows(table: list[list], page_index: int) -> list[Tra
             if tx_time is None:
                 continue
 
-            debit = _parse_money(_cell_at(debits, index))
-            credit = _parse_money(_cell_at(credits, index))
+            debit_raw = _cell_at(debits, index)
+            credit_raw = _cell_at(credits, index)
+            income, expense, issues = _amount_columns(debit_raw, credit_raw)
             balance = money_to_decimal(_cell_at(balances, index))
-            income = credit
-            expense = debit
-            issues = []
-
-            if debit > 0 and credit > 0:
-                issues.append("借方和贷方同时有金额")
-            if debit == 0 and credit == 0:
-                issues.append("借方和贷方均为零")
 
             raw_summary = _cell_at(summaries, index)
             raw_counterparty = _cell_at(counterparties, index)
@@ -109,7 +117,7 @@ def _extract_deposit_detail_rows(table: list[list], page_index: int) -> list[Tra
                 page_no=page_index,
                 row_no=row_index * 1000 + index,
                 raw_time=date_text,
-                raw_amount=f"{_cell_at(debits, index)}|{_cell_at(credits, index)}",
+                raw_amount=f"{debit_raw}|{credit_raw}",
                 raw_balance=_cell_at(balances, index),
                 raw_text=" | ".join(part for part in (raw_summary, raw_counterparty) if part),
                 raw_fields=[
@@ -127,7 +135,7 @@ def _extract_deposit_detail_rows(table: list[list], page_index: int) -> list[Tra
                 issues=issues,
             )
             tx.preserve_signed_columns = True
-            tx.merge_key = "|".join([date_text, _cell_at(debits, index), _cell_at(credits, index), _cell_at(balances, index), str(page_index), str(index)])
+            tx.merge_key = "|".join([date_text, debit_raw, credit_raw, _cell_at(balances, index), str(page_index), str(index)])
             transactions.append(tx)
 
     return transactions
@@ -162,17 +170,10 @@ def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
                     if tx_time is None:
                         continue
 
-                    debit = _parse_money(row[DEBIT_COL])
-                    credit = _parse_money(row[CREDIT_COL])
+                    debit_raw = _clean_cell(row[DEBIT_COL])
+                    credit_raw = _clean_cell(row[CREDIT_COL])
+                    income, expense, issues = _amount_columns(debit_raw, credit_raw)
                     balance = money_to_decimal(_clean_cell(row[BALANCE_COL]))
-                    income = credit
-                    expense = debit
-                    issues = []
-
-                    if debit > 0 and credit > 0:
-                        issues.append("借方和贷方同时有金额")
-                    if debit == 0 and credit == 0:
-                        issues.append("借方和贷方均为零")
 
                     transactions.append(
                         Transaction(
@@ -184,7 +185,7 @@ def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
                             page_no=page_index,
                             row_no=row_index,
                             raw_time=_clean_cell(row[TIME_COL]),
-                            raw_amount=f"{_clean_cell(row[DEBIT_COL])}|{_clean_cell(row[CREDIT_COL])}",
+                            raw_amount=f"{debit_raw}|{credit_raw}",
                             raw_balance=_clean_cell(row[BALANCE_COL]),
                             status="ok" if not issues else "review",
                             issues=issues,

@@ -11,6 +11,11 @@ from .number_parser import money_to_decimal
 BANK_NAME = "中国银行对公"
 OPENING_MARKER = "承前页余额"
 DATE_RE = re.compile(r"\d{6}|\d{8}")
+ONLINE_HEADER_MARKER = "交易类型业务类型"
+ONLINE_TRANSACTION_RE = re.compile(
+    r"(?P<date>20\d{6})(?P<time>\d{2}:\d{2}:\d{2})\s+CNY\s+"
+    r"(?P<amount>-?[\d,]+\.\d{2})(?P<balance>[\d,]+\.\d{2})\s+20\d{6}"
+)
 
 
 def _parse_money(raw: str | None) -> Decimal:
@@ -113,7 +118,104 @@ def _parse_transaction_line(line: str, page_no: int, row_no: int) -> Transaction
     return tx
 
 
+def _parse_online_transaction(
+    match: re.Match[str],
+    raw_lines: list[str],
+    page_no: int,
+    row_no: int,
+) -> Transaction | None:
+    try:
+        tx_time = datetime.strptime(
+            f"{match.group('date')} {match.group('time')}",
+            "%Y%m%d %H:%M:%S",
+        )
+    except ValueError:
+        return None
+
+    amount_raw = match.group("amount")
+    balance_raw = match.group("balance")
+    amount = _parse_money(amount_raw)
+    balance = money_to_decimal(balance_raw)
+    issues: list[str] = []
+    if balance is None:
+        issues.append("余额无法解析")
+
+    tx = Transaction(
+        transaction_time=tx_time,
+        income=amount if amount > 0 else Decimal("0.00"),
+        expense=-amount if amount < 0 else Decimal("0.00"),
+        balance=balance,
+        bank=BANK_NAME,
+        page_no=page_no,
+        row_no=row_no,
+        raw_time=f"{match.group('date')} {match.group('time')}",
+        raw_amount=amount_raw,
+        raw_balance=balance_raw,
+        raw_text=" ".join(raw_lines),
+        raw_fields=raw_lines,
+        raw_headers=["原始文本行"],
+        status="ok" if not issues else "review",
+        issues=issues,
+    )
+    tx.merge_key = "|".join(
+        [
+            tx.raw_time,
+            tx.raw_amount,
+            tx.raw_balance,
+            str(page_no),
+            str(row_no),
+        ]
+    )
+    return tx
+
+
+def _restore_online_duplicate_order(transactions: list[Transaction]) -> None:
+    same_time: dict[datetime, list[Transaction]] = {}
+    for tx in transactions:
+        same_time.setdefault(tx.transaction_time, []).append(tx)
+
+    for items in same_time.values():
+        if len(items) < 2:
+            continue
+        for index, tx in enumerate(items):
+            tx.transaction_time = tx.transaction_time.replace(microsecond=index)
+
+
+def _extract_online_statement(pdf_path: str) -> list[Transaction]:
+    transactions: list[Transaction] = []
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            pending_lines: list[str] = []
+            reading_rows = page_no > 1
+            for line in (page.extract_text() or "").splitlines():
+                if ONLINE_HEADER_MARKER in line:
+                    reading_rows = True
+                    pending_lines.clear()
+                    continue
+                if not reading_rows:
+                    continue
+
+                pending_lines.append(line.strip())
+                match = ONLINE_TRANSACTION_RE.search(line)
+                if match is None:
+                    continue
+
+                tx = _parse_online_transaction(match, pending_lines, page_no, len(transactions) + 1)
+                if tx is not None:
+                    transactions.append(tx)
+                pending_lines = []
+
+    _restore_online_duplicate_order(transactions)
+    return transactions
+
+
 def extract_boc_corp(pdf_path: str) -> list[Transaction]:
+    with pdfplumber.open(pdf_path) as pdf:
+        first_page_text = pdf.pages[0].extract_text() if pdf.pages else ""
+    if ONLINE_HEADER_MARKER in (first_page_text or ""):
+        return _extract_online_statement(pdf_path)
+
     transactions: list[Transaction] = []
     first_opening: Decimal | None = None
 

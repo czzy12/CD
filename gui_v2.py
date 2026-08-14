@@ -444,7 +444,7 @@ class Worker(QThread):
                 return transactions, "通用PDF识别", f"{detection.reason}，已使用通用识别", True
             return [], "未识别", detection.reason, False
 
-        if detection.bank_id in ("cmbc", "cib", "generic_pdf"):
+        if detection.bank_id in ("cmbc", "generic_pdf"):
             from bankflow_v2.pipeline import extract_transactions
 
             transactions = extract_transactions(str(path), detection.bank_id)

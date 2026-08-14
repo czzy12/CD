@@ -50,7 +50,7 @@ BANK_LABELS = {
     "pingan": "平安银行",
     "cmbc": "民生银行个人",
     "cmbc_corp": "民生银行对公",
-    "cib": "兴业银行",
+    "cib": "兴业银行个人",
     "icbc": "工商银行个人",
     "icbc_corp": "工商银行对公",
     "psbc": "邮储银行",
@@ -243,6 +243,17 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "承前页余额" in compact
     ):
         return Detection("boc_corp", BANK_LABELS["boc_corp"], 98, "命中中国银行对公活期明细特征")
+
+    if (
+        "查询账号" in header_compact
+        and "总笔数" in header_compact
+        and "借方发生" in header_compact
+        and "贷方发生" in header_compact
+        and "交易类型业务类型" in compact
+        and "交易日期交易时间交易货币交易金额交易后余额" in compact
+        and "中国银行" in compact
+    ):
+        return Detection("boc_corp", BANK_LABELS["boc_corp"], 98, "命中新版中国银行对公查询明细")
 
     if (
         "中国银行交易流水明细清单" in header_compact

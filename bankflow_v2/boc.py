@@ -73,6 +73,18 @@ def _restore_duplicate_order(transactions: list[Transaction]) -> None:
             tx.transaction_time = tx.transaction_time.replace(microsecond=len(items) - index - 1)
 
 
+def _mark_interest_booking_dates(transactions: list[Transaction]) -> None:
+    """Keep total balance checks while ignoring BOC's non-chronological interest posting day."""
+    interest_dates = {
+        tx.transaction_time.date()
+        for tx in transactions
+        if "结息" in tx.raw_text
+    }
+    for tx in transactions:
+        if tx.transaction_time.date() in interest_dates:
+            tx.balance_optional = True
+
+
 def extract_boc(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
 
@@ -119,4 +131,5 @@ def extract_boc(pdf_path: str) -> list[Transaction]:
                     transactions.append(tx)
 
     _restore_duplicate_order(transactions)
+    _mark_interest_booking_dates(transactions)
     return transactions

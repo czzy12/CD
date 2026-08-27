@@ -47,6 +47,13 @@ class MultiAccountMergeTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(len(issues), 1)
 
+    def test_keeps_identical_rows_from_the_same_source_without_a_merge_key(self):
+        rows, issues = dedupe_transactions(
+            [transaction("长沙银行.pdf", "changsha_a"), transaction("长沙银行.pdf", "changsha_a")]
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(issues, [])
+
     def test_income_proof_keeps_two_wechat_accounts(self):
         results = [
             SimpleNamespace(

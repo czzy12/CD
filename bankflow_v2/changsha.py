@@ -63,6 +63,5 @@ def extract_changsha(pdf_path: str) -> list[Transaction]:
                 )
                 tx.account_name = account_name
                 tx.account_no = account_no
-                tx.merge_key = "|".join([match.group("date"), match.group("amount"), match.group("balance"), match.group("tail") or ""])
                 rows.append(tx)
     return rows

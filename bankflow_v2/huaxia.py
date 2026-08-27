@@ -33,7 +33,60 @@ def _normalize_reverse_printed(rows: list[Transaction]) -> list[Transaction]:
     return rows
 
 
+def _table_time(value: str) -> datetime | None:
+    match = re.search(r"(20\d{2}-\d{2}-\d{2}).*?(\d{2}:\d{2}:\d{2})", value or "")
+    if not match:
+        return None
+    try:
+        return datetime.strptime(f"{match.group(1)} {match.group(2)}", "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _extract_table_rows(pdf_path: str) -> list[Transaction]:
+    rows: list[Transaction] = []
+    headers = ["记账日期", "摘要", "收入金额", "支出金额", "余额", "交易机构", "对方姓名", "对方卡/账号", "对方开户行", "附言"]
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_no, page in enumerate(pdf.pages, start=1):
+            for table in page.extract_tables():
+                if not table or [str(cell or "").replace("\n", "").strip() for cell in table[0]][:10] != headers:
+                    continue
+                for source_row_no, row in enumerate(table[1:], start=1):
+                    fields = [str(cell or "").replace("\n", " ").strip() for cell in row]
+                    if len(fields) < 5:
+                        continue
+                    tx_time = _table_time(fields[0])
+                    income = _parse_money(fields[2]) or ZERO
+                    expense = _parse_money(fields[3]) or ZERO
+                    balance = _parse_money(fields[4])
+                    if tx_time is None or balance is None or (income == ZERO and expense == ZERO):
+                        continue
+                    row_no = len(rows) + 1
+                    tx = Transaction(
+                        transaction_time=tx_time,
+                        income=income,
+                        expense=expense,
+                        balance=balance,
+                        bank=BANK_NAME,
+                        page_no=page_no,
+                        row_no=row_no,
+                        raw_time=fields[0],
+                        raw_amount=f"{fields[2]}|{fields[3]}",
+                        raw_balance=fields[4],
+                        raw_text=" | ".join(fields[:10]),
+                        raw_fields=fields[:10],
+                        raw_headers=headers,
+                    )
+                    tx.merge_key = "|".join([tx_time.isoformat(), fields[2], fields[3], fields[4], fields[1]])
+                    rows.append(tx)
+    return _normalize_reverse_printed(rows)
+
+
 def extract_huaxia(pdf_path: str) -> list[Transaction]:
+    table_rows = _extract_table_rows(pdf_path)
+    if table_rows:
+        return table_rows
+
     rows: list[Transaction] = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):

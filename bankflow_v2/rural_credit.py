@@ -67,6 +67,7 @@ def _extract_line_statement(pdf_path: str) -> list[Transaction]:
     max_current_page = 0
     footer_total_pages = 0
     bank_name = RURAL_COMMERCIAL_BANK_NAME
+    source_order = 0
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
@@ -93,6 +94,7 @@ def _extract_line_statement(pdf_path: str) -> list[Transaction]:
                     continue
 
                 sequence = int(match.group("seq"))
+                source_order += 1
                 amount = _signed_money(match.group("amount"))
                 balance = _signed_money(match.group("balance"))
                 raw_tail = match.group("tail") or ""
@@ -107,13 +109,13 @@ def _extract_line_statement(pdf_path: str) -> list[Transaction]:
                     raw_tail,
                 ]
                 tx = Transaction(
-                    transaction_time=_date_time(match.group("date"), sequence),
+                    transaction_time=_date_time(match.group("date"), source_order),
                     income=amount if amount > 0 else Decimal("0.00"),
                     expense=-amount if amount < 0 else Decimal("0.00"),
                     balance=balance,
                     bank=bank_name,
                     page_no=page_no,
-                    row_no=sequence,
+                    row_no=source_order,
                     raw_time=f"{match.group('date')} 00:00:00",
                     raw_amount=match.group("amount"),
                     raw_balance=match.group("balance"),
@@ -121,7 +123,7 @@ def _extract_line_statement(pdf_path: str) -> list[Transaction]:
                     raw_fields=raw_fields,
                     raw_headers=["序号", "摘要", "币别", "钞汇", "交易日期", "交易金额", "账户余额", "交易地点/附言 对方账号与户名"],
                 )
-                tx.merge_key = "|".join([match.group("seq"), match.group("date"), match.group("amount"), match.group("balance")])
+                tx.merge_key = "|".join([match.group("date"), match.group("amount"), match.group("balance"), match.group("summary"), raw_tail])
                 rows.append(tx)
 
     if rows:

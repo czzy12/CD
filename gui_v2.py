@@ -497,8 +497,14 @@ class Worker(QThread):
 
             try:
                 transactions, bank_label, fallback_message, used_generic = self._extract_with_fallback(path, detection)
-                account_name = extract_account_name(path)
-                account_no = extract_account_no(path)
+                account_name = extract_account_name(path) or next(
+                    (getattr(tx, "account_name", "") for tx in transactions if getattr(tx, "account_name", "")),
+                    "",
+                )
+                account_no = extract_account_no(path) or next(
+                    (getattr(tx, "account_no", "") for tx in transactions if getattr(tx, "account_no", "")),
+                    "",
+                )
                 bank_label = infer_excel_bank_label(bank_label, transactions)
                 detected_flow_type = infer_flow_type(detection.bank_id, account_name, transactions)
                 for tx in transactions:
@@ -1989,6 +1995,8 @@ class MainWindow(QMainWindow):
             detection = detect_bank_type(str(path))
         except Exception:
             detection = None
+        if detection is not None and getattr(detection, "label", "") == "图片型PDF":
+            return False
         if detection is not None and getattr(detection, "bank_id", ""):
             return False
         reply = QMessageBox.question(

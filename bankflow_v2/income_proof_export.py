@@ -20,6 +20,7 @@ SALARY_EXCLUDE_KEYWORDS = ("补助", "补贴", "补增资", "报销", "退款")
 CORP_BANK_IDS = {
     "abc_corp",
     "boc_corp",
+    "boc_corp_v2",
     "ccb_corp",
     "cmbc_corp",
     "hebei_corp_detail",
@@ -93,6 +94,50 @@ def split_results_by_flow(results: list, target_flow_type: str) -> list:
         cloned._income_proof_flow_type_override = target_flow_type
         split_results.append(cloned)
     return split_results
+
+
+def dedupe_results(results: list) -> list:
+    """Apply the same cross-file transaction de-duplication used by the GUI."""
+    cloned_results = []
+    indexed_transactions = []
+    for result_index, result in enumerate(results):
+        cloned = copy(result)
+        cloned.transactions = []
+        cloned_results.append(cloned)
+        account_no = getattr(result, "account_no", "") or ""
+        source_file = getattr(getattr(result, "path", None), "name", "")
+        for tx in getattr(result, "transactions", []) or []:
+            indexed_transactions.append((result_index, account_no, source_file, tx))
+
+    seen: dict[tuple, tuple[str, object]] = {}
+    for result_index, result_account_no, source_file, tx in sorted(
+        indexed_transactions,
+        key=lambda item: (item[3].transaction_time, item[2], item[3].row_no),
+    ):
+        merge_key = getattr(tx, "merge_key", None)
+        account_no = getattr(tx, "account_no", "") or result_account_no
+        if merge_key:
+            signature = (tx.bank, account_no, merge_key)
+        else:
+            signature = (
+                tx.bank,
+                account_no,
+                tx.transaction_time,
+                tx.income,
+                tx.expense,
+                tx.balance,
+                tx.raw_amount,
+                tx.raw_balance,
+            )
+
+        first = seen.get(signature)
+        if first is not None and (merge_key or first[0] != source_file):
+            continue
+        if first is None:
+            seen[signature] = (source_file, tx)
+        cloned_results[result_index].transactions.append(tx)
+
+    return cloned_results
 
 
 def normalize_bank_name(label: str, bank_id: str) -> str:
@@ -599,6 +644,7 @@ def build_income_proof_input(
     output_path: str = "",
     adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
+    results = dedupe_results(results)
     personal_results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
     corporate_results = split_results_by_flow(results, "对公")
     adjustment_allocations = allocate_adjustments_by_flow(results, adjustment_configs)
@@ -670,6 +716,7 @@ def build_salary_income_proof_input(
     output_path: str = "",
     adjustment_configs: list[AdjustmentConfig] | None = None,
 ) -> dict:
+    results = dedupe_results(results)
     personal_results = split_results_by_flow(results, "个人") + split_results_by_flow(results, "微信")
     adjustment_allocations = allocate_adjustments_by_flow(results, adjustment_configs)
     return {

@@ -245,7 +245,7 @@ def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
                 date_prefix = str(date_word["text"])
                 if re.fullmatch(r"20\d{2}-\d{2}-", date_prefix):
                     date_tail_words = [
-                        word for word in _words_in_bounds(row_words, 25, 60)
+                        word for word in _words_in_bounds(row_words, 10, 60)
                         if DAY_RE.fullmatch(str(word["text"]))
                     ]
                 else:
@@ -267,9 +267,12 @@ def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
                 except ValueError:
                     continue
 
-                income_text = _joined_text(row_words, 72, 128)
-                expense_text = _joined_text(row_words, 128, 184)
-                balance_text = _joined_text(row_words, 184, 240)
+                # Column centres are about 63 pt apart.  The former narrower
+                # bounds clipped the decimal part of seven-digit amounts and
+                # silently dropped high-value rows.
+                income_text = _joined_text(row_words, 76, 140)
+                expense_text = _joined_text(row_words, 140, 203)
+                balance_text = _joined_text(row_words, 203, 266)
                 income = _first_money(income_text) or Decimal("0.00")
                 expense = _first_money(expense_text) or Decimal("0.00")
                 balance = _first_money(balance_text)
@@ -284,9 +287,9 @@ def _parse_coordinate_rows(pdf_path: str) -> list[ParsedRow]:
                         income_text,
                         expense_text,
                         balance_text,
-                        _joined_text(row_words, 240, 296),
-                        _joined_text(row_words, 296, 352),
-                        _joined_text(row_words, 416, 520),
+                        _joined_text(row_words, 266, 329),
+                        _joined_text(row_words, 329, 391),
+                        _joined_text(row_words, 454, 517),
                     ]
                 )
                 parsed_rows.append(
@@ -375,14 +378,42 @@ def _order_rows(parsed_rows: list[ParsedRow]) -> list[ParsedRow]:
     return ordered
 
 
+def _merge_text_and_coordinate_rows(
+    text_rows: list[ParsedRow],
+    coordinate_rows: list[ParsedRow],
+) -> list[ParsedRow]:
+    merged: dict[tuple[datetime, Decimal, Decimal], ParsedRow] = {}
+    for row in text_rows:
+        merged[(row.tx_time, row.amount, row.balance)] = row
+    for row in coordinate_rows:
+        merged[(row.tx_time, row.amount, row.balance)] = row
+    return list(merged.values())
+
+
+def _account_meta(pdf_path: str) -> tuple[str, str]:
+    with pdfplumber.open(pdf_path) as pdf:
+        text = pdf.pages[0].extract_text() if pdf.pages else ""
+    text = text or ""
+    name_match = re.search(r"户名\s*[:：]\s*(.*?)\s+币种\s*[:：]", text)
+    prefix_match = re.search(r"账号\s*[:：]\s*([0-9-]+)", text)
+    account_no = prefix_match.group(1) if prefix_match else ""
+    if account_no.endswith("-"):
+        suffix_match = re.search(r"(?m)^(\d{10,25})\s+\d{2}月\d{2}日", text)
+        if suffix_match:
+            account_no += suffix_match.group(1)
+    return (name_match.group(1).strip() if name_match else "", account_no)
+
+
 def extract_abc_corp(pdf_path: str) -> list[Transaction]:
     parsed_rows = _parse_table_rows(pdf_path)
     if not parsed_rows:
-        parsed_rows = _parse_text_rows(pdf_path)
-    if not parsed_rows:
-        parsed_rows = _parse_coordinate_rows(pdf_path)
+        parsed_rows = _merge_text_and_coordinate_rows(
+            _parse_text_rows(pdf_path),
+            _parse_coordinate_rows(pdf_path),
+        )
 
     ordered_rows = _order_rows(parsed_rows)
+    account_name, account_no = _account_meta(pdf_path)
     transactions: list[Transaction] = []
     previous_balance: Decimal | None = None
 
@@ -404,8 +435,7 @@ def extract_abc_corp(pdf_path: str) -> list[Transaction]:
                 expense = Decimal("0.00")
                 issues.append("收支方向无法判定")
 
-        transactions.append(
-            Transaction(
+        transaction = Transaction(
                 transaction_time=row.tx_time,
                 income=income,
                 expense=expense,
@@ -420,7 +450,9 @@ def extract_abc_corp(pdf_path: str) -> list[Transaction]:
                 status="ok" if not issues else "review",
                 issues=issues,
             )
-        )
+        transaction.account_name = account_name
+        transaction.account_no = account_no
+        transactions.append(transaction)
         previous_balance = row.balance
 
     return transactions

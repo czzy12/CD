@@ -1422,5 +1422,175 @@
       "closing_balance": "248496.70",
       "issues": 0
     }
+  },
+  {
+    "name": "工商银行对公-中国工商银行账户明细清单-图片OCR",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/中国工商银行账户明细清单/中国工商银行账户明细清单_图片OCR.pdf",
+    "tags": ["icbc_corp", "corp", "image-ocr", "specialized"],
+    "expected": {
+      "count": 29,
+      "income_count": 12,
+      "income_sum": "4130844.84",
+      "expense_count": 17,
+      "expense_sum": "3597407.07",
+      "net": "533437.77",
+      "opening_balance": "901026.64",
+      "closing_balance": "1434464.41",
+      "issues": 0
+    }
+  },
+  {
+    "name": "工商银行对公-中国工商银行账户明细清单-连续段1-图片OCR",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/中国工商银行账户明细清单/中国工商银行账户明细清单_连续段1_图片OCR.pdf",
+    "tags": ["icbc_corp", "corp", "image-ocr", "specialized"],
+    "expected": {
+      "count": 180,
+      "income_count": 67,
+      "income_sum": "22934699.72",
+      "expense_count": 113,
+      "expense_sum": "22034297.61",
+      "net": "900402.11",
+      "opening_balance": "624.53",
+      "closing_balance": "901026.64",
+      "issues": 0
+    }
+  },
+  {
+    "name": "中国银行公户版式2-账户历史明细-川东",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/中国银行公户版式2/账户历史明细_川东_20260201-20260819.pdf",
+    "tags": ["boc_corp_v2", "corp", "specialized"],
+    "expected": {
+      "count": 597,
+      "income_count": 69,
+      "income_sum": "5213658.59",
+      "expense_count": 528,
+      "expense_sum": "5175081.35",
+      "net": "38577.24",
+      "opening_balance": "321582.25",
+      "closing_balance": "360159.49",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农业银行对公-账户明细-诺力天津-文本坐标互补",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/农业银行对公账户明细/账户明细_诺力天津_20260201-20260822.pdf",
+    "tags": ["abc_corp", "corp", "coordinate", "specialized"],
+    "expected": {
+      "count": 222,
+      "income_count": 123,
+      "income_sum": "6116034.93",
+      "expense_count": 99,
+      "expense_sum": "5482279.80",
+      "net": "633755.13",
+      "opening_balance": "40245.84",
+      "closing_balance": "674000.97",
+      "issues": 0
+    }
+  },
+  {
+    "name": "农业银行对公-账户明细-中科新塑-高位金额跨行日期",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/农业银行对公账户明细/账户明细_中科新塑_20260101-20260630.pdf",
+    "tags": ["abc_corp", "corp", "coordinate", "specialized"],
+    "expected": {
+      "count": 972,
+      "income_count": 173,
+      "income_sum": "70100812.91",
+      "expense_count": 799,
+      "expense_sum": "69820922.79",
+      "net": "279890.12",
+      "opening_balance": "6899.37",
+      "closing_balance": "286789.49",
+      "issues": 0
+    }
+  },
+  {
+    "name": "华夏银行个人-个人账户交易流水电子版-十列表格",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/华夏银行个人账户交易流水电子版/个人账户交易流水_电子版_20250101-20251230.pdf",
+    "tags": ["huaxia", "personal", "specialized"],
+    "expected": {
+      "count": 679,
+      "income_count": 214,
+      "income_sum": "11721254.15",
+      "expense_count": 465,
+      "expense_sum": "11758529.83",
+      "net": "-37275.68",
+      "opening_balance": "84535.60",
+      "closing_balance": "47259.92",
+      "issues": 0
+    }
+  },
+  {
+    "name": "湖北农商银行个人-手机银行交易明细-水印清洗",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/湖北农商银行个人手机银行交易明细/个人手机银行交易明细_20251016-20260816.pdf",
+    "tags": ["hubei_rural", "personal", "watermark", "specialized"],
+    "expected": {
+      "count": 214,
+      "income_count": 56,
+      "income_sum": "4053665.18",
+      "expense_count": 158,
+      "expense_sum": "4027841.43",
+      "net": "25823.75",
+      "opening_balance": "30118.54",
+      "closing_balance": "55942.29",
+      "issues": 0
+    }
+  },
+  {
+    "name": "云南威信农村商业银行个人-分段1至30页",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/云南威信农村商业银行个人/交易明细_分段1-30页.pdf",
+    "tags": ["rural_commercial", "personal", "segment", "specialized"],
+    "expected": {
+      "count": 570,
+      "income_count": 293,
+      "income_sum": "1927241.80",
+      "expense_count": 277,
+      "expense_sum": "1928478.84",
+      "net": "-1237.04",
+      "opening_balance": "2215.41",
+      "closing_balance": "978.37",
+      "issues": 5
+    }
+  },
+  {
+    "name": "云南威信农村商业银行个人-分段31至60页",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/云南威信农村商业银行个人/交易明细_分段31-60页.pdf",
+    "tags": ["rural_commercial", "personal", "segment", "specialized"],
+    "expected": {
+      "count": 570,
+      "income_count": 298,
+      "income_sum": "2077610.51",
+      "expense_count": 272,
+      "expense_sum": "2085445.01",
+      "net": "-7834.50",
+      "opening_balance": "10049.91",
+      "closing_balance": "2215.41",
+      "issues": 5
+    }
+  },
+  {
+    "name": "云南威信农村商业银行个人-分段61至77页",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/云南威信农村商业银行个人/交易明细_分段61-77页.pdf",
+    "tags": ["rural_commercial", "personal", "segment", "specialized"],
+    "expected": {
+      "count": 316,
+      "income_count": 173,
+      "income_sum": "908549.57",
+      "expense_count": 143,
+      "expense_sum": "898635.47",
+      "net": "9914.10",
+      "opening_balance": "135.81",
+      "closing_balance": "10049.91",
+      "issues": 4
+    }
   }
 ]

@@ -18,6 +18,7 @@ BANK_LABELS = {
     "alipay": "支付宝交易流水",
     "boc": "中国银行个人",
     "boc_corp": "中国银行对公",
+    "boc_corp_v2": "中国银行公户版式2",
     "bocom": "交通银行",
     "bocom_corp": "交通银行对公",
     "bazhou_shunfeng_corp": "霸州舜丰村镇银行对公",
@@ -40,6 +41,8 @@ BANK_LABELS = {
     "hebei_personal": "河北银行个人",
     "huishang_corp": "徽商银行对公",
     "huaxia": "华夏银行",
+    "hubei_rural": "湖北农商银行个人",
+    "changsha": "长沙银行个人",
     "jiujiang": "九江银行",
     "jinan_rural_corp": "济南农商银行对公",
     "lanzhou": "兰州银行",
@@ -101,6 +104,19 @@ def _image_only_reason(pdf_path: str) -> str | None:
     return None
 
 
+def _looks_like_icbc_corp_ocr_layout(pdf_path: str) -> bool:
+    with pdfplumber.open(pdf_path) as pdf:
+        if not pdf.pages:
+            return False
+        page = pdf.pages[0]
+        return bool(
+            not page.chars
+            and page.width > page.height
+            and len(page.curves) >= 1000
+            and page.images
+        )
+
+
 def _has_ordered_chars(text: str, phrase: str, max_gap: int = 80) -> bool:
     position = -1
     for char in phrase:
@@ -122,6 +138,17 @@ def _rural_commercial_label(text: str) -> str:
 
 def detect_bank_type(pdf_path: str) -> Detection:
     try:
+        if _looks_like_icbc_corp_ocr_layout(pdf_path):
+            return Detection(
+                "icbc_corp",
+                BANK_LABELS["icbc_corp"],
+                80,
+                "命中横版九列账户明细轮廓，待OCR确认中国工商银行账户明细清单",
+            )
+    except Exception:
+        pass
+
+    try:
         text = _sample_text(pdf_path)
     except Exception as exc:
         return Detection("", "未识别", 0, f"PDF读取失败: {exc}")
@@ -134,6 +161,37 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     header_text = "\n".join(text.splitlines()[:80])
     header_compact = header_text.replace(" ", "").replace("\n", "")
+    if (
+        "个人账户交易流水(电子版)" in header_compact
+        and "记账日期摘要收入金额支出金额余额交易机构" in compact
+        and "对方姓名对方卡/账号对方开户行附言" in compact
+    ):
+        return Detection("huaxia", BANK_LABELS["huaxia"], 98, "命中华夏银行个人账户交易流水电子版十列表格")
+    if (
+        "湖北农商银行-个人手机银行交易明细" in header_compact
+        and "交易日期" in compact
+        and "对方账号/卡号" in compact
+        and "发生额余额币种" in compact
+    ):
+        return Detection("hubei_rural", BANK_LABELS["hubei_rural"], 98, "命中湖北农商银行个人手机银行交易明细")
+    if (
+        "个人账户明细对账单" in header_compact
+        and "StatementofPersonalAccount" in compact
+        and "交易日期交易金额账户余额对方户名对方账号摘要/备注" in compact
+    ):
+        return Detection("changsha", BANK_LABELS["changsha"], 98, "命中长沙银行个人账户明细对账单")
+    if (
+        "账户历史明细" in header_compact
+        and "账户明细列表" in header_compact
+        and "交易日期支出(借)收入(贷)余额" in header_compact
+        and "交易对手账号交易对手名称交易对手行名摘要附言" in header_compact
+    ):
+        return Detection(
+            "boc_corp_v2",
+            BANK_LABELS["boc_corp_v2"],
+            98,
+            "命中账户历史明细九列表格，暂定中国银行公户版式2",
+        )
     if (
         "霸州舜丰村镇银行企业账户交易明细" in header_compact
         and "汇出金额汇入金额余额摘要用途" in compact

@@ -283,4 +283,13 @@ def extract_icbc_corp(pdf_path: str) -> list[Transaction]:
                     if tx is not None:
                         transactions.append(tx)
 
-    return _restore_same_time_order(transactions)
+    if transactions:
+        return _restore_same_time_order(transactions)
+
+    with pdfplumber.open(pdf_path) as pdf:
+        has_text = any(page.chars or (page.extract_text() or "").strip() for page in pdf.pages[:2])
+    if not has_text:
+        from .icbc_corp_ocr import extract_icbc_corp_ocr
+
+        return extract_icbc_corp_ocr(pdf_path)
+    return []

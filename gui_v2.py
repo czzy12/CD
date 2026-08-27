@@ -2681,10 +2681,10 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
 
     issues = [
         Issue(
-            "需复核",
+            "低风险",
             source,
             str(group["time"]),
-            f"疑似重复流水 {group['count']} 笔，已在合并明细中去重；首次来源: {first_source}",
+            f"重叠流水已自动去重 {group['count']} 笔；首次来源: {first_source}",
             str(group["raw_amount"]),
             str(group["raw_balance"]),
         )

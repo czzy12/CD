@@ -46,6 +46,8 @@ class MultiAccountMergeTests(unittest.TestCase):
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].level, "低风险")
+        self.assertTrue(issues[0].message.startswith("重叠流水已自动去重"))
 
     def test_keeps_identical_rows_from_the_same_source_without_a_merge_key(self):
         rows, issues = dedupe_transactions(

@@ -2641,7 +2641,6 @@ def write_workbook(path: Path, results: list[FileResult], issues: list[Issue], a
 def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
     unique = []
     seen: dict[tuple, object] = {}
-    duplicate_groups: dict[tuple[str, str], dict[str, object]] = {}
 
     for tx in sorted(transactions, key=lambda item: (item.transaction_time, getattr(item, "source_file", ""), item.row_no)):
         key = getattr(tx, "merge_key", None)
@@ -2661,36 +2660,13 @@ def dedupe_transactions(transactions: list) -> tuple[list, list[Issue]]:
             )
 
         if signature in seen and (key or getattr(seen[signature], "source_file", "") != getattr(tx, "source_file", "")):
-            first = seen[signature]
-            group_key = (getattr(tx, "source_file", ""), getattr(first, "source_file", ""))
-            group = duplicate_groups.setdefault(
-                group_key,
-                {
-                    "count": 0,
-                    "time": tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "raw_amount": tx.raw_amount,
-                    "raw_balance": tx.raw_balance,
-                },
-            )
-            group["count"] = int(group["count"]) + 1
             continue
 
         if signature not in seen:
             seen[signature] = tx
         unique.append(tx)
 
-    issues = [
-        Issue(
-            "低风险",
-            source,
-            str(group["time"]),
-            f"重叠流水已自动去重 {group['count']} 笔；首次来源: {first_source}",
-            str(group["raw_amount"]),
-            str(group["raw_balance"]),
-        )
-        for (source, first_source), group in duplicate_groups.items()
-    ]
-    return unique, issues
+    return unique, []
 
 
 def result_flow_type(result: FileResult) -> str:

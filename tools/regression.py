@@ -100,14 +100,21 @@ def run_case(case: dict[str, Any], allow_missing: bool = False) -> RegressionRes
         return RegressionResult(status, name, f"missing file: {pdf_path}", [] if allow_missing else [str(pdf_path)])
 
     bank = case.get("bank")
-    if not bank or bank == "auto":
+    if pdf_path.suffix.lower() in {".xls", ".xlsx", ".xlsm"}:
+        bank = "excel"
+    elif not bank or bank == "auto":
         detection = detect_bank_type(str(pdf_path))
         bank = detection.bank_id
         if not bank:
             return RegressionResult("FAIL", name, f"unrecognized bank: {detection.reason}", [detection.reason])
 
     try:
-        rows = extract_transactions(str(pdf_path), str(bank))
+        if bank == "excel":
+            from bankflow_v2.excel_input import extract_excel_transactions
+
+            rows = extract_excel_transactions(str(pdf_path))
+        else:
+            rows = extract_transactions(str(pdf_path), str(bank))
         summary = summarize(rows, pdf_path.name)
     except Exception as exc:
         return RegressionResult("FAIL", name, f"{type(exc).__name__}: {exc}", [str(exc)])

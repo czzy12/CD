@@ -8,6 +8,7 @@ from zipfile import BadZipFile
 
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
+import xlrd
 
 from .models import Transaction
 from .number_parser import balance_candidates, extract_signed_amount, money_to_decimal
@@ -92,6 +93,12 @@ def _parse_date_part(value: Any) -> date | None:
     if isinstance(value, date):
         return value
     text = _cell_text(value).replace("/", "-").replace("年", "-").replace("月", "-").replace("日", "")
+    compact = re.sub(r"\D", "", text)
+    if len(compact) == 8:
+        try:
+            return datetime.strptime(compact, "%Y%m%d").date()
+        except ValueError:
+            pass
     match = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
     if not match:
         return None
@@ -142,6 +149,10 @@ def _parse_datetime(date_value: Any, time_value: Any | None = None) -> datetime 
         if parsed_date is None:
             return None
         return datetime.combine(parsed_date, _parse_time_part(time_value))
+
+    parsed_date = _parse_date_part(_normalize_ocr_date_text(date_value))
+    if parsed_date is not None:
+        return datetime.combine(parsed_date, time(0, 0, 0))
 
     text = _normalize_ocr_date_text(date_value).replace("：", ":").replace("/", "-")
     text = text.replace("年", "-").replace("月", "-").replace("日", " ")
@@ -246,9 +257,12 @@ def _resolve_missing_directions(transactions: list[Transaction]) -> None:
 def _header_mapping(rows: list[tuple[Any, ...]]) -> tuple[int, list[str], dict[str, int]] | None:
     for row_index, row in enumerate(rows[:30]):
         headers = [_norm(cell) for cell in row]
-        time_col = _find_col(headers, ("交易时间", "交易日期时间", "日期时间"))
-        date_col = time_col if time_col is not None else _find_col(headers, ("交易日期", "记账日期", "日期"))
-        separate_time_col = None if time_col is not None else _find_col(headers, ("时间", "交易时刻"))
+        date_col = _find_col(headers, ("交易日期", "记账日期", "日期"))
+        if date_col is not None:
+            separate_time_col = _find_col(headers, ("交易时间", "时间", "交易时刻"), {date_col})
+        else:
+            date_col = _find_col(headers, ("交易日期时间", "日期时间", "交易时间"))
+            separate_time_col = None
         amount_col = _find_col(headers, ("交易金额", "发生额", "本次金额", "交易额", "金额"))
         income_col = _find_col(headers, ("收入金额", "收入", "贷方发生额", "贷方", "贷"))
         expense_col = _find_col(headers, ("支出金额", "支出", "借方发生额", "借方", "借"))
@@ -589,6 +603,87 @@ def _validate_hkb_header_totals(
         first.issues.extend(issues)
 
 
+def _boc_corp_online_header(rows: list[tuple[Any, ...]]) -> tuple[int, list[str]] | None:
+    for row_index, row in enumerate(rows[:20]):
+        headers = [_norm(cell) for cell in row]
+        if (
+            any("交易类型" in header and "TransactionType" in header for header in headers)
+            and any("交易金额" in header and "TradeAmount" in header for header in headers)
+            and any("交易日期" in header and "TransactionDate" in header for header in headers)
+        ):
+            return row_index, headers
+    return None
+
+
+def _boc_corp_header_value(rows: list[tuple[Any, ...]], label: str) -> str:
+    for row in rows[:15]:
+        for index, cell in enumerate(row):
+            if _norm(cell).startswith(label) and index + 1 < len(row):
+                return _cell_text(row[index + 1])
+    return ""
+
+
+def _extract_boc_corp_online_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
+    header = _boc_corp_online_header(rows)
+    if header is None:
+        return []
+    header_row, headers = header
+    cols = {
+        "type": next(i for i, value in enumerate(headers) if "交易类型" in value and "TransactionType" in value),
+        "payer_account": next(i for i, value in enumerate(headers) if "付款人账号" in value and "DebitAccountNo" in value),
+        "payer_name": next(i for i, value in enumerate(headers) if "付款人名称" in value and "Payer'sName" in value),
+        "payee_account": next(i for i, value in enumerate(headers) if "收款人账号" in value and "Payee'sAccountNumber" in value),
+        "payee_name": next(i for i, value in enumerate(headers) if "收款人名称" in value and "Payee'sName" in value),
+        "date": next(i for i, value in enumerate(headers) if "交易日期" in value and "TransactionDate" in value),
+        "time": next(i for i, value in enumerate(headers) if "交易时间" in value and "Transactiontime" in value),
+        "amount": next(i for i, value in enumerate(headers) if "交易金额" in value and "TradeAmount" in value),
+    }
+    account_no = re.sub(r"\D", "", _boc_corp_header_value(rows, "查询账号"))
+    account_name = ""
+    transactions: list[Transaction] = []
+    for excel_row_index, row in enumerate(rows[header_row + 1 :], start=header_row + 2):
+        tx_time = _parse_datetime(row[cols["date"]], row[cols["time"]])
+        signed_amount = _parse_money(row[cols["amount"]])
+        if tx_time is None or signed_amount is None or signed_amount == Decimal("0.00"):
+            continue
+        raw_fields = [_cell_text(cell) for cell in row]
+        payer_account = re.sub(r"\D", "", raw_fields[cols["payer_account"]])
+        payee_account = re.sub(r"\D", "", raw_fields[cols["payee_account"]])
+        payer_name = raw_fields[cols["payer_name"]]
+        payee_name = raw_fields[cols["payee_name"]]
+        if not account_name:
+            if account_no and payer_account == account_no:
+                account_name = payer_name
+            elif account_no and payee_account == account_no:
+                account_name = payee_name
+        tx = Transaction(
+            transaction_time=tx_time,
+            income=signed_amount if signed_amount > 0 else Decimal("0.00"),
+            expense=-signed_amount if signed_amount < 0 else Decimal("0.00"),
+            balance=None,
+            bank="中国银行对公Excel导入",
+            page_no=sheet_index,
+            row_no=excel_row_index,
+            raw_time=f"{raw_fields[cols['date']]} {raw_fields[cols['time']]}",
+            raw_amount=raw_fields[cols["amount"]],
+            raw_balance="",
+            raw_text=" | ".join(raw_fields),
+            raw_fields=raw_fields,
+            raw_headers=headers,
+        )
+        tx.balance_optional = True
+        tx.preserve_signed_columns = True
+        tx.account_no = account_no
+        tx.account_name = account_name or (payer_name if signed_amount < 0 else payee_name)
+        transactions.append(tx)
+
+    expected_count = _label_int("总笔数：" + _boc_corp_header_value(rows, "总笔数"), "总笔数：")
+    expected_expense = _parse_money(_boc_corp_header_value(rows, "借方发生总额"))
+    expected_income = _parse_money(_boc_corp_header_value(rows, "贷方发生总额"))
+    _validate_hkb_header_totals(transactions, expected_count, expected_income, expected_expense)
+    return transactions
+
+
 def _extract_hkb_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
     expected_count, expected_income, expected_expense = _hkb_header_totals(rows)
     cols: dict[str, int] | None = None
@@ -649,6 +744,9 @@ def _extract_hkb_converted_sheet(rows: list[tuple[Any, ...]], sheet_index: int) 
 
 
 def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transaction]:
+    if _boc_corp_online_header(rows) is not None:
+        return _extract_boc_corp_online_sheet(rows, sheet_index)
+
     if _is_hkb_converted_sheet(rows):
         return _extract_hkb_converted_sheet(rows, sheet_index)
 
@@ -660,6 +758,13 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
         return []
 
     header_row, headers, cols = mapping
+    header_text = "".join(_norm(cell) for row in rows[: header_row + 1] for cell in row)
+    if "四川农信账户交易明细" in header_text:
+        bank_name = "四川农信公户"
+    elif "账户交易明细" in header_text and cols["income"] is not None and cols["expense"] is not None:
+        bank_name = "公户Excel导入"
+    else:
+        bank_name = BANK_NAME
     transactions: list[Transaction] = []
     for excel_row_index, row in enumerate(rows[header_row + 1 :], start=header_row + 2):
         tx_time = _parse_datetime(row[cols["date"]] if cols["date"] is not None and cols["date"] < len(row) else None,
@@ -716,7 +821,7 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
             income=income,
             expense=expense,
             balance=balance,
-            bank=BANK_NAME,
+            bank=bank_name,
             page_no=sheet_index,
             row_no=excel_row_index,
             raw_time=_cell_text(row[cols["date"]]),
@@ -740,6 +845,25 @@ def _extract_sheet(rows: list[tuple[Any, ...]], sheet_index: int) -> list[Transa
 
 
 def extract_excel_transactions(path: str) -> list[Transaction]:
+    if Path(path).suffix.lower() == ".xls":
+        legacy_workbook = xlrd.open_workbook(path)
+        best: list[Transaction] = []
+        for sheet_index, worksheet in enumerate(legacy_workbook.sheets(), start=1):
+            rows = []
+            for row_index in range(worksheet.nrows):
+                row = []
+                for col_index in range(worksheet.ncols):
+                    cell = worksheet.cell(row_index, col_index)
+                    value = cell.value
+                    if cell.ctype == xlrd.XL_CELL_DATE:
+                        value = xlrd.xldate_as_datetime(value, legacy_workbook.datemode)
+                    row.append(value)
+                rows.append(tuple(row))
+            transactions = _extract_sheet(rows, sheet_index)
+            if len(transactions) > len(best):
+                best = transactions
+        return best
+
     try:
         workbook = load_workbook(path, read_only=True, data_only=True)
     except (BadZipFile, InvalidFileException):

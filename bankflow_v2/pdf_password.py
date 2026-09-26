@@ -86,7 +86,10 @@ def _touch_pdf(path: str | Path, password: str | None = None) -> bool:
 
 def pdf_requires_password(path: str | Path) -> bool:
     try:
-        return _touch_pdf(path)
+        _touch_pdf(path)
+        # Permission encryption may allow opening with an empty user password.
+        # Only a failed open/read requires asking the user for a password.
+        return False
     except Exception as exc:
         if not is_pdf_password_error(exc):
             raise

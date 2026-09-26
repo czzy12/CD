@@ -10,6 +10,7 @@ from .number_parser import money_to_decimal
 
 
 BANK_NAME = "济南农商银行对公"
+SHOUGUANG_BANK_NAME = "寿光农村商业银行对公"
 RAW_HEADERS = ["记账日期", "交易金额", "账户余额", "交易摘要", "交易对手信息"]
 ZERO = Decimal("0.00")
 
@@ -20,7 +21,7 @@ def _cell(row: list, index: int) -> str:
     return str(row[index]).replace("\n", " ").strip()
 
 
-def extract_jinan_rural_corp(pdf_path: str) -> list[Transaction]:
+def _extract_rural_corp(pdf_path: str, bank_name: str) -> list[Transaction]:
     transactions: list[Transaction] = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
@@ -55,7 +56,7 @@ def extract_jinan_rural_corp(pdf_path: str) -> list[Transaction]:
                             income=income,
                             expense=expense,
                             balance=balance,
-                            bank=BANK_NAME,
+                            bank=bank_name,
                             page_no=page_no,
                             row_no=len(transactions) + 1,
                             raw_time=raw_date,
@@ -67,3 +68,11 @@ def extract_jinan_rural_corp(pdf_path: str) -> list[Transaction]:
                         )
                     )
     return transactions
+
+
+def extract_jinan_rural_corp(pdf_path: str) -> list[Transaction]:
+    return _extract_rural_corp(pdf_path, BANK_NAME)
+
+
+def extract_shouguang_rural_corp(pdf_path: str) -> list[Transaction]:
+    return _extract_rural_corp(pdf_path, SHOUGUANG_BANK_NAME)

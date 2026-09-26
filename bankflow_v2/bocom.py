@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from html import unescape
 
 import pdfplumber
 
@@ -19,7 +20,7 @@ DATE_ONLY_HEADERS = ["交易日期", "交易地点", "交易方式", "借贷状�
 
 
 def _clean_cell(value) -> str:
-    return str(value or "").replace("\n", "").strip()
+    return unescape(str(value or "")).replace("\n", "").strip()
 
 
 def _parse_time(date_raw: str | None, time_raw: str | None) -> datetime | None:
@@ -52,12 +53,13 @@ def _row_is_date_only_transaction(row: list) -> bool:
 
 def _amounts_from_direction(direction: str, amount: Decimal) -> tuple[Decimal, Decimal, list[str]]:
     issues: list[str] = []
-    if "贷" in direction or "Cr" in direction:
+    direction = _clean_cell(direction)
+    if "贷" in direction or "Cr" in direction or direction.upper() == "C":
         signed_amount = amount
         if signed_amount >= 0:
             return signed_amount, Decimal("0.00"), issues
         return Decimal("0.00"), -signed_amount, issues
-    if "借" in direction or "Dr" in direction:
+    if "借" in direction or "Dr" in direction or direction.upper() == "D":
         signed_amount = -amount
         if signed_amount >= 0:
             return signed_amount, Decimal("0.00"), issues
@@ -103,6 +105,10 @@ def extract_bocom(pdf_path: str) -> list[Transaction]:
                             )
                         )
                     elif _row_is_date_only_transaction(row):
+                        # Header-cell borders split this six-column statement
+                        # into nine physical columns with None placeholders.
+                        if len(row) == 9 and all(row[index] is None for index in (2, 5, 7)):
+                            row = [value for value in row if value is not None]
                         tx_time = _parse_date(row[0])
                         amount = money_to_decimal(_clean_cell(row[4])) or Decimal("0.00")
                         balance = money_to_decimal(_clean_cell(row[5]))

@@ -128,6 +128,30 @@ def _parse_corp_row(row: list, page_no: int, row_no: int) -> Transaction | None:
     return tx
 
 
+def _restore_same_time_order(transactions: list[Transaction]) -> None:
+    """Restore newest-first ties only when the original balances prove the order."""
+    groups: dict[datetime, list[Transaction]] = {}
+    for tx in transactions:
+        groups.setdefault(tx.transaction_time, []).append(tx)
+
+    def follows(older: Transaction, newer: Transaction) -> bool:
+        return (
+            older.balance is not None
+            and newer.balance is not None
+            and older.balance + newer.amount == newer.balance
+        )
+
+    for items in groups.values():
+        if len(items) < 2:
+            continue
+        if all(follows(a, b) for a, b in zip(items, items[1:])):
+            continue
+        if all(follows(b, a) for a, b in zip(items, items[1:])):
+            for index, tx in enumerate(items):
+                # Internal tie-break only; raw_time retains the PDF's timestamp.
+                tx.transaction_time = tx.transaction_time.replace(microsecond=len(items) - index - 1)
+
+
 def extract_psbc(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
 
@@ -174,4 +198,5 @@ def extract_psbc(pdf_path: str) -> list[Transaction]:
                         )
                     )
 
+    _restore_same_time_order(transactions)
     return transactions

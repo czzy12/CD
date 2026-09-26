@@ -85,6 +85,25 @@ def _mark_interest_booking_dates(transactions: list[Transaction]) -> None:
             tx.balance_optional = True
 
 
+def _mark_midnight_rollover_dates(transactions: list[Transaction]) -> None:
+    """Ignore row-by-row checks when BOC prints 23:xx after 00:xx on one booking date."""
+    rollover_dates = set()
+    for newer, older in zip(transactions, transactions[1:]):
+        if newer.transaction_time.date() != older.transaction_time.date():
+            continue
+        if newer.transaction_time.hour != 0 or older.transaction_time.hour != 23:
+            continue
+        if newer.balance is None or older.balance is None:
+            continue
+        expected = (older.balance + newer.income - newer.expense).quantize(Decimal("0.01"))
+        if expected == newer.balance.quantize(Decimal("0.01")):
+            rollover_dates.add(newer.transaction_time.date())
+
+    for tx in transactions:
+        if tx.transaction_time.date() in rollover_dates:
+            tx.balance_optional = True
+
+
 def extract_boc(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
 
@@ -131,5 +150,6 @@ def extract_boc(pdf_path: str) -> list[Transaction]:
                     transactions.append(tx)
 
     _restore_duplicate_order(transactions)
+    _mark_midnight_rollover_dates(transactions)
     _mark_interest_booking_dates(transactions)
     return transactions

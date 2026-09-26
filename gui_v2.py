@@ -43,7 +43,7 @@ from bankflow_v2.income_proof_export import (
 from bankflow_v2.summary import Issue, Summary, money, monthly_summaries, sort_transactions, summarize
 
 
-SUPPORTED_INPUTS = {".pdf", ".xlsx", ".xlsm"}
+SUPPORTED_INPUTS = {".pdf", ".xls", ".xlsx", ".xlsm"}
 DATE_RANGE_EMPTY_MESSAGE = "日期范围内没有流水"
 FIXED_PROOF_MONTHS = 6
 SALARY_KEYWORDS = ("工资", "代发", "薪资", "薪酬", "奖金")
@@ -55,6 +55,7 @@ ACCOUNT_NAME_PATTERNS = (
     r"账户名称\s*[:：]\s*([^\s，,]+)",
     r"户主\s*[:：]\s*([^\s，,]+)",
     r"Account Name\s*[:：]\s*([^\s，,]+)",
+    r"账户\s+[0-9][0-9\s\-*＊]{6,30}[0-9]\s+([^\s，,]+)",
 )
 ACCOUNT_NO_PATTERNS = (
     r"客户账号\s*(?:Account No\.?|Account Number)?\s*[:：]?\s*([0-9][0-9\s\-*＊]{6,30}[0-9])",
@@ -425,13 +426,220 @@ class Worker(QThread):
                 merged_results.append(result)
         return merged_results, grouped_sources
 
+    @staticmethod
+    def _merge_excel_account_statements(results: list[FileResult]) -> list[FileResult]:
+        """Present multiple Excel exports for one account as one continuous statement."""
+        groups: dict[tuple[str, str], list[FileResult]] = {}
+        for result in results:
+            if result.bank_id != "excel" or not result.account_no or not result.transactions:
+                continue
+            groups.setdefault((result.account_no, result.account_name), []).append(result)
+
+        grouped_ids: set[int] = set()
+        replacements: dict[int, FileResult] = {}
+        for (account_no, account_name), members in groups.items():
+            if len(members) < 2:
+                continue
+            members.sort(key=lambda result: min(tx.transaction_time for tx in result.transactions))
+            transactions = [tx for result in members for tx in result.transactions]
+            first_time = min(tx.transaction_time for tx in transactions)
+            last_time = max(tx.transaction_time for tx in transactions)
+            labels = {result.bank_label for result in members if result.bank_label}
+            bank_label = next(iter(labels)) if len(labels) == 1 else "Excel导入"
+            base = members[0]
+            combined_path = base.path.with_name(
+                f"账户尾号{account_no[-4:]}交易明细（{len(members)}个分表合并）{base.path.suffix}"
+            )
+            combined = FileResult(
+                combined_path,
+                "excel",
+                bank_label,
+                base.bank_confidence,
+                "同账户Excel分表合并",
+                summarize([]),
+                transactions,
+                "正常",
+                (
+                    f"已合并同账户 {len(members)} 个Excel分表，"
+                    f"覆盖 {first_time:%Y-%m-%d} 至 {last_time:%Y-%m-%d}"
+                ),
+                account_name,
+                account_no,
+            )
+            replacements[id(base)] = combined
+            grouped_ids.update(id(member) for member in members)
+
+        if not replacements:
+            return results
+
+        merged_results: list[FileResult] = []
+        for result in results:
+            replacement = replacements.get(id(result))
+            if replacement is not None:
+                merged_results.append(replacement)
+            elif id(result) not in grouped_ids:
+                merged_results.append(result)
+        return merged_results
+
+    @staticmethod
+    def _order_balance_linked_transactions(transactions: list) -> tuple[list, int]:
+        """Order equal-time rows by their balance link and mark uncovered gaps."""
+        grouped: dict[datetime, list] = {}
+        for tx in transactions:
+            grouped.setdefault(tx.transaction_time, []).append(tx)
+
+        ordered: list = []
+        previous_balance = None
+        gap_count = 0
+        for tx_time in sorted(grouped):
+            remaining = list(grouped[tx_time])
+            while remaining:
+                match = next(
+                    (
+                        tx for tx in remaining
+                        if previous_balance is not None
+                        and (tx.balance - tx.income + tx.expense).quantize(Decimal("0.01")) == previous_balance
+                    ),
+                    None,
+                )
+                if match is None and previous_balance is None:
+                    balances = {tx.balance for tx in remaining}
+                    match = next(
+                        (
+                            tx for tx in remaining
+                            if (tx.balance - tx.income + tx.expense).quantize(Decimal("0.01")) not in balances
+                        ),
+                        remaining[0],
+                    )
+                if match is None:
+                    match = min(remaining, key=lambda tx: (tx.page_no, tx.row_no, getattr(tx, "source_file", "")))
+                    match.balance_segment_start = True
+                    gap_count += 1
+                remaining.remove(match)
+                ordered.append(match)
+                previous_balance = match.balance
+
+        for sequence, tx in enumerate(ordered, start=1):
+            tx.page_no = 0
+            tx.row_no = sequence
+            tx.segmented_statement = True
+        if ordered:
+            ordered[0].balance_segment_start = True
+        return ordered, gap_count
+
+    @classmethod
+    def _merge_chaoyang_account_statements(cls, results: list[FileResult]) -> list[FileResult]:
+        groups: dict[tuple[str, str], list[FileResult]] = {}
+        for result in results:
+            if result.bank_id != "chaoyang_corp" or not result.account_no or not result.transactions:
+                continue
+            groups.setdefault((result.account_no, result.account_name), []).append(result)
+
+        grouped_ids: set[int] = set()
+        replacements: dict[int, FileResult] = {}
+        for (account_no, account_name), members in groups.items():
+            if len(members) < 2:
+                continue
+            transactions = [tx for result in members for tx in result.transactions]
+            unique_transactions, _ = dedupe_transactions(transactions)
+            ordered, gap_count = cls._order_balance_linked_transactions(unique_transactions)
+            duplicate_count = len(transactions) - len(ordered)
+            base = members[0]
+            combined = FileResult(
+                base.path.with_name(f"朝阳银行账户尾号{account_no[-4:]}（{len(members)}个文件合并）.pdf"),
+                "chaoyang_corp",
+                "朝阳银行对公",
+                98,
+                "朝阳银行同账户分段明细合并",
+                summarize([]),
+                ordered,
+                "正常",
+                (
+                    f"已合并同账户 {len(members)} 个文件，去重 {duplicate_count} 笔；"
+                    f"形成 {gap_count + 1} 个余额连续区段，源文件之间有 {gap_count} 处未覆盖账户变动"
+                ),
+                account_name,
+                account_no,
+            )
+            replacements[id(base)] = combined
+            grouped_ids.update(id(member) for member in members)
+
+        if not replacements:
+            return results
+        merged_results: list[FileResult] = []
+        for result in results:
+            replacement = replacements.get(id(result))
+            if replacement is not None:
+                merged_results.append(replacement)
+            elif id(result) not in grouped_ids:
+                merged_results.append(result)
+        return merged_results
+
+    @staticmethod
+    def _merge_abc_corp_account_statements(results: list[FileResult]) -> list[FileResult]:
+        """Combine supported multi-file corporate statements for one account."""
+        groups: dict[tuple[str, str, str], list[FileResult]] = {}
+        for result in results:
+            if result.bank_id not in ("abc_corp", "chengdu_corp", "mengshang_corp") or not result.account_no or not result.transactions:
+                continue
+            groups.setdefault((result.bank_id, result.account_no, result.account_name), []).append(result)
+
+        grouped_ids: set[int] = set()
+        replacements: dict[int, FileResult] = {}
+        for (bank_id, account_no, account_name), members in groups.items():
+            if len(members) < 2:
+                continue
+            transactions = sort_transactions([tx for result in members for tx in result.transactions])
+            for row_no, tx in enumerate(transactions, start=1):
+                tx.page_no = 0
+                tx.row_no = row_no
+
+            members.sort(key=lambda result: min(tx.transaction_time for tx in result.transactions))
+            first_time = transactions[0].transaction_time
+            last_time = transactions[-1].transaction_time
+            base = members[0]
+            bank_name = {
+                "chengdu_corp": "成都银行",
+                "mengshang_corp": "蒙商银行",
+            }.get(bank_id, "农业银行")
+            combined = FileResult(
+                base.path.with_name(f"{bank_name}账户尾号{account_no[-4:]}（{len(members)}个文件合并）.pdf"),
+                bank_id,
+                base.bank_label,
+                base.bank_confidence,
+                f"{bank_name}同账户明细合并",
+                summarize([]),
+                transactions,
+                "正常",
+                (
+                    f"已合并同账户 {len(members)} 个文件，"
+                    f"覆盖 {first_time:%Y-%m-%d} 至 {last_time:%Y-%m-%d}"
+                ),
+                account_name,
+                account_no,
+            )
+            replacements[id(base)] = combined
+            grouped_ids.update(id(member) for member in members)
+
+        if not replacements:
+            return results
+
+        merged_results: list[FileResult] = []
+        for result in results:
+            replacement = replacements.get(id(result))
+            if replacement is not None:
+                merged_results.append(replacement)
+            elif id(result) not in grouped_ids:
+                merged_results.append(result)
+        return merged_results
+
     def _generic_pdf_label(self, detection) -> str:
         if detection.bank_id and detection.label not in ("未识别", ""):
             return f"{detection.label}（通用识别）"
         return "通用PDF识别"
 
     def _extract_with_fallback(self, path: Path, detection) -> tuple[list, str, str, bool]:
-        if path.suffix.lower() in (".xlsx", ".xlsm"):
+        if path.suffix.lower() in (".xls", ".xlsx", ".xlsm"):
             from bankflow_v2.excel_input import extract_excel_transactions
 
             return extract_excel_transactions(str(path)), "Excel导入", "Excel文件导入", False
@@ -483,7 +691,7 @@ class Worker(QThread):
 
         for path in self.paths:
             self.progress.emit(f"处理中: {path.name}")
-            if path.suffix.lower() in (".xlsx", ".xlsm"):
+            if path.suffix.lower() in (".xls", ".xlsx", ".xlsm"):
                 detection = type("Detection", (), {
                     "bank_id": "excel",
                     "label": "Excel导入",
@@ -532,6 +740,9 @@ class Worker(QThread):
                 results.append(FileResult(path, detection.bank_id, detection.label, detection.confidence, detection.reason, summarize([]), [], "需复核", str(exc), extract_account_name(path), extract_account_no(path)))
 
         results, _ = self._merge_complete_rural_commercial_statements(results)
+        results = self._merge_excel_account_statements(results)
+        results = self._merge_chaoyang_account_statements(results)
+        results = self._merge_abc_corp_account_statements(results)
         all_issues = []
         for result in results:
             original_transactions = result.transactions
@@ -552,7 +763,7 @@ class Worker(QThread):
                     result.status = "需复核"
                     if original_transactions and not result.transactions:
                         result.message = DATE_RANGE_EMPTY_MESSAGE
-                    elif not result.message:
+                    elif not result.transactions and not result.message:
                         result.message = "未解析到流水"
 
             all_issues.extend(result.summary.issues)
@@ -1871,7 +2082,7 @@ class MainWindow(QMainWindow):
         """
 
     def add_files(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "选择银行流水文件", "", "支持的文件 (*.pdf *.xlsx *.xlsm);;PDF 文件 (*.pdf);;Excel 文件 (*.xlsx *.xlsm)")
+        files, _ = QFileDialog.getOpenFileNames(self, "选择银行流水文件", "", "支持的文件 (*.pdf *.xls *.xlsx *.xlsm);;PDF 文件 (*.pdf);;Excel 文件 (*.xls *.xlsx *.xlsm)")
         self.add_paths([Path(file) for file in files])
 
     def add_folder(self):
@@ -2442,7 +2653,7 @@ def safe_filename_part(value: str) -> str:
 def extract_account_name(path: Path) -> str:
     if path.suffix.lower() == ".pdf":
         return extract_pdf_account_name(path)
-    if path.suffix.lower() in (".xlsx", ".xlsm"):
+    if path.suffix.lower() in (".xls", ".xlsx", ".xlsm"):
         return extract_excel_account_name(path)
     return ""
 
@@ -2450,7 +2661,7 @@ def extract_account_name(path: Path) -> str:
 def extract_account_no(path: Path) -> str:
     if path.suffix.lower() == ".pdf":
         return extract_pdf_account_no(path)
-    if path.suffix.lower() in (".xlsx", ".xlsm"):
+    if path.suffix.lower() in (".xls", ".xlsx", ".xlsm"):
         return extract_excel_account_no(path)
     return ""
 
@@ -2482,7 +2693,20 @@ def extract_pdf_account_no(path: Path) -> str:
         return ""
 
 
-def extract_excel_account_name(path: Path) -> str:
+def extract_excel_header_text(path: Path) -> str:
+    if path.suffix.lower() == ".xls":
+        try:
+            import xlrd
+
+            workbook = xlrd.open_workbook(path)
+            worksheet = workbook.sheet_by_index(0)
+            return "\n".join(
+                " ".join(str(worksheet.cell_value(row_index, col_index) or "") for col_index in range(worksheet.ncols))
+                for row_index in range(min(30, worksheet.nrows))
+            )
+        except Exception:
+            return ""
+
     try:
         from openpyxl import load_workbook
 
@@ -2492,28 +2716,19 @@ def extract_excel_account_name(path: Path) -> str:
             chunks = []
             for row in worksheet.iter_rows(min_row=1, max_row=30, values_only=True):
                 chunks.append(" ".join(str(cell or "") for cell in row))
-            return parse_account_name("\n".join(chunks))
+            return "\n".join(chunks)
         finally:
             workbook.close()
     except Exception:
         return ""
+
+
+def extract_excel_account_name(path: Path) -> str:
+    return parse_account_name(extract_excel_header_text(path))
 
 
 def extract_excel_account_no(path: Path) -> str:
-    try:
-        from openpyxl import load_workbook
-
-        workbook = load_workbook(path, read_only=True, data_only=True)
-        try:
-            worksheet = workbook.worksheets[0]
-            chunks = []
-            for row in worksheet.iter_rows(min_row=1, max_row=30, values_only=True):
-                chunks.append(" ".join(str(cell or "") for cell in row))
-            return parse_account_no("\n".join(chunks))
-        finally:
-            workbook.close()
-    except Exception:
-        return ""
+    return parse_account_no(extract_excel_header_text(path))
 
 
 def parse_account_name(text: str) -> str:

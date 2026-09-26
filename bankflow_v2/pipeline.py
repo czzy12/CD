@@ -20,6 +20,7 @@ from .cmbc_corp import extract_cmbc_corp
 from .ccb import extract_ccb
 from .ccb_corp import extract_ccb_corp
 from .chengdu_rural_corp import extract_chengdu_rural_corp
+from .chengdu_corp import extract_chengdu_corp
 from .chongqing import extract_chongqing
 from .cib import extract_cib
 from .customer_account_corp import extract_customer_account_corp
@@ -31,10 +32,16 @@ from .hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detai
 from .huishang_corp import extract_huishang_corp
 from .huaxia import extract_huaxia
 from .hubei_rural import extract_hubei_rural
+from .hebei_rural import extract_hebei_rural
+from .sichuan_rural import extract_sichuan_rural
+from .gansu import extract_gansu
+from .shanxi_rural_corp import extract_shanxi_rural_corp
+from .mengshang_corp import extract_mengshang_corp
+from .fuxin_corp import extract_fuxin_corp
 from .luzhou import extract_luzhou
 from .icbc import extract_icbc
 from .icbc_corp import extract_icbc_corp
-from .jinan_rural_corp import extract_jinan_rural_corp
+from .jinan_rural_corp import extract_jinan_rural_corp, extract_shouguang_rural_corp
 from .mybank_corp import extract_mybank_corp
 from .models import Transaction
 from .pingan import extract_pingan
@@ -49,6 +56,7 @@ from .wechat import extract_wechat
 from .xingtai import extract_xingtai
 from .zhongyuan import extract_zhongyuan
 from .changsha import extract_changsha
+from .chaoyang_corp import extract_chaoyang_corp
 
 
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
@@ -60,8 +68,22 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_huaxia(pdf_path)
     if bank == "hubei_rural":
         return extract_hubei_rural(pdf_path)
+    if bank == "hebei_rural":
+        return extract_hebei_rural(pdf_path)
+    if bank == "sichuan_rural":
+        return extract_sichuan_rural(pdf_path)
+    if bank == "gansu":
+        return extract_gansu(pdf_path)
+    if bank == "shanxi_rural_corp":
+        return extract_shanxi_rural_corp(pdf_path)
+    if bank == "mengshang_corp":
+        return extract_mengshang_corp(pdf_path)
+    if bank == "fuxin_corp":
+        return extract_fuxin_corp(pdf_path)
     if bank == "changsha":
         return extract_changsha(pdf_path)
+    if bank == "chaoyang_corp":
+        return extract_chaoyang_corp(pdf_path)
     if bank == "guilin":
         return extract_guilin(pdf_path)
     if bank == "guilin_corp":
@@ -74,6 +96,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_ccb_corp(pdf_path)
     if bank == "chengdu_rural_corp":
         return extract_chengdu_rural_corp(pdf_path)
+    if bank == "chengdu_corp":
+        return extract_chengdu_corp(pdf_path)
     if bank == "chongqing":
         return extract_chongqing(pdf_path)
     if bank == "customer_account_corp":
@@ -138,6 +162,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_jiujiang(pdf_path)
     if bank == "jinan_rural_corp":
         return extract_jinan_rural_corp(pdf_path)
+    if bank == "shouguang_rural_corp":
+        return extract_shouguang_rural_corp(pdf_path)
     if bank == "foshan_rural":
         return extract_foshan_rural(pdf_path)
     if bank == "lanzhou":

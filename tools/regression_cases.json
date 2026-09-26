@@ -1,5 +1,54 @@
 [
   {
+    "name": "农行公户-半高八列-跨行日期",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李如义20260916092919/基础资料/公户_0.pdf",
+    "tags": ["abc_corp", "abc_grid", "corp"],
+    "expected": {"count": 3197, "income_sum": "50459058.25", "expense_sum": "50067207.11", "opening_balance": "604502.74", "closing_balance": "996353.88", "issues": 0}
+  },
+  {
+    "name": "农行公户-整页九列-同秒连续收入",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/田佳铭20260915104510/基础资料/公户_0.pdf",
+    "tags": ["abc_corp", "abc_grid", "corp"],
+    "expected": {"count": 68, "income_sum": "12443159.94", "expense_sum": "10396246.55", "opening_balance": "184519.16", "closing_balance": "2231432.55", "issues": 0}
+  },
+  {
+    "name": "河北省农信个人-历史明细-同日乱序",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/李如义20260916092919/基础资料/银行流水_0.pdf",
+    "tags": ["hebei_rural", "personal", "daily-balance-chain"],
+    "expected": {"count": 81, "income_sum": "6560030.81", "expense_sum": "6550802.63", "opening_balance": "10541.08", "closing_balance": "19769.26", "issues": 0}
+  },
+  {
+    "name": "交通银行个人-空密码权限加密-六列CD方向",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/曾晓彬20260915172950/基础资料/银行流水_0-副本.pdf",
+    "tags": ["bocom", "personal", "permission-encryption"],
+    "expected": {"count": 173, "income_sum": "1573915.35", "expense_sum": "1598216.51", "opening_balance": "39671.00", "closing_balance": "15369.84", "issues": 0}
+  },
+  {
+    "name": "成都银行公户-交易参考号-一季度",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/曾晓彬20260915172950/基础资料/公户_2.pdf",
+    "tags": ["chengdu_corp", "corp"],
+    "expected": {"count": 106, "income_sum": "7578335.68", "expense_sum": "7479495.19", "opening_balance": "9144.99", "closing_balance": "107985.48", "issues": 0}
+  },
+  {
+    "name": "成都银行公户-交易参考号-二季度",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/曾晓彬20260915172950/基础资料/公户_1.pdf",
+    "tags": ["chengdu_corp", "corp"],
+    "expected": {"count": 101, "income_sum": "2585168.22", "expense_sum": "2646823.15", "opening_balance": "107985.48", "closing_balance": "46330.55", "issues": 0}
+  },
+  {
+    "name": "成都银行公户-交易参考号-三季度",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/曾晓彬20260915172950/基础资料/公户_0.pdf",
+    "tags": ["chengdu_corp", "corp"],
+    "expected": {"count": 79, "income_sum": "1744837.57", "expense_sum": "1783284.84", "opening_balance": "46330.55", "closing_balance": "7883.28", "issues": 0}
+  },
+  {
     "name": "工行个人-强水印",
     "bank": "icbc",
     "path": "${CD_ASSETS}/PDF流水/打包测试/刘少伟密码工行/刘少伟已解密.pdf",
@@ -226,14 +275,14 @@
     "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_4.pdf",
     "tags": ["cmb_corp", "corp", "statement-of-account"],
     "expected": {
-      "count": 30,
-      "income_count": 11,
-      "income_sum": "119096.91",
-      "expense_count": 19,
-      "expense_sum": "121229.41",
-      "net": "-2132.50",
+      "count": 55,
+      "income_count": 20,
+      "income_sum": "534097.60",
+      "expense_count": 35,
+      "expense_sum": "334079.41",
+      "net": "200018.19",
       "opening_balance": "2528.09",
-      "closing_balance": "395.59",
+      "closing_balance": "202546.28",
       "issues": 0
     }
   },
@@ -243,14 +292,14 @@
     "path": "${CD_ASSETS}/PDF流水/账务明细清单/银行流水_5.pdf",
     "tags": ["cmb_corp", "corp", "statement-of-account"],
     "expected": {
-      "count": 30,
+      "count": 40,
       "income_count": 8,
       "income_sum": "563000.00",
-      "expense_count": 22,
-      "expense_sum": "601894.33",
-      "net": "-38894.33",
+      "expense_count": 32,
+      "expense_sum": "714234.33",
+      "net": "-151234.33",
       "opening_balance": "202546.28",
-      "closing_balance": "163651.95",
+      "closing_balance": "51311.95",
       "issues": 0
     }
   },
@@ -1592,5 +1641,99 @@
       "closing_balance": "10049.91",
       "issues": 4
     }
+  },
+  {
+    "name": "邮储银行-电子历史明细同秒跨页扣款",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/吴海峰20260917125432/基础资料/银行流水_0.pdf",
+    "tags": ["psbc", "personal", "specialized"],
+    "expected": {
+      "count": 947,
+      "income_count": 814,
+      "income_sum": "18818525.36",
+      "expense_count": 133,
+      "expense_sum": "19345707.52",
+      "net": "-527182.16",
+      "opening_balance": "639083.32",
+      "closing_balance": "111901.16",
+      "issues": 0
+    }
+  },
+  {
+    "name": "四川农信个人-抹账不计收支",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/个人.pdf",
+    "tags": ["sichuan_rural", "personal", "problem-batch"],
+    "expected": {"count": 619, "income_count": 104, "income_sum": "3236678.63", "expense_count": 515, "expense_sum": "3225282.24", "opening_balance": "7.61", "closing_balance": "11404.00", "issues": 0}
+  },
+  {
+    "name": "四川农信个人-内江农商",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/银行流水_0(12).pdf",
+    "tags": ["sichuan_rural", "personal", "problem-batch"],
+    "expected": {"count": 550, "income_sum": "3968667.18", "expense_sum": "3793534.92", "opening_balance": "10991.21", "closing_balance": "186123.47", "issues": 0}
+  },
+  {
+    "name": "山西阳城农商对公-负支出撤销",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/公户_0(4).pdf",
+    "tags": ["shanxi_rural_corp", "corp", "problem-batch"],
+    "expected": {"count": 159, "income_sum": "15545082.53", "expense_sum": "15846100.91", "opening_balance": "344958.57", "closing_balance": "43940.19", "issues": 0}
+  },
+  {
+    "name": "建设银行对公-账户明细信息",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/公户_2.pdf",
+    "tags": ["ccb_corp", "corp", "problem-batch"],
+    "expected": {"count": 452, "income_sum": "12975759.44", "expense_sum": "12940983.83", "opening_balance": "138590.11", "closing_balance": "173365.72", "issues": 0}
+  },
+  {
+    "name": "蒙商银行对公-第一段",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/活期账户明细下载全部 (1).pdf",
+    "tags": ["mengshang_corp", "corp", "problem-batch"],
+    "expected": {"count": 87, "income_sum": "1334682.04", "expense_sum": "1365558.30", "opening_balance": "333996.53", "closing_balance": "303120.27", "issues": 0}
+  },
+  {
+    "name": "蒙商银行对公-第二段",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/活期账户明细下载全部 (2).pdf",
+    "tags": ["mengshang_corp", "corp", "problem-batch"],
+    "expected": {"count": 57, "income_sum": "1240397.16", "expense_sum": "1524949.94", "opening_balance": "303120.27", "closing_balance": "18567.49", "issues": 0}
+  },
+  {
+    "name": "蒙商银行对公-第三段",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/活期账户明细下载全部 (3).pdf",
+    "tags": ["mengshang_corp", "corp", "problem-batch"],
+    "expected": {"count": 52, "income_sum": "1140000.00", "expense_sum": "1110659.75", "opening_balance": "14485.67", "closing_balance": "43825.92", "issues": 0}
+  },
+  {
+    "name": "阜新银行对公-同秒倒序",
+    "bank": "auto",
+    "path": "C:/Users/lenovo/Desktop/问题流水/银行流水_1(3).pdf",
+    "tags": ["fuxin_corp", "corp", "problem-batch"],
+    "expected": {"count": 222, "income_sum": "11535160.93", "expense_sum": "11154666.98", "opening_balance": "0.00", "closing_balance": "380493.95", "issues": 0}
+  },
+  {
+    "name": "中国银行对公网银Excel-2025年8月至2026年1月",
+    "bank": "excel",
+    "path": "C:/Users/lenovo/Desktop/雄美顺25年8月-26年1月.xls",
+    "tags": ["boc_corp_excel", "corp", "excel", "zhangxuwen"],
+    "expected": {"count": 277, "income_count": 172, "income_sum": "2367030.84", "expense_count": 105, "expense_sum": "1080221.96", "issues": 0}
+  },
+  {
+    "name": "中国银行对公网银Excel-2026年2月至7月",
+    "bank": "excel",
+    "path": "C:/Users/lenovo/Desktop/雄美顺26年2-7月.xls",
+    "tags": ["boc_corp_excel", "corp", "excel", "zhangxuwen"],
+    "expected": {"count": 352, "income_count": 195, "income_sum": "2132022.23", "expense_count": 157, "expense_sum": "3256208.39", "issues": 0}
+  },
+  {
+    "name": "中国银行对公网银Excel-2026年8月至9月",
+    "bank": "excel",
+    "path": "C:/Users/lenovo/Desktop/雄美顺26年8.1-9.22.xls",
+    "tags": ["boc_corp_excel", "corp", "excel", "zhangxuwen"],
+    "expected": {"count": 149, "income_count": 68, "income_sum": "321372.91", "expense_count": 81, "expense_sum": "524588.29", "issues": 0}
   }
 ]

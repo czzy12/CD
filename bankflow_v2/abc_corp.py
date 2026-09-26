@@ -1,4 +1,5 @@
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -18,6 +19,9 @@ DAY_RE = re.compile(r"\d{2}")
 MONTH_DAY_RE = re.compile(r"\d{2}-\d{2}")
 MONEY_RE = re.compile(r"\d[\d,]*\.\d{2}")
 CENT = Decimal("0.01")
+# Default full-height nine-column boundaries. Printed borders take priority
+# because half-height statements use eight columns instead.
+GRID_COLUMNS = (15.0, 77.8, 140.6, 203.3, 266.1, 328.9, 391.7, 454.4, 517.2, 580.0)
 
 
 @dataclass
@@ -165,6 +169,102 @@ def _parse_table_rows(pdf_path: str) -> list[ParsedRow]:
                             expense=expense,
                         )
                     )
+
+    return parsed_rows
+
+
+def _grid_cell_lines(words: list[dict], left: float, right: float, top: float, bottom: float) -> list[str]:
+    grouped: dict[float, list[dict]] = defaultdict(list)
+    for word in words:
+        if left <= float(word["x0"]) < right and top < float(word["top"]) < bottom:
+            grouped[round(float(word["top"]), 1)].append(word)
+
+    return [
+        "".join(str(word["text"]) for word in sorted(grouped[line_top], key=lambda item: float(item["x0"])))
+        for line_top in sorted(grouped)
+    ]
+
+
+def _parse_grid_datetime(lines: list[str]) -> tuple[datetime | None, str]:
+    # The day can wrap onto the next line immediately before the time.
+    text = "".join(lines)
+    date_match = re.search(r"20\d{2}-\d{2}-\d{2}", text)
+    time_match = re.search(r"\d{2}:\d{2}:\d{2}", text)
+    if not date_match or not time_match:
+        return None, ""
+
+    raw_time = f"{date_match.group(0)} {time_match.group(0)}"
+    try:
+        return datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S"), raw_time
+    except ValueError:
+        return None, ""
+
+
+def _grid_columns(page) -> tuple[float, ...]:
+    # Both eight-column half-height and nine-column full-height statements
+    # exist. Read the printed borders instead of applying one layout to both.
+    lines_by_top: dict[float, list[dict]] = defaultdict(list)
+    for line in page.lines:
+        if abs(float(line["top"]) - float(line["bottom"])) < 0.2 and float(line["top"]) > 45:
+            lines_by_top[round(float(line["top"]), 1)].append(line)
+    for top in sorted(lines_by_top):
+        boundaries = sorted({round(float(line[key]), 1) for line in lines_by_top[top] for key in ("x0", "x1")})
+        if len(boundaries) in (9, 10) and abs(boundaries[0] - 15) < 0.5 and abs(boundaries[-1] - 580) < 0.5:
+            return tuple(boundaries)
+    return GRID_COLUMNS
+
+
+def _parse_grid_rows(pdf_path: str) -> list[ParsedRow]:
+    parsed_rows: list[ParsedRow] = []
+    order_index = 0
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            words = page.extract_words(x_tolerance=1, y_tolerance=3, keep_blank_chars=False)
+            columns = _grid_columns(page)
+            row_lines = sorted(
+                {
+                    round(float(line["top"]), 1)
+                    for line in page.lines
+                    if (
+                        abs(float(line["top"]) - float(line["bottom"])) < 0.2
+                        and abs(float(line["x0"]) - columns[0]) < 0.5
+                        and abs(float(line["x1"]) - columns[1]) < 0.5
+                        and float(line["top"]) > 65
+                    )
+                }
+            )
+
+            for row_top, row_bottom in zip(row_lines, row_lines[1:]):
+                cells = [
+                    _grid_cell_lines(words, left, right, row_top, row_bottom)
+                    for left, right in zip(columns, columns[1:])
+                ]
+                tx_time, raw_time = _parse_grid_datetime(cells[0])
+                income_text = "".join(cells[1])
+                expense_text = "".join(cells[2])
+                balance_text = "".join(cells[3])
+                income = _first_money(income_text) or Decimal("0.00")
+                expense = _first_money(expense_text) or Decimal("0.00")
+                balance = _first_money(balance_text)
+                if tx_time is None or balance is None or (income == Decimal("0.00") and expense == Decimal("0.00")):
+                    continue
+
+                order_index += 1
+                parsed_rows.append(
+                    ParsedRow(
+                        tx_time=tx_time,
+                        amount=income if income else expense,
+                        balance=balance,
+                        raw_time=raw_time,
+                        raw_amount=f"{income_text}|{expense_text}",
+                        raw_text=" | ".join(" ".join(cell) for cell in cells),
+                        order_index=order_index,
+                        same_time_order=order_index,
+                        income=income,
+                        expense=expense,
+                    )
+                )
 
     return parsed_rows
 
@@ -392,7 +492,16 @@ def _merge_text_and_coordinate_rows(
 
 def _account_meta(pdf_path: str) -> tuple[str, str]:
     with pdfplumber.open(pdf_path) as pdf:
-        text = pdf.pages[0].extract_text() if pdf.pages else ""
+        page = pdf.pages[0] if pdf.pages else None
+        text = page.extract_text() if page else ""
+        if page and page.width == 595 and page.height == 420:
+            words = page.extract_words(x_tolerance=1, y_tolerance=3)
+            account_text = "".join(_grid_cell_lines(words, 15, 150, 38, 61))
+            name_text = "".join(_grid_cell_lines(words, 150, 297, 38, 61))
+            account = re.search(r"账号\s*[:：]\s*([0-9-]+)", account_text)
+            name = re.search(r"户名\s*[:：]\s*(.*)", name_text)
+            if account and name:
+                return name.group(1).strip(), account.group(1)
     text = text or ""
     name_match = re.search(r"户名\s*[:：]\s*(.*?)\s+币种\s*[:：]", text)
     prefix_match = re.search(r"账号\s*[:：]\s*([0-9-]+)", text)
@@ -406,6 +515,8 @@ def _account_meta(pdf_path: str) -> tuple[str, str]:
 
 def extract_abc_corp(pdf_path: str) -> list[Transaction]:
     parsed_rows = _parse_table_rows(pdf_path)
+    if not parsed_rows:
+        parsed_rows = _parse_grid_rows(pdf_path)
     if not parsed_rows:
         parsed_rows = _merge_text_and_coordinate_rows(
             _parse_text_rows(pdf_path),

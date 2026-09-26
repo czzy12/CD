@@ -8,6 +8,7 @@ BankFlowGUI/
 *.pdf
 *.docx
 .bankflow_ocr_cache/
+银行流水解析结果/
 gansu_page*.png
 ocr_*.png
 vendor/

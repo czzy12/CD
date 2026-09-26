@@ -141,8 +141,10 @@ def dedupe_results(results: list) -> list:
 
 
 def normalize_bank_name(label: str, bank_id: str) -> str:
-    if bank_id == "excel":
+    if bank_id == "excel" and "中国银行" not in (label or ""):
         return ""
+    if bank_id == "excel" and "中国银行" in (label or ""):
+        return "中国"
     text = (label or bank_id or "").strip()
     if not text or set(text) == {"?"}:
         return ""
@@ -171,7 +173,7 @@ def account_from_result(result) -> dict:
     account_no_source = ""
     if account_no:
         suffix = Path(source_path).suffix.lower()
-        account_no_source = "excel_auto" if suffix in {".xlsx", ".xlsm"} else "pdf_auto"
+        account_no_source = "excel_auto" if suffix in {".xls", ".xlsx", ".xlsm"} else "pdf_auto"
     return {
         "bank": bank,
         "bank_id": getattr(result, "bank_id", ""),

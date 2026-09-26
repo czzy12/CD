@@ -187,6 +187,13 @@ def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
                             raw_time=_clean_cell(row[TIME_COL]),
                             raw_amount=f"{debit_raw}|{credit_raw}",
                             raw_balance=_clean_cell(row[BALANCE_COL]),
+                            raw_text=" | ".join(_clean_cell(cell) for cell in row[6:] if _clean_cell(cell)),
+                            raw_fields=[_clean_cell(cell) for cell in row],
+                            raw_headers=[
+                                "账号", "交易时间", "借方发生额", "贷方发生额", "余额", "币种",
+                                "对方户名", "对方账号", "对方开户机构", "记账日期", "摘要", "备注",
+                                "账户明细编号-交易流水号", "企业流水号", "凭证种类", "凭证号", "交易介质编号",
+                            ],
                             status="ok" if not issues else "review",
                             issues=issues,
                         )

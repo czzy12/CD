@@ -12,8 +12,8 @@ from .number_parser import CENT, money_to_decimal
 BANK_NAME = "招商银行对公"
 MONEY = r"-?[\d,]+\.\d{2}"
 ROW_RE = re.compile(
-    rf"^(?P<date>20\d{{6}})(?P<business_type>\S+)\s+"
-    rf"(?P<body>.*?)\s+(?P<amount>{MONEY})\s+"
+    rf"^(?P<date>20\d{{6}})\s*(?P<business_type>\S+)\s+"
+    rf"(?:(?P<body>.*?)\s+)?(?P<amount>{MONEY})\s+"
     rf"(?P<balance>[\d,]+\.\d{{2}})(?P<counterparty>.*)$"
 )
 COORD_MONEY_RE = re.compile(r"^\d{1,3}(?:,\d{3})*\.\d{2}$|^\d+\.\d{2}$")
@@ -170,10 +170,11 @@ def _extract_statement_of_account(pdf_path: str) -> list[Transaction]:
                     if expected != balance:
                         issues.append(f"余额不连续: 期望 {expected}, 解析 {balance}")
 
+                body = (match.group("body") or "").strip()
                 raw_fields = [
                     match.group("date"),
                     match.group("business_type"),
-                    match.group("body").strip(),
+                    body,
                     match.group("amount"),
                     match.group("balance"),
                     match.group("counterparty").strip(),

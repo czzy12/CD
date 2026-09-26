@@ -25,6 +25,7 @@ BANK_LABELS = {
     "ccb": "建设银行个人",
     "ccb_corp": "建设银行对公",
     "chengdu_rural_corp": "成都农村商业银行对公",
+    "chengdu_corp": "成都银行对公",
     "chongqing": "重庆银行",
     "cmb": "招商银行",
     "cmb_corp": "招商银行对公",
@@ -42,7 +43,14 @@ BANK_LABELS = {
     "huishang_corp": "徽商银行对公",
     "huaxia": "华夏银行",
     "hubei_rural": "湖北农商银行个人",
+    "hebei_rural": "河北省农村信用社个人",
+    "sichuan_rural": "四川省农村信用社个人",
+    "gansu": "甘肃银行个人",
+    "shanxi_rural_corp": "山西阳城农村商业银行对公",
+    "mengshang_corp": "蒙商银行对公",
+    "fuxin_corp": "阜新银行对公",
     "changsha": "长沙银行个人",
+    "chaoyang_corp": "朝阳银行对公",
     "jiujiang": "九江银行",
     "jinan_rural_corp": "济南农商银行对公",
     "lanzhou": "兰州银行",
@@ -63,6 +71,7 @@ BANK_LABELS = {
     "shanghai": "上海银行个人",
     "shanghai_corp": "上海银行对公",
     "shengjing": "盛京银行",
+    "shouguang_rural_corp": "寿光农村商业银行对公",
     "spdb": "上海浦东发展银行个人",
     "spdb_corp": "上海浦东发展银行对公",
     "tianjin_rural_corp": "天津农村商业银行对公",
@@ -161,6 +170,16 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     header_text = "\n".join(text.splitlines()[:80])
     header_compact = header_text.replace(" ", "").replace("\n", "")
+    if all(marker in compact for marker in (
+        "河北省农村信用社联合社", "账户历史明细清单", "总条数",
+        "序号交易日期交易金额金额对方户名对方账号摘要网点来源",
+    )):
+        return Detection("hebei_rural", BANK_LABELS["hebei_rural"], 98, "命中河北省农信账户历史明细清单")
+    if all(marker in compact for marker in (
+        "交易参考号交易日期收入支出余额对方账号对方户名对方行名用途",
+        "汇总笔数", "收入总计", "支出总计", "时间区间",
+    )):
+        return Detection("chengdu_corp", BANK_LABELS["chengdu_corp"], 98, "命中成都银行交易参考号公户明细版式")
     if (
         "个人账户交易流水(电子版)" in header_compact
         and "记账日期摘要收入金额支出金额余额交易机构" in compact
@@ -180,6 +199,13 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "交易日期交易金额账户余额对方户名对方账号摘要/备注" in compact
     ):
         return Detection("changsha", BANK_LABELS["changsha"], 98, "命中长沙银行个人账户明细对账单")
+    if (
+        "交易明细表" in header_compact
+        and "账号:" in header_compact
+        and "户名:" in header_compact
+        and "交易日期交易时间收入/支出交易金额账户余额对方户名对方账户对方行名(支行)交易摘要" in compact
+    ):
+        return Detection("chaoyang_corp", BANK_LABELS["chaoyang_corp"], 98, "命中朝阳银行横版交易明细表九列版式")
     if (
         "账户历史明细" in header_compact
         and "账户明细列表" in header_compact
@@ -230,6 +256,14 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "记账日期交易金额账户余额交易摘要交易对手信息" in compact
     ):
         return Detection("jinan_rural_corp", BANK_LABELS["jinan_rural_corp"], 98, "命中济南农商银行交易流水")
+
+    if (
+        "交易流水" in header_compact
+        and "开户行：寿光农村商业银行" in header_compact
+        and "账户名称" in header_compact
+        and "记账日期交易金额账户余额交易摘要交易对手信息" in compact
+    ):
+        return Detection("shouguang_rural_corp", BANK_LABELS["shouguang_rural_corp"], 98, "命中寿光农村商业银行交易流水")
 
     if (
         "泸州银行账户历史明细清单" in header_compact
@@ -373,7 +407,22 @@ def detect_bank_type(pdf_path: str) -> Detection:
     if "邢台银行账户交易明细" in header_compact and "收入/支出交易金额（元）余额（元）" in compact:
         return Detection("xingtai", BANK_LABELS["xingtai"], 98, "命中邢台银行账户交易明细")
 
-    if "中国建设银行账户明细信息" in header_compact and "借方发生额(支取)贷方发生额(收入)余额" in compact:
+    if "四川省农村信用社账户交易明细" in header_compact and "交易日期交易时间币种交易金额账户余额" in compact:
+        return Detection("sichuan_rural", BANK_LABELS["sichuan_rural"], 98, "命中四川省农村信用社账户交易明细")
+
+    if "甘肃银行账户交易流水" in compact and "卡号/账号" in compact and "收入/支出" in compact:
+        return Detection("gansu", BANK_LABELS["gansu"], 98, "命中甘肃银行账户交易流水")
+
+    if "账户交易明细导出" in header_compact and "交易时间分账号收入金额支出金额账户余额" in compact:
+        return Detection("shanxi_rural_corp", BANK_LABELS["shanxi_rural_corp"], 98, "命中山西阳城农商账户交易明细导出")
+
+    if "蒙商银行活期账户明细信息" in header_compact and "借方发生额贷方发生额余额" in compact:
+        return Detection("mengshang_corp", BANK_LABELS["mengshang_corp"], 98, "命中蒙商银行活期账户明细信息")
+
+    if "阜新银行客户明细对账单" in header_compact and "借方发生额贷方发生额余额" in compact:
+        return Detection("fuxin_corp", BANK_LABELS["fuxin_corp"], 98, "命中阜新银行客户明细对账单")
+
+    if "中国建设银行账户明细信息" in header_compact and "借方发生额" in compact and "贷方发生额" in compact and "余额" in compact:
         return Detection("ccb_corp", BANK_LABELS["ccb_corp"], 98, "命中建设银行账户明细信息对公表格")
 
     if "兴业银行交易明细" in compact and "IndustrialBankTransactionDetails" in compact:

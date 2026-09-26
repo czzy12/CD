@@ -70,6 +70,8 @@ def needs_total_balance_check(transactions: list[Transaction]) -> bool:
         return False
     if all(getattr(tx, "balance_optional", False) for tx in transactions):
         return False
+    if all(getattr(tx, "segmented_statement", False) for tx in transactions):
+        return False
     return True
 
 
@@ -157,6 +159,7 @@ def collect_issues(transactions: list[Transaction], source: str = "") -> list[Is
             and tx.balance is not None
             and not getattr(previous, "balance_optional", False)
             and not getattr(tx, "balance_optional", False)
+            and not getattr(tx, "balance_segment_start", False)
         ):
             expected = (previous.balance + tx.income - tx.expense).quantize(CENT)
             actual = tx.balance.quantize(CENT)

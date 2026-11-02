@@ -514,6 +514,12 @@ def _account_meta(pdf_path: str) -> tuple[str, str]:
 
 
 def extract_abc_corp(pdf_path: str) -> list[Transaction]:
+    with pdfplumber.open(pdf_path) as pdf:
+        first_text = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
+    compact = re.sub(r"\s+", "", first_text) if isinstance(first_text, str) else ""
+    if "账户历史明细" in compact and "交易时间收入金额支出金额账户余额对方账号对方户名对方开户行摘要" in compact:
+        from .regional_statements import extract_abc_history
+        return extract_abc_history(pdf_path)
     parsed_rows = _parse_table_rows(pdf_path)
     if not parsed_rows:
         parsed_rows = _parse_grid_rows(pdf_path)

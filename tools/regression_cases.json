@@ -1735,5 +1735,425 @@
     "path": "C:/Users/lenovo/Desktop/雄美顺26年8.1-9.22.xls",
     "tags": ["boc_corp_excel", "corp", "excel", "zhangxuwen"],
     "expected": {"count": 149, "income_count": 68, "income_sum": "321372.91", "expense_count": 81, "expense_sum": "524588.29", "issues": 0}
+  },
+  {
+    "name": "工商银行对公-无余额列账户明细清单",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R114.pdf",
+    "tags": ["icbc_corp", "corp", "problem-batch-0929", "balance-optional"],
+    "expected": {"count": 378, "income_count": 332, "income_sum": "5522536.03", "expense_count": 46, "expense_sum": "4931276.79", "issues": 0}
+  },
+  {
+    "name": "齐鲁银行对公-强水印账户明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R115.pdf",
+    "tags": ["qilu_corp", "corp", "problem-batch-0929", "watermark"],
+    "expected": {"count": 868, "income_count": 691, "income_sum": "106785400.53", "expense_count": 177, "expense_sum": "106677023.06", "opening_balance": "20220.53", "closing_balance": "128598.00", "issues": 0}
+  },
+  {
+    "name": "德州银行对公-单位活期存款明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R116.pdf",
+    "tags": ["dezhou_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 539, "income_count": 161, "income_sum": "23534383.60", "expense_count": 378, "expense_sum": "23488688.21", "opening_balance": "114086.66", "closing_balance": "159782.05", "issues": 0}
+  },
+  {
+    "name": "徽商银行对公-账户明细前段",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R117.pdf",
+    "tags": ["huishang_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 836, "income_count": 203, "income_sum": "26442768.57", "expense_count": 633, "expense_sum": "25420210.19", "opening_balance": "1021.09", "closing_balance": "1023579.47", "issues": 0}
+  },
+  {
+    "name": "徽商银行对公-账户明细后段",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R118.pdf",
+    "tags": ["huishang_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 1000, "income_count": 199, "income_sum": "28772677.25", "expense_count": 801, "expense_sum": "29058470.70", "opening_balance": "1023579.47", "closing_balance": "737786.02", "issues": 0}
+  },
+  {
+    "name": "兰州银行个人-账户对账单",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R119.pdf",
+    "tags": ["lanzhou", "personal", "problem-batch-0929"],
+    "expected": {"count": 30, "income_count": 8, "income_sum": "74280.58", "expense_count": 22, "expense_sum": "77780.00", "opening_balance": "5221.76", "closing_balance": "1722.34", "issues": 0}
+  },
+  {
+    "name": "青岛银行对公-交易流水",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R120.pdf",
+    "tags": ["qingdao_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 113, "income_count": 26, "income_sum": "9535641.39", "expense_count": 87, "expense_sum": "8986753.65", "opening_balance": "58659.96", "closing_balance": "607547.70", "issues": 0}
+  },
+  {
+    "name": "山西介休农商行对公-交易明细导出",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R121.pdf",
+    "tags": ["shanxi_rural_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 653, "income_count": 214, "income_sum": "163923661.64", "expense_count": 439, "expense_sum": "163358270.12", "opening_balance": "3618314.85", "closing_balance": "4183706.37", "issues": 0}
+  },
+  {
+    "name": "山西银行对公-账户交易明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R122.pdf",
+    "tags": ["shanxi_bank_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 823, "income_count": 466, "income_sum": "119967943.10", "expense_count": 357, "expense_sum": "121028139.13", "opening_balance": "2217689.52", "closing_balance": "1157493.49", "issues": 0}
+  },
+  {
+    "name": "太原农商行对公-重复记账行",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R123.pdf",
+    "tags": ["shanxi_rural_corp", "corp", "problem-batch-0929"],
+    "expected": {"count": 117, "income_count": 65, "income_sum": "1525582.51", "expense_count": 52, "expense_sum": "1675998.55", "opening_balance": "330717.69", "closing_balance": "180301.65", "issues": 0}
+  },
+  {
+    "name": "兴业银行个人-强水印交易明细",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20260929问题批次/R124.pdf",
+    "tags": ["cib", "personal", "problem-batch-0929", "watermark"],
+    "expected": {"count": 120, "income_count": 47, "income_sum": "1973448.44", "expense_count": 73, "expense_sum": "1998331.09", "opening_balance": "50513.11", "closing_balance": "25630.46", "issues": 0}
+  },
+  {
+    "name": "20261102-N001-psbc",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N001.pdf",
+    "tags": [
+      "psbc",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 295,
+      "income_count": 125,
+      "expense_count": 170,
+      "income_sum": "7242905.46",
+      "expense_sum": "7203760.59",
+      "opening_balance": "1216.17",
+      "closing_balance": "40361.04",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N002-abc_corp",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N002.pdf",
+    "tags": [
+      "abc_corp",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 245,
+      "income_count": 53,
+      "expense_count": 192,
+      "income_sum": "6571775.27",
+      "expense_sum": "6572367.26",
+      "opening_balance": "17808.79",
+      "closing_balance": "17216.80",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N003-tianjin_corp",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N003.pdf",
+    "tags": [
+      "tianjin_corp",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 52,
+      "income_count": 15,
+      "expense_count": 37,
+      "income_sum": "4818020.20",
+      "expense_sum": "4630924.59",
+      "opening_balance": "34630.64",
+      "closing_balance": "221726.25",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N004-guangxi_rural",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N004.pdf",
+    "tags": [
+      "guangxi_rural",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 229,
+      "income_count": 37,
+      "expense_count": 192,
+      "income_sum": "1571785.33",
+      "expense_sum": "1086507.29",
+      "opening_balance": "1301.34",
+      "closing_balance": "486579.38",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N005-guangxi_rural",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N005.pdf",
+    "tags": [
+      "guangxi_rural",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 639,
+      "income_count": 212,
+      "expense_count": 427,
+      "income_sum": "4745332.07",
+      "expense_sum": "4734959.24",
+      "opening_balance": "497.04",
+      "closing_balance": "10869.87",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N006-ccb_corp",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N006.pdf",
+    "tags": [
+      "ccb_corp",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 274,
+      "income_count": 35,
+      "expense_count": 239,
+      "income_sum": "2943729.46",
+      "expense_sum": "3136514.71",
+      "opening_balance": "198901.21",
+      "closing_balance": "6115.96",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N007-ccb_corp",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N007.pdf",
+    "tags": [
+      "ccb_corp",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 259,
+      "income_count": 25,
+      "expense_count": 234,
+      "income_sum": "7624228.03",
+      "expense_sum": "7462423.32",
+      "opening_balance": "37096.50",
+      "closing_balance": "198901.21",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N008-hengfeng",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N008.pdf",
+    "tags": [
+      "hengfeng",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 381,
+      "income_count": 138,
+      "expense_count": 243,
+      "income_sum": "7388950.33",
+      "expense_sum": "7372003.45",
+      "opening_balance": "7514.33",
+      "closing_balance": "24461.21",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N009-hengfeng",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N009.pdf",
+    "tags": [
+      "hengfeng",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 132,
+      "income_count": 28,
+      "expense_count": 104,
+      "income_sum": "3130744.41",
+      "expense_sum": "3221285.68",
+      "opening_balance": "98055.60",
+      "closing_balance": "7514.33",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N010-tiantai_rural",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N010.pdf",
+    "tags": [
+      "tiantai_rural",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 108,
+      "income_count": 35,
+      "expense_count": 73,
+      "income_sum": "1113100.50",
+      "expense_sum": "1113781.22",
+      "opening_balance": "1149.96",
+      "closing_balance": "469.24",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N011-mintai",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N011.pdf",
+    "tags": [
+      "mintai",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 299,
+      "income_count": 52,
+      "expense_count": 247,
+      "income_sum": "1282623.92",
+      "expense_sum": "1291831.41",
+      "opening_balance": "9302.90",
+      "closing_balance": "95.41",
+      "issues": 1
+    }
+  },
+  {
+    "name": "20261102-N012-mintai",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N012.pdf",
+    "tags": [
+      "mintai",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 300,
+      "income_count": 54,
+      "expense_count": 246,
+      "income_sum": "1313981.62",
+      "expense_sum": "1307396.09",
+      "opening_balance": "2717.37",
+      "closing_balance": "9302.90",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N013-mintai",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N013.pdf",
+    "tags": [
+      "mintai",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 30,
+      "income_count": 7,
+      "expense_count": 23,
+      "income_sum": "120200.00",
+      "expense_sum": "121759.00",
+      "opening_balance": "4276.37",
+      "closing_balance": "2717.37",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N014-yongxing_rural",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N014.pdf",
+    "tags": [
+      "yongxing_rural",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 767,
+      "income_count": 221,
+      "expense_count": 546,
+      "income_sum": "33197774.42",
+      "expense_sum": "33197560.92",
+      "opening_balance": "10417.18",
+      "closing_balance": "10630.68",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N015-gansu",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N015.pdf",
+    "tags": [
+      "gansu",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 142,
+      "income_count": 44,
+      "expense_count": 98,
+      "income_sum": "1583335.41",
+      "expense_sum": "1577129.86",
+      "opening_balance": "225.57",
+      "closing_balance": "6431.12",
+      "issues": 0
+    },
+    "password_env": "BANKFLOW_REGRESSION_20261102_N015_PASSWORD"
+  },
+  {
+    "name": "20261102-N017-mengshang",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N017.pdf",
+    "tags": [
+      "mengshang",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 1056,
+      "income_count": 224,
+      "expense_count": 832,
+      "income_sum": "9345738.27",
+      "expense_sum": "9339284.95",
+      "opening_balance": "4.09",
+      "closing_balance": "6457.41",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N018-ordos",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N018.pdf",
+    "tags": [
+      "ordos",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 423,
+      "income_count": 94,
+      "expense_count": 329,
+      "income_sum": "9102516.80",
+      "expense_sum": "8338342.50",
+      "opening_balance": "38963.54",
+      "closing_balance": "803137.84",
+      "issues": 0
+    }
+  },
+  {
+    "name": "20261102-N020-qingdao_rural_corp",
+    "bank": "auto",
+    "path": "${CD_ASSETS}/PDF流水/专项解析/20261102问题批次/N020.pdf",
+    "tags": [
+      "qingdao_rural_corp",
+      "batch-20261102"
+    ],
+    "expected": {
+      "count": 506,
+      "income_count": 90,
+      "expense_count": 416,
+      "income_sum": "25497162.64",
+      "expense_sum": "24864564.71",
+      "opening_balance": "4075.44",
+      "closing_balance": "636673.37",
+      "issues": 0
+    }
   }
 ]

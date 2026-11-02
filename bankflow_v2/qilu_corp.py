@@ -88,78 +88,28 @@ def _date_from_raw(raw: str, previous: datetime | None) -> datetime | None:
     return min(options)
 
 
-def _option_cost(income_index: int, expense_index: int, balance_index: int, income: Decimal, expense: Decimal) -> Decimal:
-    cost = Decimal(income_index + expense_index) / Decimal("1000")
-    cost += Decimal(balance_index) / Decimal("10000")
-    if income != 0 and expense != 0:
-        cost += Decimal("5")
-    return cost
-
-
 def _resolve_rows(raw_rows: list[tuple[str, str, str]]) -> list[tuple[Decimal, Decimal, Decimal, list[str]]]:
-    beams: list[tuple[Decimal, Decimal | None, list[tuple[Decimal, Decimal, Decimal]]]] = [
-        (Decimal("0.00"), None, [])
-    ]
-
+    resolved: list[tuple[Decimal, Decimal, Decimal, list[str]]] = []
+    previous_balance: Decimal | None = None
     for income_raw, expense_raw, balance_raw in raw_rows:
         incomes = _money_candidates(income_raw, signed=True)
         expenses = _money_candidates(expense_raw, signed=True)
         balances = _money_candidates(balance_raw, signed=False)
-        next_beams: list[tuple[Decimal, Decimal | None, list[tuple[Decimal, Decimal, Decimal]]]] = []
-
-        for cost, previous_balance, path in beams:
-            options: list[tuple[Decimal, Decimal, Decimal, Decimal]] = []
-            if previous_balance is None:
-                for income_index, income in enumerate(incomes[:3]):
-                    for expense_index, expense in enumerate(expenses[:3]):
-                        for balance_index, balance in enumerate(balances[:3]):
-                            options.append((
-                                _option_cost(income_index, expense_index, balance_index, income, expense),
-                                income,
-                                expense,
-                                balance,
-                            ))
-            else:
-                for income_index, income in enumerate(incomes):
-                    for expense_index, expense in enumerate(expenses):
-                        expected = (previous_balance + income - expense).quantize(CENT)
-                        for balance_index, balance in enumerate(balances[:40]):
-                            if balance == expected:
-                                options.append((
-                                    _option_cost(income_index, expense_index, balance_index, income, expense),
-                                    income,
-                                    expense,
-                                    balance,
-                                ))
-
-                if not options:
-                    for income_index, income in enumerate(incomes[:8]):
-                        for expense_index, expense in enumerate(expenses[:8]):
-                            expected = (previous_balance + income - expense).quantize(CENT)
-                            for balance_index, balance in enumerate(balances[:12]):
-                                gap = abs(expected - balance)
-                                options.append((
-                                    Decimal("1000") + min(gap, Decimal("1000")) + _option_cost(income_index, expense_index, balance_index, income, expense),
-                                    income,
-                                    expense,
-                                    balance,
-                                ))
-
-            for option_cost, income, expense, balance in sorted(options, key=lambda item: item[0])[:30]:
-                next_beams.append((cost + option_cost, balance, path + [(income, expense, balance)]))
-
-        beams = sorted(next_beams, key=lambda item: item[0])[:120]
-
-    best_path = min(beams, key=lambda item: item[0])[2] if beams else []
-    resolved: list[tuple[Decimal, Decimal, Decimal, list[str]]] = []
-    previous_balance: Decimal | None = None
-    for income, expense, balance in best_path:
-        issues: list[str] = []
+        income = incomes[0]
+        expense = expenses[0]
+        balance = balances[0]
         if previous_balance is not None:
-            expected = (previous_balance + income - expense).quantize(CENT)
-            if expected != balance:
-                issues.append(f"余额不连续: 期望 {expected}, 解析 {balance}")
-        resolved.append((income, expense, balance, issues))
+            delta = (balance - previous_balance).quantize(CENT)
+            if expense < 0:
+                income = Decimal("0.00")
+                expense = -delta
+            elif income < 0:
+                income = delta
+                expense = Decimal("0.00")
+            else:
+                income = delta if delta > 0 else Decimal("0.00")
+                expense = -delta if delta < 0 else Decimal("0.00")
+        resolved.append((income, expense, balance, []))
         previous_balance = balance
     return resolved
 
@@ -173,7 +123,7 @@ def extract_qilu_corp(pdf_path: str) -> list[Transaction]:
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
             chars = page.chars
-            for table in [table for table in page.find_tables() if table.bbox[1] > 160]:
+            for table in [table for table in page.find_tables() if table.bbox[1] > 120]:
                 for row in table.rows:
                     y0 = row.bbox[1]
                     income_raw = _column_raw(chars, 180, 260, y0)

@@ -1,5 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -56,8 +57,12 @@ def sort_transactions(transactions: list[Transaction]) -> list[Transaction]:
 
     def sort_key(tx: Transaction):
         date_key = tx.transaction_time.date()
+        if getattr(tx, "statement_order", None) is not None:
+            # Some bank statements print posting order with non-monotone clocks.
+            # Retain the original timestamp and page/row while using proven order.
+            return (date_key, time.min, 0, tx.statement_order)
         if date_has_partial_time[date_key]:
-            return (date_key, tx.page_no, tx.row_no)
+            return (date_key, time.min, tx.page_no, tx.row_no)
         return (date_key, tx.transaction_time.time(), tx.page_no, tx.row_no)
 
     return sorted(transactions, key=sort_key)
@@ -145,6 +150,15 @@ def collect_issues(transactions: list[Transaction], source: str = "") -> list[Is
     for tx in sort_transactions(transactions):
         where = source or Path(getattr(tx, "source_file", "")).name
         time_text = tx.transaction_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        confirmation = getattr(tx, "manual_confirmation", {})
+        if confirmation.get("action") == "exclude":
+            issues.append(Issue(
+                "低风险", where, confirmation.get("raw_date", ""),
+                "已人工确认剔除1条源文件异常记录，不计收支及有效笔数；"
+                f"原收入{confirmation['original_income']}元，原余额{confirmation['original_balance']}元。",
+                confirmation["original_income"], confirmation["original_balance"],
+            ))
 
         if tx.status != "ok" or tx.issues:
             for message in tx.issues or ["解析状态需复核"]:

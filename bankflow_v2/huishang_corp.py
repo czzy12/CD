@@ -75,11 +75,32 @@ def _restore_same_time_order(transactions: list[Transaction]) -> list[Transactio
 
         forward = sorted(items, key=lambda tx: (tx.page_no, tx.row_no))
         reverse = list(reversed(forward))
-        ordered = reverse if _balance_chain_score(reverse) > _balance_chain_score(forward) else forward
+        ordered = reverse if _balance_chain_score(reverse) >= _balance_chain_score(forward) else forward
         for index, tx in enumerate(ordered):
             tx.transaction_time = tx_time.replace(microsecond=index)
 
     return transactions
+
+
+def _restore_amounts_from_balance(transactions: list[Transaction]) -> None:
+    ordered = sorted(transactions, key=lambda tx: (tx.transaction_time, tx.page_no, tx.row_no))
+    previous: Transaction | None = None
+    for tx in ordered:
+        if previous is not None:
+            delta = (tx.balance - previous.balance).quantize(Decimal("0.01"))
+            if tx.income != ZERO:
+                tx.income = delta
+                tx.expense = ZERO
+            elif tx.expense != ZERO:
+                tx.income = ZERO
+                tx.expense = -delta
+            elif delta >= ZERO:
+                tx.income = delta
+                tx.expense = ZERO
+            else:
+                tx.income = ZERO
+                tx.expense = -delta
+        previous = tx
 
 
 def _parse_block(date_word: dict, block_words: list[dict], page_no: int, row_no: int) -> Transaction | None:
@@ -136,12 +157,14 @@ def extract_huishang_corp(pdf_path: str) -> list[Transaction]:
             words = _words(page)
             date_words = sorted((word for word in words if _is_date_word(word)), key=lambda item: item["top"])
             for index, date_word in enumerate(date_words):
-                previous_top = date_words[index - 1]["top"] if index > 0 else 45
                 next_top = date_words[index + 1]["top"] if index + 1 < len(date_words) else 800
-                block_top = (previous_top + date_word["top"]) / 2
+                block_top = date_word["top"] - 2
                 block_bottom = (date_word["top"] + next_top) / 2
                 block_words = [word for word in words if block_top <= word["top"] < block_bottom]
                 tx = _parse_block(date_word, block_words, page_no, len(transactions) + 1)
                 if tx is not None:
+                    tx.preserve_signed_columns = True
                     transactions.append(tx)
-    return _restore_same_time_order(transactions)
+    transactions = _restore_same_time_order(transactions)
+    _restore_amounts_from_balance(transactions)
+    return transactions

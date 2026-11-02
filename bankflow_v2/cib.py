@@ -59,6 +59,17 @@ def _parse_amount(value: object) -> Decimal | None:
         return None
 
 
+def _amount_candidates(value: object, direction: object) -> list[Decimal]:
+    text = _cell(value)
+    direction_text = _cell(direction)
+    sign = -1 if "支" in direction_text or "-" in text else 1
+    candidates = _balance_candidates(value)
+    if not candidates:
+        parsed = _parse_amount(value)
+        return [parsed] if parsed is not None else []
+    return [abs(candidate) * sign for candidate in candidates]
+
+
 def _to_decimal(raw: str) -> Decimal | None:
     try:
         return Decimal(raw).quantize(CENT)
@@ -110,6 +121,23 @@ def _has_split_amount_columns(page) -> bool:
             continue
         header = "".join(_cell(cell) for cell in table[0])
         if "支出" in header and "收入" in header and "账户余额" in header and "交易金额" not in header:
+            return True
+    return False
+
+
+def _has_strong_watermark_layout(page) -> bool:
+    for table in page.extract_tables():
+        if not table or len(table[0]) < 6:
+            continue
+        headers = [re.sub(r"[^A-Za-z]", "", _cell(cell)) for cell in table[0]]
+        if headers[:6] == [
+            "TransactionTime",
+            "AccountingDate",
+            "TransactionType",
+            "ExpenditureIncome",
+            "TransactionAmount",
+            "AccountBalance",
+        ]:
             return True
     return False
 
@@ -228,22 +256,41 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
             return _extract_split_amount_columns(pdf)
 
         sample_text = "\n".join((page.extract_text() or "") for page in pdf.pages[:2])
-        strong_watermark = "兴业银行交易明细" in sample_text and "核验" in sample_text
+        compact_sample = sample_text.replace(" ", "").replace("\n", "")
+        strong_watermark = (
+            _has_strong_watermark_layout(pdf.pages[0])
+            or "IndustrialBankTransactionDetails" in compact_sample
+            or ("兴业银行交易明细" in sample_text and "核验" in sample_text)
+        )
+        recover_strong_balance = strong_watermark and len(pdf.pages) <= 20
         for page_no, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables():
                 for row in table[1:]:
                     if len(row) < 6:
                         continue
-                    tx_time = _parse_date(row[1], row[0])
-                    amount = _parse_amount(row[4])
+                    tx_time = _parse_date(row[0], row[1]) if recover_strong_balance else _parse_date(row[1], row[0])
+                    amount_candidates = _amount_candidates(row[4], row[3]) if recover_strong_balance else []
+                    amount = amount_candidates[0] if amount_candidates else _parse_amount(row[4])
                     balance_candidates = _balance_candidates(row[5])
                     if tx_time is None or amount is None or not balance_candidates:
                         continue
 
                     expected = None
-                    if previous_balance is not None:
-                        expected = (previous_balance + amount).quantize(CENT)
-                    balance = _choose_balance(balance_candidates, expected)
+                    balance = None
+                    if recover_strong_balance and previous_balance is not None:
+                        for candidate_amount in amount_candidates:
+                            candidate_balance = (previous_balance + candidate_amount).quantize(CENT)
+                            if candidate_balance in balance_candidates:
+                                amount = candidate_amount
+                                balance = candidate_balance
+                                break
+                        if balance is None:
+                            expected = (previous_balance + amount).quantize(CENT)
+                            balance = expected
+                    else:
+                        if previous_balance is not None:
+                            expected = (previous_balance + amount).quantize(CENT)
+                        balance = _choose_balance(balance_candidates, expected)
                     if balance is None:
                         continue
                     previous_balance = balance
@@ -254,7 +301,7 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
                         transaction_time=tx_time,
                         income=amount if amount >= ZERO else ZERO,
                         expense=-amount if amount < ZERO else ZERO,
-                        balance=None if strong_watermark else balance,
+                        balance=balance if recover_strong_balance or not strong_watermark else None,
                         bank=BANK_NAME,
                         page_no=page_no,
                         row_no=row_no,
@@ -264,7 +311,7 @@ def extract_cib(pdf_path: str) -> list[Transaction]:
                         raw_text=" ".join(field for field in fields if field),
                         raw_fields=fields,
                     )
-                    if strong_watermark:
+                    if strong_watermark and not recover_strong_balance:
                         tx.balance_optional = True
                         tx.raw_balance = f"参考余额:{tx.raw_balance}"
                     tx.merge_key = "|".join([str(row_no), tx.raw_time, tx.raw_amount, tx.raw_balance])

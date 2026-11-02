@@ -47,11 +47,13 @@ def _parse_time(raw: str | None) -> datetime | None:
 
 
 def _parse_corp_time(raw_time: str | None, raw_date: str | None) -> datetime | None:
-    date_text = _clean_cell(raw_date)
+    date_text = re.sub(r"\s+", "", str(raw_date or ""))
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_text):
         return None
 
     time_text = _clean_cell(raw_time)
+    if re.fullmatch(r"\d{2}:\d{2}:\d{2}", time_text):
+        return datetime.strptime(f"{date_text} {time_text}", "%Y-%m-%d %H:%M:%S")
     match = re.search(r"\d{4}-\d{2}-\d{2}\s*(\d?)\s*([0-9]:\d{2}:\d{2})", time_text)
     if match:
         hour_prefix = match.group(1)
@@ -74,7 +76,9 @@ def _is_corp_header(row: list) -> bool:
 
 
 def _is_corp_row(row: list) -> bool:
-    return len(row) > CORP_BALANCE_COL and _clean_cell(row[0]).isdigit()
+    if len(row) <= CORP_BALANCE_COL:
+        return False
+    return _clean_cell(row[0]).isdigit() or bool(re.fullmatch(r"20\d{2}-\d{2}-\d{2}", re.sub(r"\s+", "", str(row[0] or ""))))
 
 
 def _parse_corp_row(row: list, page_no: int, row_no: int) -> Transaction | None:
@@ -120,11 +124,12 @@ def _parse_corp_row(row: list, page_no: int, row_no: int) -> Transaction | None:
         raw_balance=balance_raw,
         raw_text=" | ".join(raw_text_parts),
         raw_fields=[_clean_cell(cell) for cell in row],
-        raw_headers=CORP_HEADERS,
+        raw_headers=(["交易日期", *CORP_HEADERS[1:12], "全局路由号"] if len(row) == 13 else CORP_HEADERS),
         status="ok" if not issues else "review",
         issues=issues,
     )
     tx.merge_key = "|".join([_clean_cell(row[0]), tx.raw_time, expense_raw, income_raw, balance_raw, str(page_no), str(row_no)])
+    tx.preserve_signed_columns = True
     return tx
 
 
@@ -154,9 +159,12 @@ def _restore_same_time_order(transactions: list[Transaction]) -> None:
 
 def extract_psbc(pdf_path: str) -> list[Transaction]:
     transactions: list[Transaction] = []
+    header_text = ""
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages, start=1):
+            if page_index == 1:
+                header_text = page.extract_text() or ""
             for table in page.extract_tables():
                 table_has_corp_header = any(_is_corp_header(row) for row in table)
                 for row_index, row in enumerate(table, start=1):
@@ -199,4 +207,10 @@ def extract_psbc(pdf_path: str) -> list[Transaction]:
                     )
 
     _restore_same_time_order(transactions)
+    if any(getattr(tx, "preserve_signed_columns", False) for tx in transactions):
+        from .regional_statements import _check_totals
+        _check_totals(transactions, header_text, {
+            "income": r"收入总金额([\d,.]+)", "expense": r"支出总金额([\d,.]+)",
+            "income_count": r"收入总笔数(\d+)笔", "expense_count": r"支出总笔数(\d+)笔",
+        })
     return transactions

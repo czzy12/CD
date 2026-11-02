@@ -41,6 +41,7 @@ BANK_LABELS = {
     "hebei_corp_detail": "河北银行对公",
     "hebei_personal": "河北银行个人",
     "huishang_corp": "徽商银行对公",
+    "huishang": "徽商银行个人",
     "huaxia": "华夏银行",
     "hubei_rural": "湖北农商银行个人",
     "hebei_rural": "河北省农村信用社个人",
@@ -51,6 +52,9 @@ BANK_LABELS = {
     "fuxin_corp": "阜新银行对公",
     "changsha": "长沙银行个人",
     "chaoyang_corp": "朝阳银行对公",
+    "dezhou_corp": "德州银行对公",
+    "qingdao_corp": "青岛银行对公",
+    "shanxi_bank_corp": "山西银行对公",
     "jiujiang": "九江银行",
     "jinan_rural_corp": "济南农商银行对公",
     "lanzhou": "兰州银行",
@@ -79,6 +83,15 @@ BANK_LABELS = {
     "wechat": "微信流水",
     "xingtai": "邢台银行",
     "zhongyuan": "中原银行",
+    "tianjin_corp": "天津银行对公",
+    "guangxi_rural": "广西农商联合银行个人",
+    "hengfeng": "恒丰银行个人",
+    "tiantai_rural": "浙江天台农村商业银行个人",
+    "mintai": "浙江民泰商业银行个人",
+    "yongxing_rural": "湖南永兴农村商业银行个人",
+    "mengshang": "蒙商银行个人",
+    "ordos": "鄂尔多斯银行个人",
+    "qingdao_rural_corp": "青岛农村商业银行对公",
 }
 
 
@@ -170,6 +183,21 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     header_text = "\n".join(text.splitlines()[:80])
     header_compact = header_text.replace(" ", "").replace("\n", "")
+    # Specific issuer/layout rules must precede broad counterparty-name matches.
+    batch_rules = [
+        ("tianjin_corp", ("天津银行对公交易明细清单", "借方发生额", "贷方发生额")),
+        ("guangxi_rural", ("账户交易明细", "序号交易时间对方户名对方账号对方行名币种收入/支出金额账户余额用途摘要附言备注")),
+        ("hengfeng", ("恒丰银行交易流水", "记账日期货币交易金额联机余额")),
+        ("tiantai_rural", ("个人账户交易明细", "开户行:天台农商银行", "交易金额账户余额")),
+        ("mintai", ("个人账务明细", "账/卡号", "交易日期收入金额支出金额余额对方户名对方账号交易摘要")),
+        ("yongxing_rural", ("湖南永兴农村商业银行股份有限公司交易明细", "交易时间交易金额账户余额对方账号对方户名摘要备注")),
+        ("mengshang", ("蒙商银行个人活期账户全部交易明细", "交易日期交易金额账户余额")),
+        ("ordos", ("个人活期存款账户交易明细", "总收入笔数", "交易时间收入(元)支出(元)余额(元)币种对方账号对方户名备注")),
+        ("qingdao_rural_corp", ("开户行：青岛农商银行", "记账日期交易金额账户余额交易摘要交易对手信息")),
+    ]
+    for bank_id, markers in batch_rules:
+        if all(marker in header_compact for marker in markers):
+            return Detection(bank_id, BANK_LABELS[bank_id], 98, "命中已核对的专项版式；无文字机构标识时仍需核对银行归属")
     if all(marker in compact for marker in (
         "河北省农村信用社联合社", "账户历史明细清单", "总条数",
         "序号交易日期交易金额金额对方户名对方账号摘要网点来源",
@@ -250,6 +278,38 @@ def detect_bank_type(pdf_path: str) -> Detection:
         return Detection("huishang_corp", BANK_LABELS["huishang_corp"], 98, "命中徽商银行账户交易明细")
 
     if (
+        "TransactionStatementofHuishangBank" in compact
+        and "DateCurrencyTransactionBalanceChannelTransactionTypeCounterParty" in compact
+    ):
+        return Detection("huishang", BANK_LABELS["huishang"], 98, "命中徽商银行个人交易流水")
+
+    if (
+        "单位活期存款账户交易明细" in header_compact
+        and "交易时间交易渠道收入支出账户余额" in compact
+        and "收入总金额" in header_compact
+    ):
+        return Detection("dezhou_corp", BANK_LABELS["dezhou_corp"], 98, "命中德州银行单位活期存款明细")
+
+    if (
+        "青岛银行交易流水" in header_compact
+        and "交易日期交易类型收入金额支出金额余额" in compact
+    ):
+        return Detection("qingdao_corp", BANK_LABELS["qingdao_corp"], 98, "命中青岛银行对公交易流水")
+
+    if (
+        "账户交易明细" in header_compact
+        and "山西银行股份有限公司" in compact
+        and "交易日期摘要交易金额账户余额" in compact
+    ):
+        return Detection("shanxi_bank_corp", BANK_LABELS["shanxi_bank_corp"], 98, "命中山西银行对公账户交易明细")
+
+    if (
+        "兰州银行个人账户对账单打印" in header_compact
+        and "交易日期收入/支出金额余额" in compact
+    ):
+        return Detection("lanzhou", BANK_LABELS["lanzhou"], 98, "命中兰州银行个人账户对账单")
+
+    if (
         "交易流水" in header_compact
         and "开户行：济南农商银行" in header_compact
         and "账户名称" in header_compact
@@ -325,6 +385,8 @@ def detect_bank_type(pdf_path: str) -> Detection:
 
     if _has_ordered_chars(header_compact, "兴业银行交易流水"):
         return Detection("cib", BANK_LABELS["cib"], 95, "页眉命中银行名称: 兴业银行交易流水")
+    if _has_ordered_chars(header_compact, "兴业银行交易明细", max_gap=120):
+        return Detection("cib", BANK_LABELS["cib"], 95, "页眉命中银行名称: 兴业银行交易明细")
     if "BankTransactionDetails" in compact and "兴业" in compact and "支出" in compact and "收入" in compact:
         return Detection("cib", BANK_LABELS["cib"], 92, "命中兴业银行交易明细强水印格式")
     if (
@@ -355,7 +417,7 @@ def detect_bank_type(pdf_path: str) -> Detection:
         return Detection("boc", BANK_LABELS["boc"], 98, "命中中国银行个人交易流水明细清单")
 
     if (
-        "中国邮政储蓄银行账户交易明细专用回单" in header_compact
+        "中国邮政储蓄银行账户交易明细" in header_compact
         and "支出金额收入金额余额" in compact
     ):
         return Detection("psbc", BANK_LABELS["psbc"], 98, "命中邮储对公账户交易明细专用回单特征")
@@ -365,7 +427,6 @@ def detect_bank_type(pdf_path: str) -> Detection:
         and "本方账号户名" in compact
         and "转入金额" in compact
         and "转出金额" in compact
-        and "余额" in compact
     ):
         return Detection("icbc_corp", BANK_LABELS["icbc_corp"], 98, "命中工商银行对公账户明细清单")
 

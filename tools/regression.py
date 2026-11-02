@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bankflow_v2.auto_detect import detect_bank_type
 from bankflow_v2.pipeline import extract_transactions
 from bankflow_v2.summary import summarize
+from bankflow_v2.pdf_password import register_pdf_passwords, install_pdf_password_support
 
 
 CENT = Decimal("0.01")
@@ -98,6 +99,15 @@ def run_case(case: dict[str, Any], allow_missing: bool = False) -> RegressionRes
     if not pdf_path.exists():
         status = "SKIP" if allow_missing else "FAIL"
         return RegressionResult(status, name, f"missing file: {pdf_path}", [] if allow_missing else [str(pdf_path)])
+
+    password_env = case.get("password_env")
+    if password_env:
+        password = os.environ.get(str(password_env), "")
+        if not password:
+            status = "SKIP" if allow_missing else "FAIL"
+            return RegressionResult(status, name, f"runtime password required via {password_env}", [] if allow_missing else ["runtime password not provided"])
+        register_pdf_passwords({pdf_path: password})
+        install_pdf_password_support()
 
     bank = case.get("bank")
     if pdf_path.suffix.lower() in {".xls", ".xlsx", ".xlsm"}:

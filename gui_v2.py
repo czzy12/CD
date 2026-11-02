@@ -580,7 +580,7 @@ class Worker(QThread):
         """Combine supported multi-file corporate statements for one account."""
         groups: dict[tuple[str, str, str], list[FileResult]] = {}
         for result in results:
-            if result.bank_id not in ("abc_corp", "chengdu_corp", "mengshang_corp") or not result.account_no or not result.transactions:
+            if result.bank_id not in ("abc_corp", "chengdu_corp", "mengshang_corp", "mintai", "hengfeng", "ccb_corp") or not result.account_no or not result.transactions:
                 continue
             groups.setdefault((result.bank_id, result.account_no, result.account_name), []).append(result)
 
@@ -589,8 +589,15 @@ class Worker(QThread):
         for (bank_id, account_no, account_name), members in groups.items():
             if len(members) < 2:
                 continue
-            transactions = sort_transactions([tx for result in members for tx in result.transactions])
+            transactions = [tx for result in members for tx in result.transactions]
+            if bank_id in {"mintai", "hengfeng"}:
+                from bankflow_v2.regional_statements import order_statement_rows
+                transactions = order_statement_rows(transactions)
+            else:
+                transactions = sort_transactions(transactions)
             for row_no, tx in enumerate(transactions, start=1):
+                tx.source_page_no = getattr(tx, "source_page_no", tx.page_no)
+                tx.source_row_no = getattr(tx, "source_row_no", tx.row_no)
                 tx.page_no = 0
                 tx.row_no = row_no
 
@@ -601,6 +608,9 @@ class Worker(QThread):
             bank_name = {
                 "chengdu_corp": "成都银行",
                 "mengshang_corp": "蒙商银行",
+                "mintai": "浙江民泰商业银行",
+                "hengfeng": "恒丰银行",
+                "ccb_corp": "建设银行",
             }.get(bank_id, "农业银行")
             combined = FileResult(
                 base.path.with_name(f"{bank_name}账户尾号{account_no[-4:]}（{len(members)}个文件合并）.pdf"),
@@ -766,6 +776,9 @@ class Worker(QThread):
                     elif not result.transactions and not result.message:
                         result.message = "未解析到流水"
 
+            confirmations = [tx for tx in result.transactions if getattr(tx, "manual_confirmation", None)]
+            if confirmations:
+                result.message = (result.message + "；" if result.message else "") + f"已人工确认剔除{len(confirmations)}条源文件异常行，不计收支及有效笔数，确认记录保留"
             all_issues.extend(result.summary.issues)
             if result.message and (not result.transactions or result.status == "需复核"):
                 all_issues.append(Issue("需复核", result.path.name, "", result.message))

@@ -190,9 +190,6 @@ def _parse_format_d(row: list, index: dict[str, int], page_no: int, row_no: int)
         issues.append("转入和转出金额同时存在")
     if income == Decimal("0.00") and expense == Decimal("0.00"):
         issues.append("转入和转出金额均为空")
-    if balance is None:
-        issues.append("余额无法解析")
-
     tx = Transaction(
         transaction_time=tx_time,
         income=income,
@@ -211,12 +208,13 @@ def _parse_format_d(row: list, index: dict[str, int], page_no: int, row_no: int)
         issues=issues,
     )
     tx.preserve_signed_columns = True
+    tx.balance_optional = "余额" not in index
     return tx
 
 
 def _looks_like_header(row: list) -> bool:
     text = "|".join(_clean_cell(cell) for cell in row or [])
-    return bool(re.search(r"交易时间.*余额", text)) and (
+    return bool(re.search(r"交易时间.*(?:余额|转入金额)", text)) and (
         "借贷标志" in text
         or "借/贷" in text
         or ("借方发生额" in text and "贷方发生额" in text)

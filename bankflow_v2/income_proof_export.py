@@ -680,6 +680,11 @@ def build_income_proof_input(
         "corporate_flow": flow_block(results, "对公", adjustment_allocations, adjustment_configs) if corporate_results else empty_flow(),
         "notes": {
             "supplement": "",
+            "source_confirmations": [
+                tx.manual_confirmation for result in results
+                for tx in getattr(result, "transactions", [])
+                if getattr(tx, "manual_confirmation", None)
+            ],
             "export_note": "客户、单位、占股、地区等字段需人工补充或由后续系统/API填入；未识别到的账号需人工补充；对公流水必须人工确认后才启用。",
         },
     }

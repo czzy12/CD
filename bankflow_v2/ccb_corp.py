@@ -200,6 +200,9 @@ def extract_ccb_corp(pdf_path: str) -> list[Transaction]:
                     )
 
                     transactions[-1].merge_key = _transaction_key(row)
+                    account_no = _clean_cell(row[0])
+                    if account_no.isdigit() and len(account_no) >= 10:
+                        transactions[-1].account_no = account_no
 
     return transactions
 

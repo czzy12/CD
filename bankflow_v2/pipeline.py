@@ -30,6 +30,7 @@ from .generic_pdf import extract_generic_pdf
 from .guilin_corp import extract_guilin, extract_guilin_corp
 from .hebei_bazhou import extract_bazhou_shunfeng_corp, extract_hebei_corp_detail, extract_hebei_personal
 from .huishang_corp import extract_huishang_corp
+from .huishang import extract_huishang
 from .huaxia import extract_huaxia
 from .hubei_rural import extract_hubei_rural
 from .hebei_rural import extract_hebei_rural
@@ -57,9 +58,35 @@ from .xingtai import extract_xingtai
 from .zhongyuan import extract_zhongyuan
 from .changsha import extract_changsha
 from .chaoyang_corp import extract_chaoyang_corp
+from .dezhou_corp import extract_dezhou_corp
+from .qingdao_corp import extract_qingdao_corp
+from .shanxi_bank_corp import extract_shanxi_bank_corp
+from .regional_statements import (
+    extract_tianjin_corp, extract_guangxi_rural, extract_hengfeng,
+    extract_tiantai_rural, extract_mintai, extract_yongxing_rural,
+    extract_mengshang, extract_ordos, extract_qingdao_rural_corp,
+)
 
 
 def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]:
+    if bank == "tianjin_corp":
+        return extract_tianjin_corp(pdf_path)
+    if bank == "guangxi_rural":
+        return extract_guangxi_rural(pdf_path)
+    if bank == "hengfeng":
+        return extract_hengfeng(pdf_path)
+    if bank == "tiantai_rural":
+        return extract_tiantai_rural(pdf_path)
+    if bank == "mintai":
+        return extract_mintai(pdf_path)
+    if bank == "yongxing_rural":
+        return extract_yongxing_rural(pdf_path)
+    if bank == "mengshang":
+        return extract_mengshang(pdf_path)
+    if bank == "ordos":
+        return extract_ordos(pdf_path)
+    if bank == "qingdao_rural_corp":
+        return extract_qingdao_rural_corp(pdf_path)
     if bank == "alipay":
         return extract_alipay(pdf_path)
     if bank == "icbc":
@@ -130,6 +157,8 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_hebei_personal(pdf_path)
     if bank == "huishang_corp":
         return extract_huishang_corp(pdf_path)
+    if bank == "huishang":
+        return extract_huishang(pdf_path)
     if bank == "luzhou":
         return extract_luzhou(pdf_path)
     if bank == "psbc":
@@ -192,4 +221,10 @@ def extract_transactions(pdf_path: str, bank: str = "icbc") -> list[Transaction]
         return extract_xingtai(pdf_path)
     if bank == "zhongyuan":
         return extract_zhongyuan(pdf_path)
+    if bank == "dezhou_corp":
+        return extract_dezhou_corp(pdf_path)
+    if bank == "qingdao_corp":
+        return extract_qingdao_corp(pdf_path)
+    if bank == "shanxi_bank_corp":
+        return extract_shanxi_bank_corp(pdf_path)
     raise ValueError(f"v2 暂未适配该银行: {bank}")
